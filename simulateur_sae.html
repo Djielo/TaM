@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulateur SAE TAM</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f3f5f8;
+      color: #1b1f24;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 12px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    select, button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccd3db;
+      font-size: 14px;
+      background: #fff;
+    }
+    .grow {
+      flex: 1 1 220px;
+    }
+    button {
+      cursor: pointer;
+      background: #005ca9;
+      border: 0;
+      color: #fff;
+      font-weight: 600;
+    }
+    button.secondary {
+      background: #4a5563;
+    }
+    #map {
+      height: 420px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .stats {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .mono {
+      font-family: Consolas, monospace;
+    }
+    .note {
+      font-size: 12px;
+      color: #4a5563;
+      line-height: 1.45;
+      margin: 4px 0 0 0;
+    }
+    .row-voice {
+      align-items: flex-end;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h2 style="margin-top: 0;">Simulateur SAE TAM (mode formation)</h2>
+      <div class="row">
+        <div class="grow">
+          <label for="lineSelect">1) Ligne</label>
+          <select id="lineSelect"></select>
+        </div>
+        <div class="grow">
+          <label for="headsignSelect">2) Terminus / sens</label>
+          <select id="headsignSelect"></select>
+        </div>
+        <div class="grow">
+          <label for="variantSelect">3) Variante</label>
+          <select id="variantSelect"></select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="grow"><button id="startBtn">Demarrer simulation</button></div>
+        <div class="grow"><button id="pauseBtn" class="secondary">Pause / Reprendre</button></div>
+      </div>
+      <div class="row">
+        <div class="grow"><button id="prevBtn" class="secondary">Arret precedent</button></div>
+        <div class="grow"><button id="nextBtn" class="secondary">Arret suivant</button></div>
+        <div class="grow">
+          <label for="speedSelect">Vitesse</label>
+          <select id="speedSelect">
+            <option value="1">x1</option>
+            <option value="2">x2</option>
+            <option value="4">x4</option>
+          </select>
+        </div>
+      </div>
+      <div class="row row-voice">
+        <div class="grow checkbox-row">
+          <input type="checkbox" id="voiceEnabled" title="Annonces vocales">
+          <label for="voiceEnabled" style="margin:0;font-weight:600;">Annonces « prochain arret »</label>
+        </div>
+        <div class="grow">
+          <label for="voiceMode">Quand annoncer</label>
+          <select id="voiceMode" disabled>
+            <option value="depart">Au passage d'un arret (on annonce le suivant)</option>
+            <option value="mid">A mi-parcours entre deux arrets</option>
+            <option value="both">Les deux</option>
+          </select>
+        </div>
+      </div>
+      <div class="row row-voice">
+        <div class="grow">
+          <label for="voiceSelect">Voix (navigateur / systeme)</label>
+          <select id="voiceSelect"></select>
+        </div>
+        <div class="grow">
+          <button type="button" class="secondary" id="voiceTest">Tester la voix</button>
+        </div>
+      </div>
+      <p class="note" id="voiceNote">
+        La qualite depend de votre navigateur et des voix installees sur l'appareil. Utilisez « Tester la voix » : si le resultat ne vous convient pas, laissez l'option desactivee. Aucun service cloud : tout reste en local.
+      </p>
+      <div class="stats">
+        <div><b>Mission:</b> <span id="missionName">-</span></div>
+        <div><b>Arret courant:</b> <span id="currentStop">-</span></div>
+        <div><b>Prochain arret:</b> <span id="nextStop">-</span></div>
+        <div><b>Progression:</b> <span id="progressPct" class="mono">0%</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let data = null;
+    let filteredByLine = [];
+    let filteredByHeadsign = [];
+    let currentPattern = null;
+    let activeCoordinates = [];
+    let traceSource = "Aucune";
+    /** Distance cumulée (m) vers chaque sommet d'activesCoordinates, longueur = n. */
+    let pathCumMeters = [];
+    let pathTotalMeters = 0;
+    /** Position courante sur le tracé (mètres depuis le départ). */
+    let distanceAlongPathMeters = 0;
+    /** Distance le long du tracé pour chaque arrêt (GTFS) après "snap" sur la polyligne. */
+    let stopMetersAlong = [];
+    /** Dernière distance (m) pour détecter les franchissements d'annonce. */
+    let lastVoiceDistance = 0;
+    /** Cles deja annoncees : d{i} = passage arret i, m{i} = mi-parcours segment i->i+1. */
+    let voixAnnounced = new Set();
+    let running = false;
+    let speed = 1;
+    /** rAF : vitesse en m/s réelle, pas "un pas par sommet" (croisements). */
+    let lastRafTime = 0;
+    /** Mètres par seconde (à x1) : la simulation ne dépend plus de la densité des sommets. */
+    const BASE_METERS_PER_SECOND = 9;
+    const LS_KEY_VOICE = "tam_sim_voice";
+    const LS_KEY_MODE = "tam_sim_vocal_mode";
+    const LS_KEY_ENABLED = "tam_sim_vocal_on";
+
+    const lineSelect = document.getElementById("lineSelect");
+    const headsignSelect = document.getElementById("headsignSelect");
+    const variantSelect = document.getElementById("variantSelect");
+    const speedSelect = document.getElementById("speedSelect");
+    const voiceEnabledEl = document.getElementById("voiceEnabled");
+    const voiceModeEl = document.getElementById("voiceMode");
+    const voiceSelectEl = document.getElementById("voiceSelect");
+    const voiceTestBtn = document.getElementById("voiceTest");
+    const voiceNoteEl = document.getElementById("voiceNote");
+
+    const missionName = document.getElementById("missionName");
+    const currentStopEl = document.getElementById("currentStop");
+    const nextStopEl = document.getElementById("nextStop");
+    const progressPctEl = document.getElementById("progressPct");
+
+    const map = L.map("map").setView([43.61, 3.88], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(map);
+
+    let fullLine = L.polyline([], { color: "#005ca9", weight: 6, opacity: 0.6 }).addTo(map);
+    let doneLine = L.polyline([], { color: "#9aa3ad", weight: 8, opacity: 0.95 }).addTo(map);
+    let marker = L.circleMarker([43.61, 3.88], {
+      radius: 9, color: "#ffffff", weight: 2, fillColor: "#ff4d4d", fillOpacity: 1
+    }).addTo(map);
+
+    function uniqueValues(arr, getter) {
+      return [...new Set(arr.map(getter))];
+    }
+
+    function fillSelect(selectEl, values, labelFn) {
+      selectEl.innerHTML = "";
+      values.forEach((item, index) => {
+        const opt = document.createElement("option");
+        opt.value = String(index);
+        opt.textContent = labelFn(item, index);
+        selectEl.appendChild(opt);
+      });
+    }
+
+    function updateLines() {
+      const lines = uniqueValues(data.patterns, p => p.route_short_name).sort((a, b) => String(a).localeCompare(String(b), "fr"));
+      fillSelect(lineSelect, lines, line => `Ligne ${line}`);
+      lineSelect.dispatchEvent(new Event("change"));
+    }
+
+    function updateHeadsigns() {
+      const selectedLine = lineSelect.options[lineSelect.selectedIndex]?.textContent.replace("Ligne ", "");
+      filteredByLine = data.patterns.filter(p => p.route_short_name === selectedLine);
+
+      const headsignKeys = uniqueValues(
+        filteredByLine,
+        p => `${p.direction_id}|||${p.headsign}`
+      ).sort((a, b) => a.localeCompare(b, "fr"));
+
+      fillSelect(headsignSelect, headsignKeys, key => {
+        const parts = key.split("|||");
+        const direction = parts[0] || "?";
+        const headsign = parts[1] || "Terminus non renseigne";
+        return `Sens ${direction} -> ${headsign}`;
+      });
+      headsignSelect.dispatchEvent(new Event("change"));
+    }
+
+    function updateVariants() {
+      const selected = headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
+      const [left, right] = selected.split("->").map(s => s.trim());
+      const directionId = left.replace("Sens ", "").trim();
+      const headsign = right || "";
+
+      filteredByHeadsign = filteredByLine.filter(p => p.direction_id === directionId && p.headsign === headsign);
+      filteredByHeadsign.sort((a, b) => a.variant_name.localeCompare(b.variant_name, "fr"));
+
+      fillSelect(variantSelect, filteredByHeadsign, p => {
+        return `${p.variant_name} - ${p.start_stop} -> ${p.end_stop} (${p.stop_count} arrets)`;
+      });
+    }
+
+    function selectedPattern() {
+      return filteredByHeadsign[variantSelect.selectedIndex] || null;
+    }
+
+    async function fetchRoadGeometry(pattern) {
+      // OSRM public API expects lon,lat pairs.
+      const coords = pattern.stops.map(s => `${s.lon},${s.lat}`).join(";");
+      const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const payload = await resp.json();
+        const route = payload?.routes?.[0]?.geometry?.coordinates || [];
+        if (!route.length) {
+          throw new Error("geometrie vide");
+        }
+        // Convert to Leaflet lat,lon format.
+        return route.map(pt => [pt[1], pt[0]]);
+      } catch (err) {
+        console.warn("Fallback trace direct (stop->stop):", err);
+        return pattern.coordinates;
+      }
+    }
+
+    function pointDistance(a, b) {
+      const dx = a[0] - b[0];
+      const dy = a[1] - b[1];
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function rebuildPathMetrics(coords) {
+      pathCumMeters = [];
+      pathTotalMeters = 0;
+      if (!coords || coords.length < 2) {
+        return;
+      }
+      const cum = [0];
+      for (let i = 0; i < coords.length - 1; i++) {
+        const d = L.latLng(coords[i]).distanceTo(L.latLng(coords[i + 1]));
+        cum.push(cum[i] + d);
+      }
+      pathCumMeters = cum;
+      pathTotalMeters = cum[cum.length - 1];
+    }
+
+    /**
+     * Projete un point sur la polyligne : distance (m) depuis le départ du tracé.
+     */
+    function distanceAlongPathForLatLng(lat, lng) {
+      const coords = activeCoordinates;
+      const cum = pathCumMeters;
+      if (!coords || coords.length < 2 || !cum.length) {
+        return 0;
+      }
+      const s = L.latLng(lat, lng);
+      let best = 0;
+      let bestD = Infinity;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const p0 = L.latLng(coords[i]);
+        const p1 = L.latLng(coords[i + 1]);
+        const segLenM = p0.distanceTo(p1);
+        if (segLenM < 1e-6) {
+          const d0 = s.distanceTo(p0);
+          if (d0 < bestD) {
+            bestD = d0;
+            best = cum[i];
+          }
+          continue;
+        }
+        const dLat = p1.lat - p0.lat;
+        const dLng = p1.lng - p0.lng;
+        const a0 = s.lat - p0.lat;
+        const b0 = s.lng - p0.lng;
+        const len2 = dLat * dLat + dLng * dLng;
+        const t = Math.max(0, Math.min(1, (a0 * dLat + b0 * dLng) / len2));
+        const proj = [p0.lat + t * dLat, p0.lng + t * dLng];
+        const d = s.distanceTo(L.latLng(proj));
+        if (d < bestD) {
+          bestD = d;
+          best = cum[i] + t * segLenM;
+        }
+      }
+      return best;
+    }
+
+    function buildStopMetersAlong(pattern) {
+      const stops = pattern?.stops;
+      if (!stops || !stops.length) {
+        return [];
+      }
+      return stops.map(s => distanceAlongPathForLatLng(s.lat, s.lon));
+    }
+
+    function pointAtDistanceMeters(d) {
+      const coords = activeCoordinates;
+      const cum = pathCumMeters;
+      if (!coords || coords.length < 2 || !cum.length) {
+        return coords && coords[0] ? coords[0] : [43.61, 3.88];
+      }
+      if (d <= 0) {
+        return coords[0];
+      }
+      if (d >= pathTotalMeters) {
+        return coords[coords.length - 1];
+      }
+      let lo = 0;
+      let hi = cum.length - 1;
+      while (lo < hi - 1) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (cum[mid] < d) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      const i = lo;
+      const a = coords[i];
+      const b = coords[i + 1];
+      const d0 = cum[i];
+      const d1 = cum[i + 1];
+      const segM = d1 - d0;
+      const t = segM < 1e-6 ? 0 : (d - d0) / segM;
+      return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+    }
+
+    function currentStopIndexForDistance(d) {
+      if (!stopMetersAlong.length) {
+        return 0;
+      }
+      let k = 0;
+      for (let s = 0; s < stopMetersAlong.length; s++) {
+        if (stopMetersAlong[s] <= d + 0.5) {
+          k = s;
+        }
+      }
+      return k;
+    }
+
+    function redrawDoneLineAtDistance(d) {
+      if (!currentPattern) {
+        return;
+      }
+      const coords = activeCoordinates;
+      if (!coords || coords.length < 2) {
+        return;
+      }
+      if (d <= 0) {
+        doneLine.setLatLngs([coords[0]]);
+        return;
+      }
+      if (d >= pathTotalMeters - 1e-3) {
+        doneLine.setLatLngs([...coords]);
+        return;
+      }
+      const pos = pointAtDistanceMeters(d);
+      const cum = pathCumMeters;
+      let lo = 0;
+      let hi = cum.length - 1;
+      while (lo < hi - 1) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (cum[mid] < d) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      const i = lo;
+      const head = coords.slice(0, i + 1);
+      head.push(pos);
+      doneLine.setLatLngs(head);
+    }
+
+    function getSpeechVoices() {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        return [];
+      }
+      return window.speechSynthesis.getVoices() || [];
+    }
+
+    function isFrenchVoice(v) {
+      if (!v || !v.lang) {
+        return false;
+      }
+      const l = v.lang.toLowerCase();
+      return l.startsWith("fr") || l === "fr";
+    }
+
+    /** Tri par qualite (heuristique) : on evite d'imposer la premiere voix pourrie si une meilleure existe. */
+    function voiceHeuristicScore(v) {
+      const n = (v.name + " " + (v.voiceURI || "")).toLowerCase();
+      let s = 0;
+      if (n.includes("neural")) s += 90;
+      if (n.includes("natural")) s += 55;
+      if (n.includes("premium") || n.includes("enhanced") || n.includes("hd ")) s += 45;
+      if (n.includes("google")) s += 40;
+      if (n.includes("microsoft") || n.includes("hortense") || n.includes("julie") || n.includes("paul ")) s += 35;
+      if (n.includes("apple") || n.includes("amelie") || n.includes("thomas ")) s += 25;
+      if (n.includes("samantha")) s += 15;
+      if (n.includes("pico") || n.includes("espeak") || n.includes("festival ")) s -= 80;
+      return s;
+    }
+
+    function pickAutoFrenchVoice() {
+      const list = getSpeechVoices().filter(isFrenchVoice);
+      if (!list.length) {
+        return null;
+      }
+      return list.slice().sort((a, b) => voiceHeuristicScore(b) - voiceHeuristicScore(a))[0];
+    }
+
+    function resolveCurrentVoice() {
+      const val = voiceSelectEl.value;
+      if (val && val !== "__auto__") {
+        return getSpeechVoices().find(v => (v.voiceURI && v.voiceURI === val) || v.name === val) || null;
+      }
+      return pickAutoFrenchVoice();
+    }
+
+    function speakProchainArret(nom, forTest) {
+      if (!forTest && !voiceEnabledEl.checked) {
+        return;
+      }
+      if (!nom) {
+        return;
+      }
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        return;
+      }
+      const voice = resolveCurrentVoice();
+      if (!voice) {
+        return;
+      }
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {
+        // ignore
+      }
+      const u = new SpeechSynthesisUtterance(`Prochain arrêt, ${nom}.`);
+      u.voice = voice;
+      u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
+      u.rate = 0.92;
+      u.pitch = 1.0;
+      u.volume = 1.0;
+      window.speechSynthesis.speak(u);
+    }
+
+    function resyncVoixForPosition(d) {
+      if (!stopMetersAlong.length || !currentPattern || !currentPattern.stops) {
+        return;
+      }
+      const n = currentPattern.stops.length;
+      for (let i = 0; i < n - 1; i++) {
+        if (d > (stopMetersAlong[i] || 0) + 0.5) {
+          voixAnnounced.add(`d${i}`);
+        }
+        if (i < n - 1) {
+          const mid = ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
+          if (d > mid + 0.5) {
+            voixAnnounced.add(`m${i}`);
+          }
+        }
+      }
+    }
+
+    function maybeAnnounceProchainArret(prev, curr) {
+      if (!voiceEnabledEl.checked || !currentPattern) {
+        return;
+      }
+      if (!getSpeechVoices().length || !resolveCurrentVoice()) {
+        return;
+      }
+      const mode = voiceModeEl.value;
+      if (!mode) {
+        return;
+      }
+      const stops = currentPattern.stops;
+      if (!stops || stops.length < 2) {
+        return;
+      }
+      if (prev == null || curr == null || prev > curr) {
+        return;
+      }
+      for (let i = 0; i < stops.length - 1; i++) {
+        const nextName = stops[i + 1] ? stops[i + 1].stop_name : "";
+        if (mode === "depart" || mode === "both") {
+          const t = stopMetersAlong[i] || 0;
+          if (prev < t && curr >= t && !voixAnnounced.has(`d${i}`)) {
+            voixAnnounced.add(`d${i}`);
+            speakProchainArret(nextName);
+          }
+        }
+        if (mode === "mid" || mode === "both") {
+          const t = ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
+          if (prev < t && curr >= t && !voixAnnounced.has(`m${i}`)) {
+            voixAnnounced.add(`m${i}`);
+            speakProchainArret(nextName);
+          }
+        }
+      }
+    }
+
+    function refreshVoiceSelect() {
+      if (!voiceSelectEl) {
+        return;
+      }
+      const before = voiceSelectEl.value;
+      const voices = getSpeechVoices();
+      const saved = (() => {
+        try {
+          return localStorage.getItem(LS_KEY_VOICE);
+        } catch (e) {
+          return null;
+        }
+      })();
+      voiceSelectEl.innerHTML = "";
+      const oAuto = document.createElement("option");
+      oAuto.value = "__auto__";
+      oAuto.textContent = "Automatique (meilleure voix fr disponible)";
+      voiceSelectEl.appendChild(oAuto);
+      const fr = voices.filter(isFrenchVoice);
+      fr.sort((a, b) => a.name.localeCompare(b.name, "fr"));
+      for (const v of fr) {
+        const o = document.createElement("option");
+        o.value = v.voiceURI || v.name;
+        o.textContent = `${v.name} (${v.lang || "fr"})`;
+        voiceSelectEl.appendChild(o);
+      }
+      const tryVal = (before && fr.some(x => (x.voiceURI || x.name) === before)) ? before
+        : (saved && fr.some(x => (x.voiceURI || x.name) === saved)) ? saved
+          : "__auto__";
+      voiceSelectEl.value = fr.length ? tryVal : "__auto__";
+    }
+
+    function reverseCoordinates(coords) {
+      const copy = [...coords];
+      copy.reverse();
+      return copy;
+    }
+
+    function getBusNetworkGeometry(pattern) {
+      const features = data?.bus_network_features || [];
+      if (!features.length) return null;
+
+      const line = String(pattern.route_short_name);
+      const start = pattern.coordinates[0];
+      const end = pattern.coordinates[pattern.coordinates.length - 1];
+
+      const candidates = features.filter(f => String(f.num_commercial) === line && f.coordinates?.length > 1);
+      if (!candidates.length) return null;
+
+      let best = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+
+      for (const candidate of candidates) {
+        const coords = candidate.coordinates;
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+
+        const directScore = pointDistance(start, first) + pointDistance(end, last);
+        const reverseScore = pointDistance(start, last) + pointDistance(end, first);
+
+        if (directScore < bestScore) {
+          bestScore = directScore;
+          best = { coords, nom_ligne: candidate.nom_ligne };
+        }
+        if (reverseScore < bestScore) {
+          bestScore = reverseScore;
+          best = { coords: reverseCoordinates(coords), nom_ligne: candidate.nom_ligne };
+        }
+      }
+
+      // Guard against unrelated branches that are too far from GTFS start/end.
+      if (!best || bestScore > 0.08) {
+        return null;
+      }
+      return best;
+    }
+
+    async function setMission(pattern) {
+      currentPattern = pattern;
+      distanceAlongPathMeters = 0;
+      lastRafTime = 0;
+      lastVoiceDistance = 0;
+      voixAnnounced = new Set();
+      missionName.textContent = `Ligne ${pattern.route_short_name} | ${pattern.headsign} | ${pattern.variant_name}`;
+
+      const busGeom = getBusNetworkGeometry(pattern);
+      if (busGeom) {
+        activeCoordinates = busGeom.coords;
+        traceSource = `Reseau bus 3M (${busGeom.nom_ligne || "ligne"})`;
+      } else {
+        activeCoordinates = await fetchRoadGeometry(pattern);
+        if (activeCoordinates.length && activeCoordinates !== pattern.coordinates) {
+          traceSource = "OSRM routier";
+        } else {
+          traceSource = "GTFS arret->arret";
+        }
+        if (!activeCoordinates.length) {
+          activeCoordinates = pattern.coordinates;
+          traceSource = "GTFS arret->arret";
+        }
+      }
+
+      rebuildPathMetrics(activeCoordinates);
+      stopMetersAlong = buildStopMetersAlong(pattern);
+
+      fullLine.setLatLngs(activeCoordinates);
+      doneLine.setLatLngs([activeCoordinates[0]]);
+      marker.setLatLng(activeCoordinates[0]);
+      map.fitBounds(fullLine.getBounds(), { padding: [20, 20] });
+      updateStats();
+    }
+
+    function updateStats() {
+      if (!currentPattern) {
+        return;
+      }
+      const stops = currentPattern.stops;
+      const d = distanceAlongPathMeters;
+      if (!stops || !stops.length) {
+        currentStopEl.textContent = "-";
+        nextStopEl.textContent = "-";
+      } else {
+        const stopIdx = currentStopIndexForDistance(d);
+        const nextIdx = Math.min(stopIdx + 1, stops.length - 1);
+        currentStopEl.textContent = stops[stopIdx] ? stops[stopIdx].stop_name : "-";
+        nextStopEl.textContent = stops[nextIdx] ? stops[nextIdx].stop_name : "-";
+      }
+
+      const pct = pathTotalMeters > 0
+        ? ((d / pathTotalMeters) * 100).toFixed(1)
+        : "0.0";
+      progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
+        BASE_METERS_PER_SECOND * speed * 3.6
+      )} km/h sim.`;
+    }
+
+    function tickRaf(now) {
+      if (running && currentPattern && pathTotalMeters > 0) {
+        if (lastRafTime === 0) {
+          lastRafTime = now;
+        } else {
+          const prevVoiceD = lastVoiceDistance;
+          const dt = Math.min(0.1, (now - lastRafTime) / 1000);
+          lastRafTime = now;
+          distanceAlongPathMeters = Math.min(
+            pathTotalMeters,
+            distanceAlongPathMeters + BASE_METERS_PER_SECOND * speed * dt
+          );
+          if (distanceAlongPathMeters >= pathTotalMeters - 0.01) {
+            distanceAlongPathMeters = pathTotalMeters;
+            running = false;
+            lastRafTime = 0;
+          }
+          maybeAnnounceProchainArret(prevVoiceD, distanceAlongPathMeters);
+          lastVoiceDistance = distanceAlongPathMeters;
+          const pos = pointAtDistanceMeters(distanceAlongPathMeters);
+          marker.setLatLng(pos);
+          redrawDoneLineAtDistance(distanceAlongPathMeters);
+          updateStats();
+        }
+      }
+      requestAnimationFrame(tickRaf);
+    }
+
+    document.getElementById("startBtn").addEventListener("click", () => {
+      const startBtn = document.getElementById("startBtn");
+      const p = selectedPattern();
+      if (!p) return;
+      running = false;
+      startBtn.disabled = true;
+      startBtn.textContent = "Chargement trace...";
+      setMission(p).then(() => {
+        lastRafTime = 0;
+        running = true;
+      }).finally(() => {
+        startBtn.disabled = false;
+        startBtn.textContent = "Demarrer simulation";
+      });
+    });
+
+    document.getElementById("pauseBtn").addEventListener("click", () => {
+      running = !running;
+      if (!running) {
+        lastRafTime = 0;
+      }
+    });
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      if (!currentPattern || pathTotalMeters <= 0) {
+        return;
+      }
+      const stops = currentPattern.stops;
+      if (!stops || !stops.length || !stopMetersAlong.length) {
+        return;
+      }
+      let idx = currentStopIndexForDistance(distanceAlongPathMeters);
+      idx = Math.min(idx + 1, stops.length - 1);
+      distanceAlongPathMeters = stopMetersAlong[idx];
+      lastRafTime = 0;
+      resyncVoixForPosition(distanceAlongPathMeters);
+      lastVoiceDistance = distanceAlongPathMeters;
+      const pos = pointAtDistanceMeters(distanceAlongPathMeters);
+      marker.setLatLng(pos);
+      redrawDoneLineAtDistance(distanceAlongPathMeters);
+      updateStats();
+    });
+
+    document.getElementById("prevBtn").addEventListener("click", () => {
+      if (!currentPattern || pathTotalMeters <= 0) {
+        return;
+      }
+      const stops = currentPattern.stops;
+      if (!stops || !stops.length || !stopMetersAlong.length) {
+        return;
+      }
+      let idx = currentStopIndexForDistance(distanceAlongPathMeters);
+      idx = Math.max(idx - 1, 0);
+      distanceAlongPathMeters = stopMetersAlong[idx];
+      lastRafTime = 0;
+      resyncVoixForPosition(distanceAlongPathMeters);
+      lastVoiceDistance = distanceAlongPathMeters;
+      const pos = pointAtDistanceMeters(distanceAlongPathMeters);
+      marker.setLatLng(pos);
+      redrawDoneLineAtDistance(distanceAlongPathMeters);
+      updateStats();
+    });
+
+    speedSelect.addEventListener("change", () => {
+      speed = Number(speedSelect.value) || 1;
+    });
+
+    lineSelect.addEventListener("change", updateHeadsigns);
+    headsignSelect.addEventListener("change", updateVariants);
+
+    function initVocalUI() {
+      try {
+        const on = localStorage.getItem(LS_KEY_ENABLED);
+        voiceEnabledEl.checked = on === "1" || on === "true";
+        const mode = localStorage.getItem(LS_KEY_MODE);
+        if (mode && ["depart", "mid", "both"].includes(mode)) {
+          voiceModeEl.value = mode;
+        }
+      } catch (e) {
+        // ignore
+      }
+      voiceModeEl.disabled = !voiceEnabledEl.checked;
+      refreshVoiceSelect();
+      if (window.speechSynthesis) {
+        window.speechSynthesis.addEventListener("voiceschanged", () => {
+          refreshVoiceSelect();
+        });
+      }
+    }
+
+    function saveVocalPrefs() {
+      try {
+        localStorage.setItem(LS_KEY_ENABLED, voiceEnabledEl.checked ? "1" : "0");
+        localStorage.setItem(LS_KEY_MODE, voiceModeEl.value);
+        localStorage.setItem(LS_KEY_VOICE, voiceSelectEl.value);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    voiceEnabledEl.addEventListener("change", () => {
+      voiceModeEl.disabled = !voiceEnabledEl.checked;
+      saveVocalPrefs();
+    });
+    voiceModeEl.addEventListener("change", saveVocalPrefs);
+    voiceSelectEl.addEventListener("change", saveVocalPrefs);
+    voiceTestBtn.addEventListener("click", () => {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        return;
+      }
+      if (!getSpeechVoices().length) {
+        refreshVoiceSelect();
+      }
+      if (!resolveCurrentVoice()) {
+        const msg = "Aucune voix utilisable. Verifiez qu'une voix francaise est installee (parametres Windows / navigateur) puis rouvrez la page.";
+        if (voiceNoteEl) {
+          const prev = voiceNoteEl.textContent;
+          voiceNoteEl.textContent = msg;
+          setTimeout(() => { voiceNoteEl.textContent = prev; }, 8000);
+        }
+        return;
+      }
+      speakProchainArret("Test, Place de l'Europe", true);
+    });
+
+    initVocalUI();
+
+    fetch("./simulation_data.json")
+      .then(resp => resp.json())
+      .then(json => {
+        data = json;
+        updateLines();
+        requestAnimationFrame(tickRaf);
+      })
+      .catch(err => {
+        alert("Impossible de charger simulation_data.json. Lancez d'abord build_simulator_data.py");
+        console.error(err);
+      });
+  </script>
+</body>
+</html>
