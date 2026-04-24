@@ -1,1289 +1,1906 @@
 <!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Simulateur SAE TAM</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      background: #f3f5f8;
-      color: #1b1f24;
-    }
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 12px;
-    }
-    .card {
-      background: #fff;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 10px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-    }
-    .row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 8px;
-    }
-    label {
-      display: block;
-      font-size: 13px;
-      margin-bottom: 4px;
-      font-weight: 600;
-    }
-    select, button {
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #ccd3db;
-      font-size: 14px;
-      background: #fff;
-    }
-    .grow {
-      flex: 1 1 220px;
-    }
-    button {
-      cursor: pointer;
-      background: #005ca9;
-      border: 0;
-      color: #fff;
-      font-weight: 600;
-    }
-    button.secondary {
-      background: #4a5563;
-    }
-    .map-wrap {
-      position: relative;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    #map {
-      height: 420px;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .stats {
-      font-size: 14px;
-      line-height: 1.5;
-    }
-    .mono {
-      font-family: Consolas, monospace;
-    }
-    .note {
-      font-size: 12px;
-      color: #4a5563;
-      line-height: 1.45;
-      margin: 4px 0 0 0;
-    }
-    .row-voice {
-      align-items: flex-end;
-    }
-    .checkbox-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-height: 40px;
-    }
-    .checkbox-row input[type="checkbox"] {
-      width: auto;
-    }
-    /* Vehicule (triangle) : pointe = avant; en mode nord fixe, on tourne le triangle. */
-    .nav-vehicle {
-      background: transparent;
-      border: none;
-    }
-    .nav-triangle {
-      width: 0;
-      height: 0;
-      margin: 0 auto;
-      border-left: 9px solid transparent;
-      border-right: 9px solid transparent;
-      border-bottom: 22px solid #e53935;
-      filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35));
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="card">
-      <h2 style="margin-top: 0;">Simulateur SAE TAM (mode formation)</h2>
-      <div class="row">
-        <div class="grow">
-          <label for="lineSelect">1) Ligne</label>
-          <select id="lineSelect"></select>
-        </div>
-        <div class="grow">
-          <label for="headsignSelect">2) Terminus / sens</label>
-          <select id="headsignSelect"></select>
-        </div>
-        <div class="grow">
-          <label for="variantSelect">3) Variante</label>
-          <select id="variantSelect"></select>
-        </div>
-      </div>
-      <div class="row">
-        <div class="grow"><button id="startBtn">Demarrer simulation</button></div>
-        <div class="grow"><button id="pauseBtn" class="secondary">Pause / Reprendre</button></div>
-      </div>
-      <div class="row">
-        <div class="grow"><button id="prevBtn" class="secondary">Arret precedent</button></div>
-        <div class="grow"><button id="nextBtn" class="secondary">Arret suivant</button></div>
-        <div class="grow">
-          <label for="speedSelect">Vitesse</label>
-          <select id="speedSelect">
-            <option value="1">x1</option>
-            <option value="2">x2</option>
-            <option value="4">x4</option>
-          </select>
-        </div>
-      </div>
-      <div class="row row-voice">
-        <div class="grow checkbox-row">
-          <input type="checkbox" id="voiceEnabled" title="Annonces vocales">
-          <label for="voiceEnabled" style="margin:0;font-weight:600;">Annonces « prochain arret »</label>
-        </div>
-        <div class="grow">
-          <label for="voiceMode">Quand annoncer</label>
-          <select id="voiceMode" disabled>
-            <option value="depart">Au passage d'un arret (on annonce le suivant)</option>
-            <option value="mid">A mi-parcours entre deux arrets</option>
-            <option value="both">Les deux</option>
-          </select>
-        </div>
-      </div>
-      <div class="row row-voice">
-        <div class="grow">
-          <label for="voiceSelect">Voix (navigateur / systeme)</label>
-          <select id="voiceSelect"></select>
-        </div>
-        <div class="grow">
-          <button type="button" class="secondary" id="voiceTest">Tester la voix</button>
-        </div>
-      </div>
-      <p class="note" id="voiceNote">
-        La qualite depend de votre navigateur et des voix installees sur l'appareil. Utilisez « Tester la voix » : si le resultat ne vous convient pas, laissez l'option desactivee. Aucun service cloud : tout reste en local.
-      </p>
-      <div class="row">
-        <div class="grow checkbox-row">
-          <input type="checkbox" id="headingUp" checked title="La carte tourne, le triangle pointe en haut (comme un GPS)">
-          <label for="headingUp" style="margin:0;font-weight:600;">Cap en haut (carte qui tourne, comme en conduite reelle)</label>
-        </div>
-        <div class="grow">
-          <p class="note" style="margin:0;">Desactivez pour le mode classique (nord en haut, le triangle tourne sur la carte).</p>
-        </div>
-      </div>
-      <div class="stats">
-        <div><b>Mission:</b> <span id="missionName">-</span></div>
-        <div><b>Arret courant:</b> <span id="currentStop">-</span></div>
-        <div><b>Prochain arret:</b> <span id="nextStop">-</span></div>
-        <div><b>Progression:</b> <span id="progressPct" class="mono">0%</span></div>
-        <div><b>Troncon guide :</b> <span id="segmentGuideInfo" class="mono">-</span></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="map-wrap">
-        <div id="map"></div>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
-  <script src="guidage_troncons_arrets.js"></script>
-  <script>
-    let data = null;
-    let filteredByLine = [];
-    let filteredByHeadsign = [];
-    let lineOptions = [];
-    let lineOptionLookup = [];
-    let currentPattern = null;
-    let activeCoordinates = [];
-    let traceSource = "Aucune";
-    /** Distance cumulée (m) vers chaque sommet d'activesCoordinates, longueur = n. */
-    let pathCumMeters = [];
-    let pathTotalMeters = 0;
-    /** Position courante sur le tracé (mètres depuis le départ). */
-    let distanceAlongPathMeters = 0;
-    /** Distance le long du tracé pour chaque arrêt (GTFS) après "snap" sur la polyligne. */
-    let stopMetersAlong = [];
-    /** Dernière distance (m) pour détecter les franchissements d'annonce. */
-    let lastVoiceDistance = 0;
-    /** Cles deja annoncees : d{i} = passage arret i, m{i} = mi-parcours segment i->i+1. */
-    let voixAnnounced = new Set();
-    let running = false;
-    let speed = 1;
-    /** rAF : vitesse en m/s réelle, pas "un pas par sommet" (croisements). */
-    let lastRafTime = 0;
-    /** Mètres par seconde (à x1) : la simulation ne dépend plus de la densité des sommets. */
-    const BASE_METERS_PER_SECOND = 9;
-    const LS_KEY_VOICE = "tam_sim_voice";
-    const LS_KEY_MODE = "tam_sim_vocal_mode";
-    const LS_KEY_ENABLED = "tam_sim_vocal_on";
-    const LS_KEY_HEADING = "tam_sim_heading_up";
-
-    const lineSelect = document.getElementById("lineSelect");
-    const headsignSelect = document.getElementById("headsignSelect");
-    const variantSelect = document.getElementById("variantSelect");
-    const speedSelect = document.getElementById("speedSelect");
-    const voiceEnabledEl = document.getElementById("voiceEnabled");
-    const voiceModeEl = document.getElementById("voiceMode");
-    const voiceSelectEl = document.getElementById("voiceSelect");
-    const voiceTestBtn = document.getElementById("voiceTest");
-    const voiceNoteEl = document.getElementById("voiceNote");
-    const headingUpEl = document.getElementById("headingUp");
-
-    const missionName = document.getElementById("missionName");
-    const currentStopEl = document.getElementById("currentStop");
-    const nextStopEl = document.getElementById("nextStop");
-    const progressPctEl = document.getElementById("progressPct");
-    const segmentGuideInfoEl = document.getElementById("segmentGuideInfo");
-
-    const map = L.map("map", {
-      rotate: true,
-      bearing: 0,
-      rotateControl: false
-    }).setView([43.61, 3.88], 12);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap"
-    }).addTo(map);
-
-    const navIcon = L.divIcon({
-      className: "nav-vehicle",
-      html: "<div class=\"nav-triangle\" role=\"img\" aria-label=\"Position simulee\"></div>",
-      iconSize: [32, 32],
-      iconAnchor: [16, 26]
-    });
-    let fullLine = L.polyline([], { color: "#005ca9", weight: 6, opacity: 0.6 }).addTo(map);
-    let doneLine = L.polyline([], { color: "#9aa3ad", weight: 8, opacity: 0.95 }).addTo(map);
-    /** Couche temporaire : segment actif entre l'arret courant et le suivant. */
-    const stopToStopLayer = L.layerGroup().addTo(map);
-    let marker = L.marker([43.61, 3.88], { icon: navIcon, zIndexOffset: 800 }).addTo(map);
-
-    function uniqueValues(arr, getter) {
-      return [...new Set(arr.map(getter))];
-    }
-
-    function fillSelect(selectEl, values, labelFn) {
-      selectEl.innerHTML = "";
-      values.forEach((item, index) => {
-        const opt = document.createElement("option");
-        opt.value = String(index);
-        opt.textContent = labelFn(item, index);
-        selectEl.appendChild(opt);
-      });
-    }
-
-    function lineColorHex(raw) {
-      const v = String(raw || "").trim().replace("#", "");
-      if (!/^[0-9a-fA-F]{6}$/.test(v)) {
-        return null;
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Simulateur SAE TAM</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background: #f3f5f8;
+        color: #1b1f24;
       }
-      return `#${v}`;
-    }
-
-    function forcedLineColor(code) {
-      const key = String(code || "").trim().toUpperCase();
-      if (key === "A") return "#931731";
-      if (key === "5") return "#277232";
-      return null;
-    }
-
-    function isTramDisplayLine(item) {
-      const code = String(item.route_short_name || "");
-      const n = Number(code);
-      return item.route_type === "0" && Number.isInteger(n) && n >= 1 && n <= 5;
-    }
-
-    function linePriority(item) {
-      if (isTramDisplayLine(item)) return 0; // T1..T5
-      if (String(item.route_short_name) === "A") return 1; // Navette A
-      if (/^\d+$/.test(String(item.route_short_name))) return 2; // bus numeriques
-      return 3; // reste
-    }
-
-    function displayLineLabel(item) {
-      const code = String(item.route_short_name);
-      if (isTramDisplayLine(item)) return `T${code}`;
-      return code;
-    }
-
-    function updateLines() {
-      const byCode = new Map();
-      for (const p of data.patterns) {
-        const code = String(p.route_short_name || "").trim();
-        if (!code) continue;
-        if (!byCode.has(code)) {
-          byCode.set(code, {
-            route_short_name: code,
-            route_type: String(p.route_type || ""),
-            route_color: p.route_color || ""
-          });
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+        font-weight: 600;
+      }
+      select,
+      button {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        font-size: 14px;
+        background: #fff;
+      }
+      .grow {
+        flex: 1 1 220px;
+      }
+      button {
+        cursor: pointer;
+        background: #005ca9;
+        border: 0;
+        color: #fff;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: #4a5563;
+      }
+      .map-wrap {
+        position: relative;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      #map {
+        height: 420px;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .stats {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .mono {
+        font-family: Consolas, monospace;
+      }
+      .note {
+        font-size: 12px;
+        color: #4a5563;
+        line-height: 1.45;
+        margin: 4px 0 0 0;
+      }
+      .row-voice {
+        align-items: flex-end;
+      }
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 40px;
+      }
+      .checkbox-row input[type="checkbox"] {
+        width: auto;
+      }
+      .burger-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .title-inline {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+      .header-actions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .burger-btn {
+        width: auto;
+        padding: 8px 12px;
+        font-size: 14px;
+        background: #2f3a47;
+        border-radius: 8px;
+      }
+      .recap-toggle-btn {
+        width: auto;
+        padding: 8px 10px;
+        font-size: 13px;
+        background: #4a5563;
+        border-radius: 8px;
+      }
+      .recap-toggle-btn.active {
+        background: #005ca9;
+      }
+      .control-panel {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(9, 15, 22, 0.45);
+        z-index: 3000;
+        padding: 12px;
+        overflow: auto;
+      }
+      .control-panel.open {
+        display: block;
+      }
+      .panel-sheet {
+        max-width: 760px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 12px;
+        padding: 10px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+      }
+      .panel-head {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .panel-head button {
+        background: #4a5563;
+        width: auto;
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+      .panel-head button.active {
+        background: #005ca9;
+      }
+      .panel-section {
+        display: none;
+      }
+      .panel-section.show {
+        display: flex;
+      }
+      .map-recap {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: calc(100% - 56px);
+        max-width: 560px;
+        max-height: calc(100% - 56px);
+        overflow: auto;
+        z-index: 900;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid #d7dde4;
+        border-radius: 8px;
+        padding: 8px 10px;
+        display: none;
+      }
+      .map-recap.show {
+        display: block;
+      }
+      /* Vehicule (triangle) : pointe = avant; en mode nord fixe, on tourne le triangle. */
+      .nav-vehicle {
+        background: transparent;
+        border: none;
+      }
+      .nav-triangle {
+        width: 0;
+        height: 0;
+        margin: 0 auto;
+        border-left: 9px solid transparent;
+        border-right: 9px solid transparent;
+        border-bottom: 22px solid #e53935;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+      }
+      @media (max-width: 900px) {
+        html,
+        body {
+          height: 100%;
+        }
+        .container {
+          max-width: 100%;
+          padding: 8px 8px 10px;
+          min-height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .container > .card:first-child {
+          flex: 0 0 auto;
+          margin-bottom: 0;
+        }
+        .container > .card:last-child {
+          flex: 1 1 auto;
+          min-height: 0;
+          display: flex;
+          margin-bottom: 18px;
+        }
+        .container > .card:last-child .map-wrap {
+          flex: 1 1 auto;
+          min-height: 0;
+        }
+        .title-inline {
+          font-size: 18px;
+        }
+        #map {
+          height: 100%;
+          min-height: 0;
+          max-height: none;
+        }
+        .map-recap {
+          font-size: 13px;
+          width: calc(100% - 44px);
+          max-height: calc(100% - 44px);
         }
       }
-      lineOptions = [...byCode.values()].sort((a, b) => {
-        const pa = linePriority(a);
-        const pb = linePriority(b);
-        if (pa !== pb) return pa - pb;
-        const aCode = String(a.route_short_name);
-        const bCode = String(b.route_short_name);
-        if (/^\d+$/.test(aCode) && /^\d+$/.test(bCode)) {
-          return Number(aCode) - Number(bCode);
-        }
-        return aCode.localeCompare(bCode, "fr");
-      });
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <div class="burger-row">
+          <h2 class="title-inline">SAE TAM</h2>
+          <div class="header-actions">
+            <button id="recapToggleBtn" type="button" class="recap-toggle-btn">
+              Recap
+            </button>
+            <button id="burgerMenuBtn" type="button" class="burger-btn">
+              ☰ Menu
+            </button>
+          </div>
+        </div>
+        <div id="controlPanel" class="control-panel">
+          <div class="panel-sheet">
+            <div class="panel-head">
+              <button id="missionTabBtn" type="button">Mission</button>
+              <button id="opsTabBtn" type="button">Modes</button>
+              <button id="voiceTabBtn" type="button">Audio</button>
+              <button
+                id="closeMenuBtn"
+                type="button"
+                class="secondary"
+                style="margin-left: auto"
+              >
+                Fermer
+              </button>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow">
+                <label for="lineSelect">1) Ligne</label>
+                <select id="lineSelect"></select>
+              </div>
+              <div class="grow">
+                <label for="headsignSelect">2) Terminus / sens</label>
+                <select id="headsignSelect"></select>
+              </div>
+              <div class="grow">
+                <label for="variantSelect">3) Variante</label>
+                <select id="variantSelect"></select>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow">
+                <button id="startBtn">Demarrer simulation</button>
+              </div>
+              <div class="grow">
+                <button id="pauseBtn" class="secondary">
+                  Pause / Reprendre
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow">
+                <button id="prevBtn" class="secondary">Arret precedent</button>
+              </div>
+              <div class="grow">
+                <button id="nextBtn" class="secondary">Arret suivant</button>
+              </div>
+              <div class="grow">
+                <label for="speedSelect">Vitesse</label>
+                <select id="speedSelect">
+                  <option value="1">x1</option>
+                  <option value="2">x2</option>
+                  <option value="4">x4</option>
+                </select>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <button id="checkPlannedBtn" class="secondary" type="button">
+                  Verifier planifie
+                </button>
+              </div>
+              <div class="grow">
+                <button id="checkRtBtn" class="secondary" type="button">
+                  Verifier temps reel
+                </button>
+              </div>
+              <div class="grow">
+                <button id="manualBtn" class="secondary" type="button">
+                  Activer manuel
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <button id="disableManualBtn" class="secondary" type="button">
+                  Desactiver manuel
+                </button>
+              </div>
+              <div class="grow">
+                <button id="disableRtBtn" class="secondary" type="button">
+                  Desactiver temps reel
+                </button>
+              </div>
+              <div class="grow">
+                <button id="returnInitialBtn" class="secondary" type="button">
+                  Retour etat initial
+                </button>
+              </div>
+              <div class="grow">
+                <button id="returnBaseBtn" class="secondary" type="button">
+                  Retour base
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow checkbox-row">
+                <input
+                  type="checkbox"
+                  id="headingUp"
+                  checked
+                  title="La carte tourne, le triangle pointe en haut (comme un GPS)"
+                />
+                <label for="headingUp" style="margin: 0; font-weight: 600"
+                  >Cap en haut (carte qui tourne, comme en conduite
+                  reelle)</label
+                >
+              </div>
+              <div class="grow">
+                <p class="note" style="margin: 0">
+                  Desactivez pour le mode classique (nord en haut, le triangle
+                  tourne sur la carte).
+                </p>
+              </div>
+            </div>
+            <div class="row row-voice panel-section panel-audio">
+              <div class="grow checkbox-row">
+                <input
+                  type="checkbox"
+                  id="voiceEnabled"
+                  title="Annonces vocales"
+                />
+                <label for="voiceEnabled" style="margin: 0; font-weight: 600"
+                  >Annonces « prochain arret »</label
+                >
+              </div>
+              <div class="grow">
+                <label for="voiceMode">Quand annoncer</label>
+                <select id="voiceMode" disabled>
+                  <option value="depart">
+                    Au passage d'un arret (on annonce le suivant)
+                  </option>
+                  <option value="mid">A mi-parcours entre deux arrets</option>
+                  <option value="both">Les deux</option>
+                </select>
+              </div>
+            </div>
+            <div class="row row-voice panel-section panel-audio">
+              <div class="grow">
+                <label for="voiceSelect">Voix (navigateur / systeme)</label>
+                <select id="voiceSelect"></select>
+              </div>
+              <div class="grow">
+                <button type="button" class="secondary" id="voiceTest">
+                  Tester la voix
+                </button>
+              </div>
+            </div>
+            <p class="note panel-section panel-audio" id="voiceNote">
+              La qualite depend de votre navigateur et des voix installees sur
+              l'appareil. Utilisez « Tester la voix » : si le resultat ne vous
+              convient pas, laissez l'option desactivee. Aucun service cloud :
+              tout reste en local.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="map-wrap">
+          <div id="mapRecap" class="map-recap">
+            <div class="stats">
+              <div><b>Mission:</b> <span id="missionName">-</span></div>
+              <div>
+                <b>Mode actif:</b>
+                <span id="modeActive" class="mono">BASE</span>
+              </div>
+              <div>
+                <b>Statut deviation:</b>
+                <span id="modeStatus">Aucune deviation active.</span>
+              </div>
+              <div><b>Arret courant:</b> <span id="currentStop">-</span></div>
+              <div><b>Prochain arret:</b> <span id="nextStop">-</span></div>
+              <div>
+                <b>Progression:</b>
+                <span id="progressPct" class="mono">0%</span>
+              </div>
+              <div>
+                <b>Troncon guide :</b>
+                <span id="segmentGuideInfo" class="mono">-</span>
+              </div>
+            </div>
+          </div>
+          <div id="map"></div>
+        </div>
+      </div>
+    </div>
 
-      lineSelect.innerHTML = "";
-      lineOptionLookup = [];
-      const groups = {
-        tram: lineOptions.filter(isTramDisplayLine),
-        navette: lineOptions.filter(x => String(x.route_short_name) === "A"),
-        bus: lineOptions.filter(x => !isTramDisplayLine(x) && String(x.route_short_name) !== "A")
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+    <script src="guidage_troncons_arrets.js"></script>
+    <script>
+      let data = null;
+      let filteredByLine = [];
+      let filteredByHeadsign = [];
+      let lineOptions = [];
+      let lineOptionLookup = [];
+      let currentPattern = null;
+      let activeCoordinates = [];
+      let traceSource = "Aucune";
+      /** Distance cumulée (m) vers chaque sommet d'activesCoordinates, longueur = n. */
+      let pathCumMeters = [];
+      let pathTotalMeters = 0;
+      /** Position courante sur le tracé (mètres depuis le départ). */
+      let distanceAlongPathMeters = 0;
+      /** Distance le long du tracé pour chaque arrêt (GTFS) après "snap" sur la polyligne. */
+      let stopMetersAlong = [];
+      /** Dernière distance (m) pour détecter les franchissements d'annonce. */
+      let lastVoiceDistance = 0;
+      /** Cles deja annoncees : d{i} = passage arret i, m{i} = mi-parcours segment i->i+1. */
+      let voixAnnounced = new Set();
+      let running = false;
+      let speed = 1;
+      /** rAF : vitesse en m/s réelle, pas "un pas par sommet" (croisements). */
+      let lastRafTime = 0;
+      /** Mètres par seconde (à x1) : la simulation ne dépend plus de la densité des sommets. */
+      const BASE_METERS_PER_SECOND = 9;
+      const LS_KEY_VOICE = "tam_sim_voice";
+      const LS_KEY_MODE = "tam_sim_vocal_mode";
+      const LS_KEY_ENABLED = "tam_sim_vocal_on";
+      const LS_KEY_HEADING = "tam_sim_heading_up";
+      const LS_KEY_OPS_LOG = "tam_sim_ops_log";
+      const LS_KEY_RECAP = "tam_sim_recap_on";
+
+      const OPS_MODE = {
+        BASE: "BASE",
+        PLANIFIE: "PLANIFIE_ACTIF",
+        RT: "RT_ACTIF",
+        MANUEL: "MANUEL_ACTIF",
       };
 
-      function addSpacer(label) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = label || " ";
-        opt.disabled = true;
-        opt.style.color = "#68707a";
-        opt.style.fontStyle = "italic";
-        lineSelect.appendChild(opt);
-      }
+      let opsState = {
+        mode: OPS_MODE.BASE,
+        planifieActive: false,
+        rtActive: false,
+        manualActive: false,
+        initialMode: OPS_MODE.BASE,
+      };
 
-      function addTinySpacer() {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = " ";
-        opt.disabled = true;
-        opt.style.fontSize = "1px";
-        opt.style.lineHeight = "1px";
-        opt.style.padding = "0";
-        opt.style.margin = "0";
-        opt.style.color = "transparent";
-        lineSelect.appendChild(opt);
-      }
+      const lineSelect = document.getElementById("lineSelect");
+      const controlPanelEl = document.getElementById("controlPanel");
+      const mapRecapEl = document.getElementById("mapRecap");
+      const recapToggleBtn = document.getElementById("recapToggleBtn");
+      const burgerMenuBtn = document.getElementById("burgerMenuBtn");
+      const closeMenuBtn = document.getElementById("closeMenuBtn");
+      const missionTabBtn = document.getElementById("missionTabBtn");
+      const opsTabBtn = document.getElementById("opsTabBtn");
+      const voiceTabBtn = document.getElementById("voiceTabBtn");
+      const headsignSelect = document.getElementById("headsignSelect");
+      const variantSelect = document.getElementById("variantSelect");
+      const speedSelect = document.getElementById("speedSelect");
+      const voiceEnabledEl = document.getElementById("voiceEnabled");
+      const voiceModeEl = document.getElementById("voiceMode");
+      const voiceSelectEl = document.getElementById("voiceSelect");
+      const voiceTestBtn = document.getElementById("voiceTest");
+      const voiceNoteEl = document.getElementById("voiceNote");
+      const headingUpEl = document.getElementById("headingUp");
 
-      function appendGroup(items) {
-        for (const item of items) {
-          const opt = document.createElement("option");
-          opt.value = String(lineOptionLookup.length);
-          opt.textContent = displayLineLabel(item);
-          const bg = forcedLineColor(item?.route_short_name) || lineColorHex(item?.route_color);
-          if (bg) {
-            opt.style.backgroundColor = bg;
-            opt.style.color = "#ffffff";
-            opt.style.fontWeight = "700";
-          }
-          lineSelect.appendChild(opt);
-          lineOptionLookup.push(item);
-          addTinySpacer();
-        }
-      }
+      const missionName = document.getElementById("missionName");
+      const modeActiveEl = document.getElementById("modeActive");
+      const modeStatusEl = document.getElementById("modeStatus");
+      const currentStopEl = document.getElementById("currentStop");
+      const nextStopEl = document.getElementById("nextStop");
+      const progressPctEl = document.getElementById("progressPct");
+      const segmentGuideInfoEl = document.getElementById("segmentGuideInfo");
+      const checkPlannedBtn = document.getElementById("checkPlannedBtn");
+      const checkRtBtn = document.getElementById("checkRtBtn");
+      const manualBtn = document.getElementById("manualBtn");
+      const disableManualBtn = document.getElementById("disableManualBtn");
+      const disableRtBtn = document.getElementById("disableRtBtn");
+      const returnInitialBtn = document.getElementById("returnInitialBtn");
+      const returnBaseBtn = document.getElementById("returnBaseBtn");
 
-      appendGroup(groups.tram);
-      if (groups.tram.length && (groups.navette.length || groups.bus.length)) {
-        addSpacer("──");
-      }
-      appendGroup(groups.navette);
-      if (groups.navette.length && groups.bus.length) {
-        addSpacer("──");
-      }
-      appendGroup(groups.bus);
+      const map = L.map("map", {
+        rotate: true,
+        bearing: 0,
+        rotateControl: false,
+      }).setView([43.61, 3.88], 12);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap",
+      }).addTo(map);
 
-      // Positionner sur la premiere vraie ligne selectable.
-      for (let i = 0; i < lineSelect.options.length; i++) {
-        if (!lineSelect.options[i].disabled) {
-          lineSelect.selectedIndex = i;
-          break;
-        }
-      }
-      lineSelect.dispatchEvent(new Event("change"));
-    }
-
-    function updateHeadsigns() {
-      const selectedValue = lineSelect.options[lineSelect.selectedIndex]?.value || "";
-      let selectedLine = lineOptionLookup[Number(selectedValue)]?.route_short_name || "";
-      if (!selectedLine) {
-        for (let i = 0; i < lineSelect.options.length; i++) {
-          const opt = lineSelect.options[i];
-          if (opt.disabled) continue;
-          lineSelect.selectedIndex = i;
-          selectedLine = lineOptionLookup[Number(opt.value)]?.route_short_name || "";
-          break;
-        }
-      }
-      filteredByLine = data.patterns.filter(p => p.route_short_name === selectedLine);
-
-      const headsignKeys = uniqueValues(
-        filteredByLine,
-        p => `${p.direction_id}|||${p.headsign}`
-      ).sort((a, b) => a.localeCompare(b, "fr"));
-
-      fillSelect(headsignSelect, headsignKeys, key => {
-        const parts = key.split("|||");
-        const direction = parts[0] || "?";
-        const headsign = parts[1] || "Terminus non renseigne";
-        return `Sens ${direction} -> ${headsign}`;
+      const navIcon = L.divIcon({
+        className: "nav-vehicle",
+        html: '<div class="nav-triangle" role="img" aria-label="Position simulee"></div>',
+        iconSize: [32, 32],
+        iconAnchor: [16, 26],
       });
-      headsignSelect.dispatchEvent(new Event("change"));
-    }
+      let fullLine = L.polyline([], {
+        color: "#005ca9",
+        weight: 6,
+        opacity: 0.6,
+      }).addTo(map);
+      let doneLine = L.polyline([], {
+        color: "#9aa3ad",
+        weight: 8,
+        opacity: 0.95,
+      }).addTo(map);
+      /** Couche temporaire : segment actif entre l'arret courant et le suivant. */
+      const stopToStopLayer = L.layerGroup().addTo(map);
+      let marker = L.marker([43.61, 3.88], {
+        icon: navIcon,
+        zIndexOffset: 800,
+      }).addTo(map);
 
-    function updateVariants() {
-      const selected = headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
-      const [left, right] = selected.split("->").map(s => s.trim());
-      const directionId = left.replace("Sens ", "").trim();
-      const headsign = right || "";
+      function uniqueValues(arr, getter) {
+        return [...new Set(arr.map(getter))];
+      }
 
-      filteredByHeadsign = filteredByLine.filter(p => p.direction_id === directionId && p.headsign === headsign);
-      filteredByHeadsign.sort((a, b) => a.variant_name.localeCompare(b.variant_name, "fr"));
-
-      fillSelect(variantSelect, filteredByHeadsign, p => {
-        return `${p.variant_name} - ${p.start_stop} -> ${p.end_stop} (${p.stop_count} arrets)`;
-      });
-    }
-
-    function selectedPattern() {
-      return filteredByHeadsign[variantSelect.selectedIndex] || null;
-    }
-
-    async function fetchRoadGeometry(pattern) {
-      // OSRM public API expects lon,lat pairs.
-      const coords = pattern.stops.map(s => `${s.lon},${s.lat}`).join(";");
-      const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-
-      try {
-        const resp = await fetch(url);
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}`);
-        }
-        const payload = await resp.json();
-        const route = payload?.routes?.[0]?.geometry?.coordinates || [];
-        if (!route.length) {
-          throw new Error("geometrie vide");
-        }
-        // Convert to Leaflet lat,lon format.
-        return route.map(pt => [pt[1], pt[0]]);
-      } catch (err) {
-        console.warn("Fallback trace direct (stop->stop):", err);
-        return pattern.coordinates;
-      }
-    }
-
-    function pointDistance(a, b) {
-      const dx = a[0] - b[0];
-      const dy = a[1] - b[1];
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    function rebuildPathMetrics(coords) {
-      pathCumMeters = [];
-      pathTotalMeters = 0;
-      if (!coords || coords.length < 2) {
-        return;
-      }
-      const cum = [0];
-      for (let i = 0; i < coords.length - 1; i++) {
-        const d = L.latLng(coords[i]).distanceTo(L.latLng(coords[i + 1]));
-        cum.push(cum[i] + d);
-      }
-      pathCumMeters = cum;
-      pathTotalMeters = cum[cum.length - 1];
-    }
-
-    /**
-     * Projete un point sur la polyligne : distance (m) depuis le départ du tracé.
-     */
-    function distanceAlongPathForLatLng(lat, lng) {
-      const coords = activeCoordinates;
-      const cum = pathCumMeters;
-      if (!coords || coords.length < 2 || !cum.length) {
-        return 0;
-      }
-      const s = L.latLng(lat, lng);
-      let best = 0;
-      let bestD = Infinity;
-      for (let i = 0; i < coords.length - 1; i++) {
-        const p0 = L.latLng(coords[i]);
-        const p1 = L.latLng(coords[i + 1]);
-        const segLenM = p0.distanceTo(p1);
-        if (segLenM < 1e-6) {
-          const d0 = s.distanceTo(p0);
-          if (d0 < bestD) {
-            bestD = d0;
-            best = cum[i];
-          }
-          continue;
-        }
-        const dLat = p1.lat - p0.lat;
-        const dLng = p1.lng - p0.lng;
-        const a0 = s.lat - p0.lat;
-        const b0 = s.lng - p0.lng;
-        const len2 = dLat * dLat + dLng * dLng;
-        const t = Math.max(0, Math.min(1, (a0 * dLat + b0 * dLng) / len2));
-        const proj = [p0.lat + t * dLat, p0.lng + t * dLng];
-        const d = s.distanceTo(L.latLng(proj));
-        if (d < bestD) {
-          bestD = d;
-          best = cum[i] + t * segLenM;
-        }
-      }
-      return best;
-    }
-
-    function normalizeStopMeters(raw, total) {
-      if (!raw.length) return [];
-      if (raw.length === 1) return [0];
-      const eps = 0.5; // metres mini entre deux arrets consecutifs
-      const out = new Array(raw.length);
-      out[0] = 0;
-      for (let i = 1; i < raw.length; i++) {
-        const remaining = raw.length - 1 - i;
-        const maxAllowed = Math.max(0, total - remaining * eps);
-        const candidate = Math.min(maxAllowed, Math.max(out[i - 1] + eps, raw[i]));
-        out[i] = Math.max(out[i - 1], candidate);
-      }
-      out[out.length - 1] = total;
-      return out;
-    }
-
-    function buildStopMetersAlong(pattern) {
-      const stops = pattern?.stops;
-      if (!stops || !stops.length) {
-        return [];
-      }
-      const raw = stops.map(s => distanceAlongPathForLatLng(s.lat, s.lon));
-      return normalizeStopMeters(raw, pathTotalMeters);
-    }
-
-    function pointAtDistanceMeters(d) {
-      const coords = activeCoordinates;
-      const cum = pathCumMeters;
-      if (!coords || coords.length < 2 || !cum.length) {
-        return coords && coords[0] ? coords[0] : [43.61, 3.88];
-      }
-      if (d <= 0) {
-        return coords[0];
-      }
-      if (d >= pathTotalMeters) {
-        return coords[coords.length - 1];
-      }
-      let lo = 0;
-      let hi = cum.length - 1;
-      while (lo < hi - 1) {
-        const mid = Math.floor((lo + hi) / 2);
-        if (cum[mid] < d) {
-          lo = mid;
-        } else {
-          hi = mid;
-        }
-      }
-      const i = lo;
-      const a = coords[i];
-      const b = coords[i + 1];
-      const d0 = cum[i];
-      const d1 = cum[i + 1];
-      const segM = d1 - d0;
-      const t = segM < 1e-6 ? 0 : (d - d0) / segM;
-      return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
-    }
-
-    function pathWindowBetweenMeters(d0, d1) {
-      const coords = activeCoordinates;
-      const cum = pathCumMeters;
-      if (!coords || coords.length < 2 || !cum.length) {
-        return [];
-      }
-      const total = pathTotalMeters;
-      const from = Math.max(0, Math.min(total, d0));
-      const to = Math.max(0, Math.min(total, d1));
-      if (Math.abs(to - from) < 1e-3) {
-        return [];
-      }
-      const lo = Math.min(from, to);
-      const hi = Math.max(from, to);
-      const pts = [pointAtDistanceMeters(lo)];
-      for (let i = 1; i < coords.length - 1; i++) {
-        if (cum[i] > lo && cum[i] < hi) {
-          pts.push(coords[i]);
-        }
-      }
-      pts.push(pointAtDistanceMeters(hi));
-      if (from > to) {
-        pts.reverse();
-      }
-      return pts;
-    }
-
-    function trimActivePathToPatternStops(pattern) {
-      const stops = pattern?.stops || [];
-      if (!stops.length || activeCoordinates.length < 2 || pathTotalMeters <= 0) {
-        return;
-      }
-      const first = stops[0];
-      const last = stops[stops.length - 1];
-      const dStart = distanceAlongPathForLatLng(first.lat, first.lon);
-      const dEnd = distanceAlongPathForLatLng(last.lat, last.lon);
-      const cropped = pathWindowBetweenMeters(dStart, dEnd);
-      if (cropped.length >= 2) {
-        activeCoordinates = cropped;
-        rebuildPathMetrics(activeCoordinates);
-      }
-    }
-
-    /** Cap (degres, horaire depuis le nord) entre deux points [lat, lon]. */
-    function bearingBetweenPoints(p1, p2) {
-      if (!p1 || !p2) {
-        return 0;
-      }
-      const φ1 = p1[0] * Math.PI / 180;
-      const φ2 = p2[0] * Math.PI / 180;
-      const Δλ = (p2[1] - p1[1]) * Math.PI / 180;
-      const y = Math.sin(Δλ) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-    }
-
-    /** Cap d'avancement le long de la polyligne au point d. */
-    function getTrackBearingDeg(d) {
-      if (!pathTotalMeters || pathTotalMeters < 0.1) {
-        return 0;
-      }
-      if (!activeCoordinates || activeCoordinates.length < 2) {
-        return 0;
-      }
-      const look = Math.min(12, Math.max(pathTotalMeters * 0.05, 2));
-      let d1 = Math.max(0, d);
-      let d2 = Math.min(pathTotalMeters, d1 + look);
-      if (d2 - d1 < 0.15) {
-        d1 = Math.max(0, d - 3);
-        d2 = d;
-      }
-      return bearingBetweenPoints(
-        pointAtDistanceMeters(d1),
-        pointAtDistanceMeters(d2)
-      );
-    }
-
-    /**
-     * Met a jour le triangle, le cap (rotation carte ou de l'icone) et optionnellement la camera.
-     * @param { { centerCamera?: boolean, zoom?: number } } opt
-     *        centerCamera false : apres fitBounds, ne deplace pas la vue.
-     */
-    function updateMapNavigation(opt) {
-      if (!currentPattern || pathTotalMeters <= 0) {
-        return;
-      }
-      const o = opt || {};
-      const centerCamera = o.centerCamera !== false;
-      const d = distanceAlongPathMeters;
-      const pos = pointAtDistanceMeters(d);
-      const brg = getTrackBearingDeg(d);
-      marker.setLatLng(pos);
-      const el = typeof marker.getElement === "function" ? marker.getElement() : null;
-      const tri = el ? el.querySelector(".nav-triangle") : null;
-      if (headingUpEl && headingUpEl.checked) {
-        if (typeof map.setBearing === "function") {
-          map.setBearing((360 - brg) % 360);
-        }
-        if (tri) {
-          tri.style.transform = "none";
-        }
-      } else {
-        if (typeof map.setBearing === "function") {
-          map.setBearing(0);
-        }
-        if (tri) {
-          tri.style.transform = "rotate(" + brg + "deg)";
-          tri.style.transformOrigin = "50% 65%";
-        }
-      }
-      if (centerCamera) {
-        if (o.zoom != null) {
-          map.setView(pos, o.zoom, { animate: false });
-        } else {
-          map.setView(pos, map.getZoom(), { animate: false });
-        }
-      }
-    }
-
-    function currentStopIndexForDistance(d) {
-      if (!stopMetersAlong.length) {
-        return 0;
-      }
-      let k = 0;
-      for (let s = 0; s < stopMetersAlong.length; s++) {
-        if (stopMetersAlong[s] <= d + 0.5) {
-          k = s;
-        }
-      }
-      return k;
-    }
-
-    function redrawDoneLineAtDistance(d) {
-      if (!currentPattern) {
-        return;
-      }
-      const coords = activeCoordinates;
-      if (!coords || coords.length < 2) {
-        return;
-      }
-      if (d <= 0) {
-        doneLine.setLatLngs([coords[0]]);
-        return;
-      }
-      if (d >= pathTotalMeters - 1e-3) {
-        doneLine.setLatLngs([...coords]);
-        return;
-      }
-      const pos = pointAtDistanceMeters(d);
-      const cum = pathCumMeters;
-      let lo = 0;
-      let hi = cum.length - 1;
-      while (lo < hi - 1) {
-        const mid = Math.floor((lo + hi) / 2);
-        if (cum[mid] < d) {
-          lo = mid;
-        } else {
-          hi = mid;
-        }
-      }
-      const i = lo;
-      const head = coords.slice(0, i + 1);
-      head.push(pos);
-      doneLine.setLatLngs(head);
-    }
-
-    function getSpeechVoices() {
-      if (typeof window === "undefined" || !window.speechSynthesis) {
-        return [];
-      }
-      return window.speechSynthesis.getVoices() || [];
-    }
-
-    function isFrenchVoice(v) {
-      if (!v || !v.lang) {
-        return false;
-      }
-      const l = v.lang.toLowerCase();
-      return l.startsWith("fr") || l === "fr";
-    }
-
-    /** Tri par qualite (heuristique) : on evite d'imposer la premiere voix pourrie si une meilleure existe. */
-    function voiceHeuristicScore(v) {
-      const n = (v.name + " " + (v.voiceURI || "")).toLowerCase();
-      let s = 0;
-      if (n.includes("neural")) s += 90;
-      if (n.includes("natural")) s += 55;
-      if (n.includes("premium") || n.includes("enhanced") || n.includes("hd ")) s += 45;
-      if (n.includes("google")) s += 40;
-      if (n.includes("microsoft") || n.includes("hortense") || n.includes("julie") || n.includes("paul ")) s += 35;
-      if (n.includes("apple") || n.includes("amelie") || n.includes("thomas ")) s += 25;
-      if (n.includes("samantha")) s += 15;
-      if (n.includes("pico") || n.includes("espeak") || n.includes("festival ")) s -= 80;
-      return s;
-    }
-
-    function pickAutoFrenchVoice() {
-      const list = getSpeechVoices().filter(isFrenchVoice);
-      if (!list.length) {
-        return null;
-      }
-      return list.slice().sort((a, b) => voiceHeuristicScore(b) - voiceHeuristicScore(a))[0];
-    }
-
-    function resolveCurrentVoice() {
-      const val = voiceSelectEl.value;
-      if (val && val !== "__auto__") {
-        return getSpeechVoices().find(v => (v.voiceURI && v.voiceURI === val) || v.name === val) || null;
-      }
-      return pickAutoFrenchVoice();
-    }
-
-    function speakProchainArret(nom, forTest) {
-      if (!forTest && !voiceEnabledEl.checked) {
-        return;
-      }
-      if (!nom) {
-        return;
-      }
-      if (typeof window === "undefined" || !window.speechSynthesis) {
-        return;
-      }
-      const voice = resolveCurrentVoice();
-      try {
-        window.speechSynthesis.cancel();
-      } catch (e) {
-        // ignore
-      }
-      const u = new SpeechSynthesisUtterance(`Prochain arrêt, ${nom}.`);
-      if (voice) {
-        u.voice = voice;
-        u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
-      } else {
-        // Fallback: on laisse le moteur choisir la voix systeme.
-        u.lang = "fr-FR";
-      }
-      u.rate = 0.92;
-      u.pitch = 1.0;
-      u.volume = 1.0;
-      window.speechSynthesis.speak(u);
-    }
-
-    function resyncVoixForPosition(d) {
-      if (!stopMetersAlong.length || !currentPattern || !currentPattern.stops) {
-        return;
-      }
-      const n = currentPattern.stops.length;
-      for (let i = 0; i < n - 1; i++) {
-        if (d > (stopMetersAlong[i] || 0) + 0.5) {
-          voixAnnounced.add(`d${i}`);
-        }
-        if (i < n - 1) {
-          const mid = ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
-          if (d > mid + 0.5) {
-            voixAnnounced.add(`m${i}`);
-          }
-        }
-      }
-    }
-
-    function maybeAnnounceProchainArret(prev, curr) {
-      if (!voiceEnabledEl.checked || !currentPattern) {
-        return;
-      }
-      const mode = voiceModeEl.value;
-      if (!mode) {
-        return;
-      }
-      const stops = currentPattern.stops;
-      if (!stops || stops.length < 2) {
-        return;
-      }
-      if (prev == null || curr == null || prev > curr) {
-        return;
-      }
-      for (let i = 0; i < stops.length - 1; i++) {
-        const nextName = stops[i + 1] ? stops[i + 1].stop_name : "";
-        if (mode === "depart" || mode === "both") {
-          const t = stopMetersAlong[i] || 0;
-          if (prev < t && curr >= t && !voixAnnounced.has(`d${i}`)) {
-            voixAnnounced.add(`d${i}`);
-            speakProchainArret(nextName);
-          }
-        }
-        if (mode === "mid" || mode === "both") {
-          const t = ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
-          if (prev < t && curr >= t && !voixAnnounced.has(`m${i}`)) {
-            voixAnnounced.add(`m${i}`);
-            speakProchainArret(nextName);
-          }
-        }
-      }
-    }
-
-    function announceInitialNextStopIfNeeded() {
-      if (!voiceEnabledEl.checked || !currentPattern?.stops || currentPattern.stops.length < 2) {
-        return;
-      }
-      const mode = voiceModeEl.value;
-      if (voixAnnounced.has("d0")) {
-        return;
-      }
-      voixAnnounced.add("d0");
-      speakProchainArret(currentPattern.stops[1].stop_name);
-    }
-
-    function refreshVoiceSelect() {
-      if (!voiceSelectEl) {
-        return;
-      }
-      const before = voiceSelectEl.value;
-      const voices = getSpeechVoices();
-      const saved = (() => {
+      function setRecapVisible(on) {
+        if (!mapRecapEl || !recapToggleBtn) return;
+        mapRecapEl.classList.toggle("show", !!on);
+        recapToggleBtn.classList.toggle("active", !!on);
         try {
-          return localStorage.getItem(LS_KEY_VOICE);
+          localStorage.setItem(LS_KEY_RECAP, on ? "1" : "0");
         } catch (e) {
-          return null;
+          // ignore
         }
-      })();
-      voiceSelectEl.innerHTML = "";
-      const oAuto = document.createElement("option");
-      oAuto.value = "__auto__";
-      oAuto.textContent = "Automatique (meilleure voix fr disponible)";
-      voiceSelectEl.appendChild(oAuto);
-      const fr = voices.filter(isFrenchVoice);
-      fr.sort((a, b) => a.name.localeCompare(b.name, "fr"));
-      for (const v of fr) {
-        const o = document.createElement("option");
-        o.value = v.voiceURI || v.name;
-        o.textContent = `${v.name} (${v.lang || "fr"})`;
-        voiceSelectEl.appendChild(o);
+        refreshMapLayout();
       }
-      const tryVal = (before && fr.some(x => (x.voiceURI || x.name) === before)) ? before
-        : (saved && fr.some(x => (x.voiceURI || x.name) === saved)) ? saved
-          : "__auto__";
-      voiceSelectEl.value = fr.length ? tryVal : "__auto__";
-    }
 
-    function reverseCoordinates(coords) {
-      const copy = [...coords];
-      copy.reverse();
-      return copy;
-    }
-
-    function getNetworkGeometryByLine(features, pattern) {
-      if (!features.length) return null;
-
-      const line = String(pattern.route_short_name);
-      const start = pattern.coordinates[0];
-      const end = pattern.coordinates[pattern.coordinates.length - 1];
-
-      const candidates = features.filter(f => String(f.line_code) === line && f.coordinates?.length > 1);
-      if (!candidates.length) return null;
-
-      let best = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-
-      for (const candidate of candidates) {
-        const coords = candidate.coordinates;
-        const first = coords[0];
-        const last = coords[coords.length - 1];
-
-        const directScore = pointDistance(start, first) + pointDistance(end, last);
-        const reverseScore = pointDistance(start, last) + pointDistance(end, first);
-
-        if (directScore < bestScore) {
-          bestScore = directScore;
-          best = { coords, nom_ligne: candidate.nom_ligne };
-        }
-        if (reverseScore < bestScore) {
-          bestScore = reverseScore;
-          best = { coords: reverseCoordinates(coords), nom_ligne: candidate.nom_ligne };
+      function setPanelTab(panelName) {
+        if (!controlPanelEl) return;
+        const sections = controlPanelEl.querySelectorAll(".panel-section");
+        sections.forEach((s) => s.classList.remove("show"));
+        [missionTabBtn, opsTabBtn, voiceTabBtn].forEach(
+          (b) => b && b.classList.remove("active"),
+        );
+        if (panelName === "mission") {
+          controlPanelEl
+            .querySelectorAll(".panel-mission")
+            .forEach((s) => s.classList.add("show"));
+          missionTabBtn?.classList.add("active");
+        } else if (panelName === "ops") {
+          controlPanelEl
+            .querySelectorAll(".panel-ops")
+            .forEach((s) => s.classList.add("show"));
+          opsTabBtn?.classList.add("active");
+        } else if (panelName === "voice") {
+          controlPanelEl
+            .querySelectorAll(".panel-audio")
+            .forEach((s) => s.classList.add("show"));
+          voiceTabBtn?.classList.add("active");
         }
       }
 
-      // Guard against unrelated branches that are too far from GTFS start/end.
-      if (!best || bestScore > 0.08) {
-        return null;
-      }
-      return best;
-    }
-
-    function getBusNetworkGeometry(pattern) {
-      return getNetworkGeometryByLine(data?.bus_network_features || [], pattern);
-    }
-
-    function getTramNetworkGeometry(pattern) {
-      return getNetworkGeometryByLine(data?.tram_network_features || [], pattern);
-    }
-
-    function updateStopToStopOverlay() {
-      if (typeof tamUpdateStopToStopGuide !== "function") {
-        stopToStopLayer.clearLayers();
-        if (segmentGuideInfoEl) {
-          segmentGuideInfoEl.textContent = "-";
-        }
-        return;
-      }
-      const info = tamUpdateStopToStopGuide(
-        map,
-        stopToStopLayer,
-        activeCoordinates,
-        pathCumMeters,
-        stopMetersAlong,
-        distanceAlongPathMeters
-      );
-      if (segmentGuideInfoEl) {
-        if (!info || info.segmentIndex < 0 || info.totalSegments <= 0) {
-          segmentGuideInfoEl.textContent = "-";
-        } else {
-          segmentGuideInfoEl.textContent = `${info.segmentIndex + 1}/${info.totalSegments}`;
-        }
-      }
-    }
-
-    async function setMission(pattern) {
-      currentPattern = pattern;
-      distanceAlongPathMeters = 0;
-      lastRafTime = 0;
-      lastVoiceDistance = 0;
-      voixAnnounced = new Set();
-      missionName.textContent = `Ligne ${pattern.route_short_name} | ${pattern.headsign} | ${pattern.variant_name}`;
-
-      const isTram = String(pattern.route_type) === "0";
-      const tramGeom = isTram ? getTramNetworkGeometry(pattern) : null;
-      const busGeom = !isTram ? getBusNetworkGeometry(pattern) : null;
-      if (tramGeom) {
-        activeCoordinates = tramGeom.coords;
-        traceSource = `Reseau tram 3M (${tramGeom.nom_ligne || "ligne"})`;
-      } else if (busGeom) {
-        activeCoordinates = busGeom.coords;
-        traceSource = `Reseau bus 3M (${busGeom.nom_ligne || "ligne"})`;
-      } else {
-        activeCoordinates = await fetchRoadGeometry(pattern);
-        if (activeCoordinates.length && activeCoordinates !== pattern.coordinates) {
-          traceSource = "OSRM routier";
-        } else {
-          traceSource = "GTFS arret->arret";
-        }
-        if (!activeCoordinates.length) {
-          activeCoordinates = pattern.coordinates;
-          traceSource = "GTFS arret->arret";
-        }
+      function openControlPanel(tabName) {
+        if (!controlPanelEl) return;
+        controlPanelEl.classList.add("open");
+        setPanelTab(tabName || "mission");
+        refreshMapLayout();
       }
 
-      rebuildPathMetrics(activeCoordinates);
-      trimActivePathToPatternStops(pattern);
-      stopMetersAlong = buildStopMetersAlong(pattern);
-
-      fullLine.setLatLngs(activeCoordinates);
-      doneLine.setLatLngs([activeCoordinates[0]]);
-      // Reset explicite a chaque mission pour forcer le redraw du troncon actif.
-      stopToStopLayer.clearLayers();
-      stopToStopLayer.__tamSegIdx = -1;
-
-      updateStopToStopOverlay();
-
-      if (headingUpEl.checked) {
-        updateMapNavigation({ centerCamera: true, zoom: 16 });
-      } else {
-        map.fitBounds(fullLine.getBounds(), { padding: [20, 20] });
-        updateMapNavigation({ centerCamera: false });
-      }
-      announceInitialNextStopIfNeeded();
-      updateStats();
-    }
-
-    function updateStats() {
-      if (!currentPattern) {
-        return;
-      }
-      const stops = currentPattern.stops;
-      const d = distanceAlongPathMeters;
-      if (!stops || !stops.length) {
-        currentStopEl.textContent = "-";
-        nextStopEl.textContent = "-";
-      } else {
-        const stopIdx = currentStopIndexForDistance(d);
-        const nextIdx = Math.min(stopIdx + 1, stops.length - 1);
-        currentStopEl.textContent = stops[stopIdx] ? stops[stopIdx].stop_name : "-";
-        nextStopEl.textContent = stops[nextIdx] ? stops[nextIdx].stop_name : "-";
+      function closeControlPanel() {
+        controlPanelEl?.classList.remove("open");
+        refreshMapLayout();
       }
 
-      const pct = pathTotalMeters > 0
-        ? ((d / pathTotalMeters) * 100).toFixed(1)
-        : "0.0";
-      progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
-        BASE_METERS_PER_SECOND * speed * 3.6
-      )} km/h sim.`;
-    }
-
-    function tickRaf(now) {
-      if (running && currentPattern && pathTotalMeters > 0) {
-        if (lastRafTime === 0) {
-          lastRafTime = now;
-        } else {
-          const prevVoiceD = lastVoiceDistance;
-          const dt = Math.min(0.1, (now - lastRafTime) / 1000);
-          lastRafTime = now;
-          distanceAlongPathMeters = Math.min(
-            pathTotalMeters,
-            distanceAlongPathMeters + BASE_METERS_PER_SECOND * speed * dt
-          );
-          if (distanceAlongPathMeters >= pathTotalMeters - 0.01) {
-            distanceAlongPathMeters = pathTotalMeters;
-            running = false;
-            lastRafTime = 0;
+      function refreshMapLayout() {
+        const run = () => {
+          if (map && typeof map.invalidateSize === "function") {
+            map.invalidateSize(false);
           }
-          maybeAnnounceProchainArret(prevVoiceD, distanceAlongPathMeters);
-          lastVoiceDistance = distanceAlongPathMeters;
-          updateMapNavigation();
-          redrawDoneLineAtDistance(distanceAlongPathMeters);
-          updateStopToStopOverlay();
-          updateStats();
+        };
+        run();
+        setTimeout(run, 80);
+        setTimeout(run, 260);
+        setTimeout(run, 650);
+      }
+
+      function appendOpsLog(action, note) {
+        try {
+          const raw = localStorage.getItem(LS_KEY_OPS_LOG);
+          const logs = raw ? JSON.parse(raw) : [];
+          logs.push({
+            ts: new Date().toISOString(),
+            line: currentPattern?.route_short_name || "",
+            headsign: currentPattern?.headsign || "",
+            variant: currentPattern?.variant_name || "",
+            action,
+            mode: opsState.mode,
+            note: note || "",
+          });
+          localStorage.setItem(
+            LS_KEY_OPS_LOG,
+            JSON.stringify(logs.slice(-300)),
+          );
+        } catch (e) {
+          // ignore
         }
       }
-      requestAnimationFrame(tickRaf);
-    }
 
-    document.getElementById("startBtn").addEventListener("click", () => {
-      const startBtn = document.getElementById("startBtn");
-      const p = selectedPattern();
-      if (!p) return;
-      running = false;
-      startBtn.disabled = true;
-      startBtn.textContent = "Chargement trace...";
-      setMission(p).then(() => {
-        lastRafTime = 0;
-        running = true;
-      }).finally(() => {
-        startBtn.disabled = false;
-        startBtn.textContent = "Demarrer simulation";
-      });
-    });
-
-    document.getElementById("pauseBtn").addEventListener("click", () => {
-      running = !running;
-      if (!running) {
-        lastRafTime = 0;
+      function recomputeOpsMode() {
+        if (opsState.manualActive) return OPS_MODE.MANUEL;
+        if (opsState.rtActive) return OPS_MODE.RT;
+        if (opsState.planifieActive) return OPS_MODE.PLANIFIE;
+        return OPS_MODE.BASE;
       }
-    });
 
-    document.getElementById("nextBtn").addEventListener("click", () => {
-      if (!currentPattern || pathTotalMeters <= 0) {
-        return;
+      function describeOpsState() {
+        if (opsState.mode === OPS_MODE.MANUEL)
+          return "Deviation manuelle active.";
+        if (opsState.mode === OPS_MODE.RT)
+          return "Deviation temps reel active.";
+        if (opsState.mode === OPS_MODE.PLANIFIE)
+          return "Deviation planifiee active.";
+        return "Aucune deviation active.";
       }
-      const stops = currentPattern.stops;
-      if (!stops || !stops.length || !stopMetersAlong.length) {
-        return;
-      }
-      let idx = currentStopIndexForDistance(distanceAlongPathMeters);
-      idx = Math.min(idx + 1, stops.length - 1);
-      distanceAlongPathMeters = stopMetersAlong[idx];
-      lastRafTime = 0;
-      resyncVoixForPosition(distanceAlongPathMeters);
-      lastVoiceDistance = distanceAlongPathMeters;
-      updateMapNavigation();
-      redrawDoneLineAtDistance(distanceAlongPathMeters);
-      updateStopToStopOverlay();
-      updateStats();
-    });
 
-    document.getElementById("prevBtn").addEventListener("click", () => {
-      if (!currentPattern || pathTotalMeters <= 0) {
-        return;
+      function applyOpsStateUi() {
+        opsState.mode = recomputeOpsMode();
+        if (modeActiveEl) modeActiveEl.textContent = opsState.mode;
+        if (modeStatusEl) modeStatusEl.textContent = describeOpsState();
       }
-      const stops = currentPattern.stops;
-      if (!stops || !stops.length || !stopMetersAlong.length) {
-        return;
+
+      function resetOpsStateForMission() {
+        opsState.planifieActive = false;
+        opsState.rtActive = false;
+        opsState.manualActive = false;
+        opsState.mode = OPS_MODE.BASE;
+        opsState.initialMode = OPS_MODE.BASE;
+        applyOpsStateUi();
       }
-      let idx = currentStopIndexForDistance(distanceAlongPathMeters);
-      idx = Math.max(idx - 1, 0);
-      distanceAlongPathMeters = stopMetersAlong[idx];
-      lastRafTime = 0;
-      resyncVoixForPosition(distanceAlongPathMeters);
-      lastVoiceDistance = distanceAlongPathMeters;
-      updateMapNavigation();
-      redrawDoneLineAtDistance(distanceAlongPathMeters);
-      updateStopToStopOverlay();
-      updateStats();
-    });
 
-    speedSelect.addEventListener("change", () => {
-      speed = Number(speedSelect.value) || 1;
-    });
-
-    lineSelect.addEventListener("change", updateHeadsigns);
-    headsignSelect.addEventListener("change", updateVariants);
-
-    function saveMapPrefs() {
-      try {
-        localStorage.setItem(LS_KEY_HEADING, headingUpEl.checked ? "1" : "0");
-      } catch (e) {
-        // ignore
+      function finalizeInitialOpsMode() {
+        opsState.mode = recomputeOpsMode();
+        opsState.initialMode = opsState.mode;
+        applyOpsStateUi();
+        appendOpsLog("mission_start", "Mode initial enregistre");
       }
-    }
 
-    function initVocalUI() {
-      try {
-        const on = localStorage.getItem(LS_KEY_ENABLED);
-        voiceEnabledEl.checked = on === "1" || on === "true";
-        const mode = localStorage.getItem(LS_KEY_MODE);
-        if (mode && ["depart", "mid", "both"].includes(mode)) {
-          voiceModeEl.value = mode;
-        }
-        const h = localStorage.getItem(LS_KEY_HEADING);
-        if (h === "0" || h === "false") {
-          headingUpEl.checked = false;
-        }
-        if (h === "1" || h === "true") {
-          headingUpEl.checked = true;
-        }
-      } catch (e) {
-        // ignore
-      }
-      voiceModeEl.disabled = !voiceEnabledEl.checked;
-      refreshVoiceSelect();
-      if (window.speechSynthesis) {
-        window.speechSynthesis.addEventListener("voiceschanged", () => {
-          refreshVoiceSelect();
+      function fillSelect(selectEl, values, labelFn) {
+        selectEl.innerHTML = "";
+        values.forEach((item, index) => {
+          const opt = document.createElement("option");
+          opt.value = String(index);
+          opt.textContent = labelFn(item, index);
+          selectEl.appendChild(opt);
         });
       }
-    }
 
-    function saveVocalPrefs() {
-      try {
-        localStorage.setItem(LS_KEY_ENABLED, voiceEnabledEl.checked ? "1" : "0");
-        localStorage.setItem(LS_KEY_MODE, voiceModeEl.value);
-        localStorage.setItem(LS_KEY_VOICE, voiceSelectEl.value);
-      } catch (e) {
-        // ignore
+      function lineColorHex(raw) {
+        const v = String(raw || "")
+          .trim()
+          .replace("#", "");
+        if (!/^[0-9a-fA-F]{6}$/.test(v)) {
+          return null;
+        }
+        return `#${v}`;
       }
-    }
 
-    voiceEnabledEl.addEventListener("change", () => {
-      voiceModeEl.disabled = !voiceEnabledEl.checked;
-      saveVocalPrefs();
-    });
-    voiceModeEl.addEventListener("change", saveVocalPrefs);
-    voiceSelectEl.addEventListener("change", saveVocalPrefs);
+      function forcedLineColor(code) {
+        const key = String(code || "")
+          .trim()
+          .toUpperCase();
+        if (key === "A") return "#931731";
+        if (key === "5") return "#277232";
+        return null;
+      }
 
-    headingUpEl.addEventListener("change", () => {
-      saveMapPrefs();
-      if (currentPattern && pathTotalMeters > 0) {
-        if (headingUpEl.checked) {
-          updateMapNavigation({ centerCamera: true, zoom: map.getZoom() });
+      function isTramDisplayLine(item) {
+        const code = String(item.route_short_name || "");
+        const n = Number(code);
+        return (
+          item.route_type === "0" && Number.isInteger(n) && n >= 1 && n <= 5
+        );
+      }
+
+      function linePriority(item) {
+        if (isTramDisplayLine(item)) return 0; // T1..T5
+        if (String(item.route_short_name) === "A") return 1; // Navette A
+        if (/^\d+$/.test(String(item.route_short_name))) return 2; // bus numeriques
+        return 3; // reste
+      }
+
+      function displayLineLabel(item) {
+        const code = String(item.route_short_name);
+        if (isTramDisplayLine(item)) return `T${code}`;
+        return code;
+      }
+
+      function updateLines() {
+        const byCode = new Map();
+        for (const p of data.patterns) {
+          const code = String(p.route_short_name || "").trim();
+          if (!code) continue;
+          if (!byCode.has(code)) {
+            byCode.set(code, {
+              route_short_name: code,
+              route_type: String(p.route_type || ""),
+              route_color: p.route_color || "",
+            });
+          }
+        }
+        lineOptions = [...byCode.values()].sort((a, b) => {
+          const pa = linePriority(a);
+          const pb = linePriority(b);
+          if (pa !== pb) return pa - pb;
+          const aCode = String(a.route_short_name);
+          const bCode = String(b.route_short_name);
+          if (/^\d+$/.test(aCode) && /^\d+$/.test(bCode)) {
+            return Number(aCode) - Number(bCode);
+          }
+          return aCode.localeCompare(bCode, "fr");
+        });
+
+        lineSelect.innerHTML = "";
+        lineOptionLookup = [];
+        const groups = {
+          tram: lineOptions.filter(isTramDisplayLine),
+          navette: lineOptions.filter(
+            (x) => String(x.route_short_name) === "A",
+          ),
+          bus: lineOptions.filter(
+            (x) => !isTramDisplayLine(x) && String(x.route_short_name) !== "A",
+          ),
+        };
+
+        function addSpacer(label) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = label || " ";
+          opt.disabled = true;
+          opt.style.color = "#68707a";
+          opt.style.fontStyle = "italic";
+          lineSelect.appendChild(opt);
+        }
+
+        function addTinySpacer() {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = " ";
+          opt.disabled = true;
+          opt.style.fontSize = "1px";
+          opt.style.lineHeight = "1px";
+          opt.style.padding = "0";
+          opt.style.margin = "0";
+          opt.style.color = "transparent";
+          lineSelect.appendChild(opt);
+        }
+
+        function appendGroup(items) {
+          for (const item of items) {
+            const opt = document.createElement("option");
+            opt.value = String(lineOptionLookup.length);
+            opt.textContent = displayLineLabel(item);
+            const bg =
+              forcedLineColor(item?.route_short_name) ||
+              lineColorHex(item?.route_color);
+            if (bg) {
+              opt.style.backgroundColor = bg;
+              opt.style.color = "#ffffff";
+              opt.style.fontWeight = "700";
+            }
+            lineSelect.appendChild(opt);
+            lineOptionLookup.push(item);
+            addTinySpacer();
+          }
+        }
+
+        appendGroup(groups.tram);
+        if (
+          groups.tram.length &&
+          (groups.navette.length || groups.bus.length)
+        ) {
+          addSpacer("──");
+        }
+        appendGroup(groups.navette);
+        if (groups.navette.length && groups.bus.length) {
+          addSpacer("──");
+        }
+        appendGroup(groups.bus);
+
+        // Positionner sur la premiere vraie ligne selectable.
+        for (let i = 0; i < lineSelect.options.length; i++) {
+          if (!lineSelect.options[i].disabled) {
+            lineSelect.selectedIndex = i;
+            break;
+          }
+        }
+        lineSelect.dispatchEvent(new Event("change"));
+      }
+
+      function updateHeadsigns() {
+        const selectedValue =
+          lineSelect.options[lineSelect.selectedIndex]?.value || "";
+        let selectedLine =
+          lineOptionLookup[Number(selectedValue)]?.route_short_name || "";
+        if (!selectedLine) {
+          for (let i = 0; i < lineSelect.options.length; i++) {
+            const opt = lineSelect.options[i];
+            if (opt.disabled) continue;
+            lineSelect.selectedIndex = i;
+            selectedLine =
+              lineOptionLookup[Number(opt.value)]?.route_short_name || "";
+            break;
+          }
+        }
+        filteredByLine = data.patterns.filter(
+          (p) => p.route_short_name === selectedLine,
+        );
+
+        const headsignKeys = uniqueValues(
+          filteredByLine,
+          (p) => `${p.direction_id}|||${p.headsign}`,
+        ).sort((a, b) => a.localeCompare(b, "fr"));
+
+        fillSelect(headsignSelect, headsignKeys, (key) => {
+          const parts = key.split("|||");
+          const direction = parts[0] || "?";
+          const headsign = parts[1] || "Terminus non renseigne";
+          return `Sens ${direction} -> ${headsign}`;
+        });
+        headsignSelect.dispatchEvent(new Event("change"));
+      }
+
+      function updateVariants() {
+        const selected =
+          headsignSelect.options[headsignSelect.selectedIndex]?.textContent ||
+          "";
+        const [left, right] = selected.split("->").map((s) => s.trim());
+        const directionId = left.replace("Sens ", "").trim();
+        const headsign = right || "";
+
+        filteredByHeadsign = filteredByLine.filter(
+          (p) => p.direction_id === directionId && p.headsign === headsign,
+        );
+        filteredByHeadsign.sort((a, b) =>
+          a.variant_name.localeCompare(b.variant_name, "fr"),
+        );
+
+        fillSelect(variantSelect, filteredByHeadsign, (p) => {
+          return `${p.variant_name} - ${p.start_stop} -> ${p.end_stop} (${p.stop_count} arrets)`;
+        });
+      }
+
+      function selectedPattern() {
+        return filteredByHeadsign[variantSelect.selectedIndex] || null;
+      }
+
+      async function fetchRoadGeometry(pattern) {
+        // OSRM public API expects lon,lat pairs.
+        const coords = pattern.stops.map((s) => `${s.lon},${s.lat}`).join(";");
+        const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+          const payload = await resp.json();
+          const route = payload?.routes?.[0]?.geometry?.coordinates || [];
+          if (!route.length) {
+            throw new Error("geometrie vide");
+          }
+          // Convert to Leaflet lat,lon format.
+          return route.map((pt) => [pt[1], pt[0]]);
+        } catch (err) {
+          console.warn("Fallback trace direct (stop->stop):", err);
+          return pattern.coordinates;
+        }
+      }
+
+      function pointDistance(a, b) {
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function rebuildPathMetrics(coords) {
+        pathCumMeters = [];
+        pathTotalMeters = 0;
+        if (!coords || coords.length < 2) {
+          return;
+        }
+        const cum = [0];
+        for (let i = 0; i < coords.length - 1; i++) {
+          const d = L.latLng(coords[i]).distanceTo(L.latLng(coords[i + 1]));
+          cum.push(cum[i] + d);
+        }
+        pathCumMeters = cum;
+        pathTotalMeters = cum[cum.length - 1];
+      }
+
+      /**
+       * Projete un point sur la polyligne : distance (m) depuis le départ du tracé.
+       */
+      function distanceAlongPathForLatLng(lat, lng) {
+        const coords = activeCoordinates;
+        const cum = pathCumMeters;
+        if (!coords || coords.length < 2 || !cum.length) {
+          return 0;
+        }
+        const s = L.latLng(lat, lng);
+        let best = 0;
+        let bestD = Infinity;
+        for (let i = 0; i < coords.length - 1; i++) {
+          const p0 = L.latLng(coords[i]);
+          const p1 = L.latLng(coords[i + 1]);
+          const segLenM = p0.distanceTo(p1);
+          if (segLenM < 1e-6) {
+            const d0 = s.distanceTo(p0);
+            if (d0 < bestD) {
+              bestD = d0;
+              best = cum[i];
+            }
+            continue;
+          }
+          const dLat = p1.lat - p0.lat;
+          const dLng = p1.lng - p0.lng;
+          const a0 = s.lat - p0.lat;
+          const b0 = s.lng - p0.lng;
+          const len2 = dLat * dLat + dLng * dLng;
+          const t = Math.max(0, Math.min(1, (a0 * dLat + b0 * dLng) / len2));
+          const proj = [p0.lat + t * dLat, p0.lng + t * dLng];
+          const d = s.distanceTo(L.latLng(proj));
+          if (d < bestD) {
+            bestD = d;
+            best = cum[i] + t * segLenM;
+          }
+        }
+        return best;
+      }
+
+      function normalizeStopMeters(raw, total) {
+        if (!raw.length) return [];
+        if (raw.length === 1) return [0];
+        const eps = 0.5; // metres mini entre deux arrets consecutifs
+        const out = new Array(raw.length);
+        out[0] = 0;
+        for (let i = 1; i < raw.length; i++) {
+          const remaining = raw.length - 1 - i;
+          const maxAllowed = Math.max(0, total - remaining * eps);
+          const candidate = Math.min(
+            maxAllowed,
+            Math.max(out[i - 1] + eps, raw[i]),
+          );
+          out[i] = Math.max(out[i - 1], candidate);
+        }
+        out[out.length - 1] = total;
+        return out;
+      }
+
+      function buildStopMetersAlong(pattern) {
+        const stops = pattern?.stops;
+        if (!stops || !stops.length) {
+          return [];
+        }
+        const raw = stops.map((s) => distanceAlongPathForLatLng(s.lat, s.lon));
+        return normalizeStopMeters(raw, pathTotalMeters);
+      }
+
+      function pointAtDistanceMeters(d) {
+        const coords = activeCoordinates;
+        const cum = pathCumMeters;
+        if (!coords || coords.length < 2 || !cum.length) {
+          return coords && coords[0] ? coords[0] : [43.61, 3.88];
+        }
+        if (d <= 0) {
+          return coords[0];
+        }
+        if (d >= pathTotalMeters) {
+          return coords[coords.length - 1];
+        }
+        let lo = 0;
+        let hi = cum.length - 1;
+        while (lo < hi - 1) {
+          const mid = Math.floor((lo + hi) / 2);
+          if (cum[mid] < d) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+        const i = lo;
+        const a = coords[i];
+        const b = coords[i + 1];
+        const d0 = cum[i];
+        const d1 = cum[i + 1];
+        const segM = d1 - d0;
+        const t = segM < 1e-6 ? 0 : (d - d0) / segM;
+        return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+      }
+
+      function pathWindowBetweenMeters(d0, d1) {
+        const coords = activeCoordinates;
+        const cum = pathCumMeters;
+        if (!coords || coords.length < 2 || !cum.length) {
+          return [];
+        }
+        const total = pathTotalMeters;
+        const from = Math.max(0, Math.min(total, d0));
+        const to = Math.max(0, Math.min(total, d1));
+        if (Math.abs(to - from) < 1e-3) {
+          return [];
+        }
+        const lo = Math.min(from, to);
+        const hi = Math.max(from, to);
+        const pts = [pointAtDistanceMeters(lo)];
+        for (let i = 1; i < coords.length - 1; i++) {
+          if (cum[i] > lo && cum[i] < hi) {
+            pts.push(coords[i]);
+          }
+        }
+        pts.push(pointAtDistanceMeters(hi));
+        if (from > to) {
+          pts.reverse();
+        }
+        return pts;
+      }
+
+      function trimActivePathToPatternStops(pattern) {
+        const stops = pattern?.stops || [];
+        if (
+          !stops.length ||
+          activeCoordinates.length < 2 ||
+          pathTotalMeters <= 0
+        ) {
+          return;
+        }
+        const first = stops[0];
+        const last = stops[stops.length - 1];
+        const dStart = distanceAlongPathForLatLng(first.lat, first.lon);
+        const dEnd = distanceAlongPathForLatLng(last.lat, last.lon);
+        const cropped = pathWindowBetweenMeters(dStart, dEnd);
+        if (cropped.length >= 2) {
+          activeCoordinates = cropped;
+          rebuildPathMetrics(activeCoordinates);
+        }
+      }
+
+      /** Cap (degres, horaire depuis le nord) entre deux points [lat, lon]. */
+      function bearingBetweenPoints(p1, p2) {
+        if (!p1 || !p2) {
+          return 0;
+        }
+        const φ1 = (p1[0] * Math.PI) / 180;
+        const φ2 = (p2[0] * Math.PI) / 180;
+        const Δλ = ((p2[1] - p1[1]) * Math.PI) / 180;
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x =
+          Math.cos(φ1) * Math.sin(φ2) -
+          Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+      }
+
+      /** Cap d'avancement le long de la polyligne au point d. */
+      function getTrackBearingDeg(d) {
+        if (!pathTotalMeters || pathTotalMeters < 0.1) {
+          return 0;
+        }
+        if (!activeCoordinates || activeCoordinates.length < 2) {
+          return 0;
+        }
+        const look = Math.min(12, Math.max(pathTotalMeters * 0.05, 2));
+        let d1 = Math.max(0, d);
+        let d2 = Math.min(pathTotalMeters, d1 + look);
+        if (d2 - d1 < 0.15) {
+          d1 = Math.max(0, d - 3);
+          d2 = d;
+        }
+        return bearingBetweenPoints(
+          pointAtDistanceMeters(d1),
+          pointAtDistanceMeters(d2),
+        );
+      }
+
+      /**
+       * Met a jour le triangle, le cap (rotation carte ou de l'icone) et optionnellement la camera.
+       * @param { { centerCamera?: boolean, zoom?: number } } opt
+       *        centerCamera false : apres fitBounds, ne deplace pas la vue.
+       */
+      function updateMapNavigation(opt) {
+        if (!currentPattern || pathTotalMeters <= 0) {
+          return;
+        }
+        const o = opt || {};
+        const centerCamera = o.centerCamera !== false;
+        const d = distanceAlongPathMeters;
+        const pos = pointAtDistanceMeters(d);
+        const brg = getTrackBearingDeg(d);
+        marker.setLatLng(pos);
+        const el =
+          typeof marker.getElement === "function" ? marker.getElement() : null;
+        const tri = el ? el.querySelector(".nav-triangle") : null;
+        if (headingUpEl && headingUpEl.checked) {
+          if (typeof map.setBearing === "function") {
+            map.setBearing((360 - brg) % 360);
+          }
+          if (tri) {
+            tri.style.transform = "none";
+          }
         } else {
           if (typeof map.setBearing === "function") {
             map.setBearing(0);
           }
-          updateMapNavigation({ centerCamera: true, zoom: map.getZoom() });
+          if (tri) {
+            tri.style.transform = "rotate(" + brg + "deg)";
+            tri.style.transformOrigin = "50% 65%";
+          }
         }
-      } else {
-        if (typeof map.setBearing === "function") {
-          map.setBearing(0);
+        if (centerCamera) {
+          if (o.zoom != null) {
+            map.setView(pos, o.zoom, { animate: false });
+          } else {
+            map.setView(pos, map.getZoom(), { animate: false });
+          }
         }
       }
-    });
 
-    voiceTestBtn.addEventListener("click", () => {
-      if (typeof window === "undefined" || !window.speechSynthesis) {
-        return;
-      }
-      if (!getSpeechVoices().length) {
-        refreshVoiceSelect();
-      }
-      if (!resolveCurrentVoice()) {
-        const msg = "Aucune voix utilisable. Verifiez qu'une voix francaise est installee (parametres Windows / navigateur) puis rouvrez la page.";
-        if (voiceNoteEl) {
-          const prev = voiceNoteEl.textContent;
-          voiceNoteEl.textContent = msg;
-          setTimeout(() => { voiceNoteEl.textContent = prev; }, 8000);
+      function currentStopIndexForDistance(d) {
+        if (!stopMetersAlong.length) {
+          return 0;
         }
-        return;
+        let k = 0;
+        for (let s = 0; s < stopMetersAlong.length; s++) {
+          if (stopMetersAlong[s] <= d + 0.5) {
+            k = s;
+          }
+        }
+        return k;
       }
-      speakProchainArret("Test, Place de l'Europe", true);
-    });
 
-    initVocalUI();
+      function redrawDoneLineAtDistance(d) {
+        if (!currentPattern) {
+          return;
+        }
+        const coords = activeCoordinates;
+        if (!coords || coords.length < 2) {
+          return;
+        }
+        if (d <= 0) {
+          doneLine.setLatLngs([coords[0]]);
+          return;
+        }
+        if (d >= pathTotalMeters - 1e-3) {
+          doneLine.setLatLngs([...coords]);
+          return;
+        }
+        const pos = pointAtDistanceMeters(d);
+        const cum = pathCumMeters;
+        let lo = 0;
+        let hi = cum.length - 1;
+        while (lo < hi - 1) {
+          const mid = Math.floor((lo + hi) / 2);
+          if (cum[mid] < d) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+        const i = lo;
+        const head = coords.slice(0, i + 1);
+        head.push(pos);
+        doneLine.setLatLngs(head);
+      }
 
-    fetch("./simulation_data.json")
-      .then(resp => resp.json())
-      .then(json => {
-        data = json;
-        updateLines();
+      function getSpeechVoices() {
+        if (typeof window === "undefined" || !window.speechSynthesis) {
+          return [];
+        }
+        return window.speechSynthesis.getVoices() || [];
+      }
+
+      function isFrenchVoice(v) {
+        if (!v || !v.lang) {
+          return false;
+        }
+        const l = v.lang.toLowerCase();
+        return l.startsWith("fr") || l === "fr";
+      }
+
+      /** Tri par qualite (heuristique) : on evite d'imposer la premiere voix pourrie si une meilleure existe. */
+      function voiceHeuristicScore(v) {
+        const n = (v.name + " " + (v.voiceURI || "")).toLowerCase();
+        let s = 0;
+        if (n.includes("neural")) s += 90;
+        if (n.includes("natural")) s += 55;
+        if (
+          n.includes("premium") ||
+          n.includes("enhanced") ||
+          n.includes("hd ")
+        )
+          s += 45;
+        if (n.includes("google")) s += 40;
+        if (
+          n.includes("microsoft") ||
+          n.includes("hortense") ||
+          n.includes("julie") ||
+          n.includes("paul ")
+        )
+          s += 35;
+        if (
+          n.includes("apple") ||
+          n.includes("amelie") ||
+          n.includes("thomas ")
+        )
+          s += 25;
+        if (n.includes("samantha")) s += 15;
+        if (
+          n.includes("pico") ||
+          n.includes("espeak") ||
+          n.includes("festival ")
+        )
+          s -= 80;
+        return s;
+      }
+
+      function pickAutoFrenchVoice() {
+        const list = getSpeechVoices().filter(isFrenchVoice);
+        if (!list.length) {
+          return null;
+        }
+        return list
+          .slice()
+          .sort((a, b) => voiceHeuristicScore(b) - voiceHeuristicScore(a))[0];
+      }
+
+      function resolveCurrentVoice() {
+        const val = voiceSelectEl.value;
+        if (val && val !== "__auto__") {
+          return (
+            getSpeechVoices().find(
+              (v) => (v.voiceURI && v.voiceURI === val) || v.name === val,
+            ) || null
+          );
+        }
+        return pickAutoFrenchVoice();
+      }
+
+      function speakProchainArret(nom, forTest) {
+        if (!forTest && !voiceEnabledEl.checked) {
+          return;
+        }
+        if (!nom) {
+          return;
+        }
+        if (typeof window === "undefined" || !window.speechSynthesis) {
+          return;
+        }
+        const voice = resolveCurrentVoice();
+        try {
+          window.speechSynthesis.cancel();
+        } catch (e) {
+          // ignore
+        }
+        const u = new SpeechSynthesisUtterance(`Prochain arrêt, ${nom}.`);
+        if (voice) {
+          u.voice = voice;
+          u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
+        } else {
+          // Fallback: on laisse le moteur choisir la voix systeme.
+          u.lang = "fr-FR";
+        }
+        u.rate = 0.92;
+        u.pitch = 1.0;
+        u.volume = 1.0;
+        window.speechSynthesis.speak(u);
+      }
+
+      function resyncVoixForPosition(d) {
+        if (
+          !stopMetersAlong.length ||
+          !currentPattern ||
+          !currentPattern.stops
+        ) {
+          return;
+        }
+        const n = currentPattern.stops.length;
+        for (let i = 0; i < n - 1; i++) {
+          if (d > (stopMetersAlong[i] || 0) + 0.5) {
+            voixAnnounced.add(`d${i}`);
+          }
+          if (i < n - 1) {
+            const mid =
+              ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
+            if (d > mid + 0.5) {
+              voixAnnounced.add(`m${i}`);
+            }
+          }
+        }
+      }
+
+      function maybeAnnounceProchainArret(prev, curr) {
+        if (!voiceEnabledEl.checked || !currentPattern) {
+          return;
+        }
+        const mode = voiceModeEl.value;
+        if (!mode) {
+          return;
+        }
+        const stops = currentPattern.stops;
+        if (!stops || stops.length < 2) {
+          return;
+        }
+        if (prev == null || curr == null || prev > curr) {
+          return;
+        }
+        for (let i = 0; i < stops.length - 1; i++) {
+          const nextName = stops[i + 1] ? stops[i + 1].stop_name : "";
+          if (mode === "depart" || mode === "both") {
+            const t = stopMetersAlong[i] || 0;
+            if (prev < t && curr >= t && !voixAnnounced.has(`d${i}`)) {
+              voixAnnounced.add(`d${i}`);
+              speakProchainArret(nextName);
+            }
+          }
+          if (mode === "mid" || mode === "both") {
+            const t =
+              ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
+            if (prev < t && curr >= t && !voixAnnounced.has(`m${i}`)) {
+              voixAnnounced.add(`m${i}`);
+              speakProchainArret(nextName);
+            }
+          }
+        }
+      }
+
+      function announceInitialNextStopIfNeeded() {
+        if (
+          !voiceEnabledEl.checked ||
+          !currentPattern?.stops ||
+          currentPattern.stops.length < 2
+        ) {
+          return;
+        }
+        const mode = voiceModeEl.value;
+        if (voixAnnounced.has("d0")) {
+          return;
+        }
+        voixAnnounced.add("d0");
+        speakProchainArret(currentPattern.stops[1].stop_name);
+      }
+
+      function refreshVoiceSelect() {
+        if (!voiceSelectEl) {
+          return;
+        }
+        const before = voiceSelectEl.value;
+        const voices = getSpeechVoices();
+        const saved = (() => {
+          try {
+            return localStorage.getItem(LS_KEY_VOICE);
+          } catch (e) {
+            return null;
+          }
+        })();
+        voiceSelectEl.innerHTML = "";
+        const oAuto = document.createElement("option");
+        oAuto.value = "__auto__";
+        oAuto.textContent = "Automatique (meilleure voix fr disponible)";
+        voiceSelectEl.appendChild(oAuto);
+        const fr = voices.filter(isFrenchVoice);
+        fr.sort((a, b) => a.name.localeCompare(b.name, "fr"));
+        for (const v of fr) {
+          const o = document.createElement("option");
+          o.value = v.voiceURI || v.name;
+          o.textContent = `${v.name} (${v.lang || "fr"})`;
+          voiceSelectEl.appendChild(o);
+        }
+        const tryVal =
+          before && fr.some((x) => (x.voiceURI || x.name) === before)
+            ? before
+            : saved && fr.some((x) => (x.voiceURI || x.name) === saved)
+              ? saved
+              : "__auto__";
+        voiceSelectEl.value = fr.length ? tryVal : "__auto__";
+      }
+
+      function reverseCoordinates(coords) {
+        const copy = [...coords];
+        copy.reverse();
+        return copy;
+      }
+
+      function getNetworkGeometryByLine(features, pattern) {
+        if (!features.length) return null;
+
+        const line = String(pattern.route_short_name);
+        const start = pattern.coordinates[0];
+        const end = pattern.coordinates[pattern.coordinates.length - 1];
+
+        const candidates = features.filter(
+          (f) => String(f.line_code) === line && f.coordinates?.length > 1,
+        );
+        if (!candidates.length) return null;
+
+        let best = null;
+        let bestScore = Number.POSITIVE_INFINITY;
+
+        for (const candidate of candidates) {
+          const coords = candidate.coordinates;
+          const first = coords[0];
+          const last = coords[coords.length - 1];
+
+          const directScore =
+            pointDistance(start, first) + pointDistance(end, last);
+          const reverseScore =
+            pointDistance(start, last) + pointDistance(end, first);
+
+          if (directScore < bestScore) {
+            bestScore = directScore;
+            best = { coords, nom_ligne: candidate.nom_ligne };
+          }
+          if (reverseScore < bestScore) {
+            bestScore = reverseScore;
+            best = {
+              coords: reverseCoordinates(coords),
+              nom_ligne: candidate.nom_ligne,
+            };
+          }
+        }
+
+        // Guard against unrelated branches that are too far from GTFS start/end.
+        if (!best || bestScore > 0.08) {
+          return null;
+        }
+        return best;
+      }
+
+      function getBusNetworkGeometry(pattern) {
+        return getNetworkGeometryByLine(
+          data?.bus_network_features || [],
+          pattern,
+        );
+      }
+
+      function getTramNetworkGeometry(pattern) {
+        return getNetworkGeometryByLine(
+          data?.tram_network_features || [],
+          pattern,
+        );
+      }
+
+      function updateStopToStopOverlay() {
+        if (typeof tamUpdateStopToStopGuide !== "function") {
+          stopToStopLayer.clearLayers();
+          if (segmentGuideInfoEl) {
+            segmentGuideInfoEl.textContent = "-";
+          }
+          return;
+        }
+        const info = tamUpdateStopToStopGuide(
+          map,
+          stopToStopLayer,
+          activeCoordinates,
+          pathCumMeters,
+          stopMetersAlong,
+          distanceAlongPathMeters,
+        );
+        if (segmentGuideInfoEl) {
+          if (!info || info.segmentIndex < 0 || info.totalSegments <= 0) {
+            segmentGuideInfoEl.textContent = "-";
+          } else {
+            segmentGuideInfoEl.textContent = `${info.segmentIndex + 1}/${info.totalSegments}`;
+          }
+        }
+      }
+
+      async function setMission(pattern) {
+        currentPattern = pattern;
+        distanceAlongPathMeters = 0;
+        lastRafTime = 0;
+        lastVoiceDistance = 0;
+        voixAnnounced = new Set();
+        resetOpsStateForMission();
+        missionName.textContent = `Ligne ${pattern.route_short_name} | ${pattern.headsign} | ${pattern.variant_name}`;
+
+        const isTram = String(pattern.route_type) === "0";
+        const tramGeom = isTram ? getTramNetworkGeometry(pattern) : null;
+        const busGeom = !isTram ? getBusNetworkGeometry(pattern) : null;
+        if (tramGeom) {
+          activeCoordinates = tramGeom.coords;
+          traceSource = `Reseau tram 3M (${tramGeom.nom_ligne || "ligne"})`;
+        } else if (busGeom) {
+          activeCoordinates = busGeom.coords;
+          traceSource = `Reseau bus 3M (${busGeom.nom_ligne || "ligne"})`;
+        } else {
+          activeCoordinates = await fetchRoadGeometry(pattern);
+          if (
+            activeCoordinates.length &&
+            activeCoordinates !== pattern.coordinates
+          ) {
+            traceSource = "OSRM routier";
+          } else {
+            traceSource = "GTFS arret->arret";
+          }
+          if (!activeCoordinates.length) {
+            activeCoordinates = pattern.coordinates;
+            traceSource = "GTFS arret->arret";
+          }
+        }
+
+        rebuildPathMetrics(activeCoordinates);
+        trimActivePathToPatternStops(pattern);
+        stopMetersAlong = buildStopMetersAlong(pattern);
+
+        fullLine.setLatLngs(activeCoordinates);
+        doneLine.setLatLngs([activeCoordinates[0]]);
+        // Reset explicite a chaque mission pour forcer le redraw du troncon actif.
+        stopToStopLayer.clearLayers();
+        stopToStopLayer.__tamSegIdx = -1;
+
+        updateStopToStopOverlay();
+
+        if (headingUpEl.checked) {
+          updateMapNavigation({ centerCamera: true, zoom: 16 });
+        } else {
+          map.fitBounds(fullLine.getBounds(), { padding: [20, 20] });
+          updateMapNavigation({ centerCamera: false });
+        }
+        announceInitialNextStopIfNeeded();
+        finalizeInitialOpsMode();
+        refreshMapLayout();
+        updateStats();
+      }
+
+      function updateStats() {
+        if (!currentPattern) {
+          return;
+        }
+        const stops = currentPattern.stops;
+        const d = distanceAlongPathMeters;
+        if (!stops || !stops.length) {
+          currentStopEl.textContent = "-";
+          nextStopEl.textContent = "-";
+        } else {
+          const stopIdx = currentStopIndexForDistance(d);
+          const nextIdx = Math.min(stopIdx + 1, stops.length - 1);
+          currentStopEl.textContent = stops[stopIdx]
+            ? stops[stopIdx].stop_name
+            : "-";
+          nextStopEl.textContent = stops[nextIdx]
+            ? stops[nextIdx].stop_name
+            : "-";
+        }
+
+        const pct =
+          pathTotalMeters > 0
+            ? ((d / pathTotalMeters) * 100).toFixed(1)
+            : "0.0";
+        progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
+          BASE_METERS_PER_SECOND * speed * 3.6,
+        )} km/h sim.`;
+      }
+
+      function tickRaf(now) {
+        if (running && currentPattern && pathTotalMeters > 0) {
+          if (lastRafTime === 0) {
+            lastRafTime = now;
+          } else {
+            const prevVoiceD = lastVoiceDistance;
+            const dt = Math.min(0.1, (now - lastRafTime) / 1000);
+            lastRafTime = now;
+            distanceAlongPathMeters = Math.min(
+              pathTotalMeters,
+              distanceAlongPathMeters + BASE_METERS_PER_SECOND * speed * dt,
+            );
+            if (distanceAlongPathMeters >= pathTotalMeters - 0.01) {
+              distanceAlongPathMeters = pathTotalMeters;
+              running = false;
+              lastRafTime = 0;
+            }
+            maybeAnnounceProchainArret(prevVoiceD, distanceAlongPathMeters);
+            lastVoiceDistance = distanceAlongPathMeters;
+            updateMapNavigation();
+            redrawDoneLineAtDistance(distanceAlongPathMeters);
+            updateStopToStopOverlay();
+            updateStats();
+          }
+        }
         requestAnimationFrame(tickRaf);
-      })
-      .catch(err => {
-        alert("Impossible de charger simulation_data.json. Lancez d'abord build_simulator_data.py");
-        console.error(err);
+      }
+
+      document.getElementById("startBtn").addEventListener("click", () => {
+        const startBtn = document.getElementById("startBtn");
+        const p = selectedPattern();
+        if (!p) return;
+        running = false;
+        startBtn.disabled = true;
+        startBtn.textContent = "Chargement trace...";
+        setMission(p)
+          .then(() => {
+            lastRafTime = 0;
+            running = true;
+          })
+          .finally(() => {
+            startBtn.disabled = false;
+            startBtn.textContent = "Demarrer simulation";
+          });
       });
-  </script>
-</body>
+
+      document.getElementById("pauseBtn").addEventListener("click", () => {
+        running = !running;
+        if (!running) {
+          lastRafTime = 0;
+        }
+      });
+
+      checkPlannedBtn.addEventListener("click", () => {
+        if (!currentPattern) return;
+        const yes = window.confirm(
+          "Deviation planifiee detectee pour cette mission ?\n\nOK = activer mode PLANIFIE\nAnnuler = rester dans l'etat actuel",
+        );
+        if (!yes) return;
+        opsState.planifieActive = true;
+        applyOpsStateUi();
+        appendOpsLog("activate_planifie", "Activation manuelle V1");
+      });
+
+      checkRtBtn.addEventListener("click", () => {
+        if (!currentPattern) return;
+        const yes = window.confirm(
+          "Deviation temps reel detectee ?\n\nOK = activer mode RT\nAnnuler = laisser l'etat actuel (ou passer en manuel)",
+        );
+        if (!yes) return;
+        opsState.rtActive = true;
+        applyOpsStateUi();
+        appendOpsLog("activate_rt", "Activation manuelle V1");
+      });
+
+      manualBtn.addEventListener("click", () => {
+        if (!currentPattern) return;
+        opsState.manualActive = true;
+        applyOpsStateUi();
+        appendOpsLog("activate_manual", "Activation conducteur");
+      });
+
+      disableManualBtn.addEventListener("click", () => {
+        if (!currentPattern) return;
+        opsState.manualActive = false;
+        applyOpsStateUi();
+        appendOpsLog("disable_manual", "Retour cascade automatique");
+      });
+
+      disableRtBtn.addEventListener("click", () => {
+        if (!currentPattern) return;
+        opsState.rtActive = false;
+        applyOpsStateUi();
+        appendOpsLog("disable_rt", "Retour planifie/base");
+      });
+
+      returnInitialBtn.addEventListener("click", () => {
+        if (!currentPattern) return;
+        opsState.planifieActive = opsState.initialMode === OPS_MODE.PLANIFIE;
+        opsState.rtActive = opsState.initialMode === OPS_MODE.RT;
+        opsState.manualActive = opsState.initialMode === OPS_MODE.MANUEL;
+        applyOpsStateUi();
+        appendOpsLog("return_initial", "Retour etat initial mission");
+      });
+
+      returnBaseBtn.addEventListener("click", () => {
+        if (!currentPattern) return;
+        opsState.planifieActive = false;
+        opsState.rtActive = false;
+        opsState.manualActive = false;
+        applyOpsStateUi();
+        appendOpsLog("return_base", "Forcage mode BASE");
+      });
+
+      document.getElementById("nextBtn").addEventListener("click", () => {
+        if (!currentPattern || pathTotalMeters <= 0) {
+          return;
+        }
+        const stops = currentPattern.stops;
+        if (!stops || !stops.length || !stopMetersAlong.length) {
+          return;
+        }
+        let idx = currentStopIndexForDistance(distanceAlongPathMeters);
+        idx = Math.min(idx + 1, stops.length - 1);
+        distanceAlongPathMeters = stopMetersAlong[idx];
+        lastRafTime = 0;
+        resyncVoixForPosition(distanceAlongPathMeters);
+        lastVoiceDistance = distanceAlongPathMeters;
+        updateMapNavigation();
+        redrawDoneLineAtDistance(distanceAlongPathMeters);
+        updateStopToStopOverlay();
+        updateStats();
+      });
+
+      document.getElementById("prevBtn").addEventListener("click", () => {
+        if (!currentPattern || pathTotalMeters <= 0) {
+          return;
+        }
+        const stops = currentPattern.stops;
+        if (!stops || !stops.length || !stopMetersAlong.length) {
+          return;
+        }
+        let idx = currentStopIndexForDistance(distanceAlongPathMeters);
+        idx = Math.max(idx - 1, 0);
+        distanceAlongPathMeters = stopMetersAlong[idx];
+        lastRafTime = 0;
+        resyncVoixForPosition(distanceAlongPathMeters);
+        lastVoiceDistance = distanceAlongPathMeters;
+        updateMapNavigation();
+        redrawDoneLineAtDistance(distanceAlongPathMeters);
+        updateStopToStopOverlay();
+        updateStats();
+      });
+
+      speedSelect.addEventListener("change", () => {
+        speed = Number(speedSelect.value) || 1;
+      });
+
+      lineSelect.addEventListener("change", updateHeadsigns);
+      headsignSelect.addEventListener("change", updateVariants);
+
+      function saveMapPrefs() {
+        try {
+          localStorage.setItem(LS_KEY_HEADING, headingUpEl.checked ? "1" : "0");
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      function initVocalUI() {
+        try {
+          const on = localStorage.getItem(LS_KEY_ENABLED);
+          voiceEnabledEl.checked = on === "1" || on === "true";
+          const mode = localStorage.getItem(LS_KEY_MODE);
+          if (mode && ["depart", "mid", "both"].includes(mode)) {
+            voiceModeEl.value = mode;
+          }
+          const h = localStorage.getItem(LS_KEY_HEADING);
+          if (h === "0" || h === "false") {
+            headingUpEl.checked = false;
+          }
+          if (h === "1" || h === "true") {
+            headingUpEl.checked = true;
+          }
+        } catch (e) {
+          // ignore
+        }
+        voiceModeEl.disabled = !voiceEnabledEl.checked;
+        refreshVoiceSelect();
+        if (window.speechSynthesis) {
+          window.speechSynthesis.addEventListener("voiceschanged", () => {
+            refreshVoiceSelect();
+          });
+        }
+      }
+
+      function saveVocalPrefs() {
+        try {
+          localStorage.setItem(
+            LS_KEY_ENABLED,
+            voiceEnabledEl.checked ? "1" : "0",
+          );
+          localStorage.setItem(LS_KEY_MODE, voiceModeEl.value);
+          localStorage.setItem(LS_KEY_VOICE, voiceSelectEl.value);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      voiceEnabledEl.addEventListener("change", () => {
+        voiceModeEl.disabled = !voiceEnabledEl.checked;
+        saveVocalPrefs();
+      });
+      voiceModeEl.addEventListener("change", saveVocalPrefs);
+      voiceSelectEl.addEventListener("change", saveVocalPrefs);
+
+      headingUpEl.addEventListener("change", () => {
+        saveMapPrefs();
+        if (currentPattern && pathTotalMeters > 0) {
+          if (headingUpEl.checked) {
+            updateMapNavigation({ centerCamera: true, zoom: map.getZoom() });
+          } else {
+            if (typeof map.setBearing === "function") {
+              map.setBearing(0);
+            }
+            updateMapNavigation({ centerCamera: true, zoom: map.getZoom() });
+          }
+        } else {
+          if (typeof map.setBearing === "function") {
+            map.setBearing(0);
+          }
+        }
+      });
+
+      voiceTestBtn.addEventListener("click", () => {
+        if (typeof window === "undefined" || !window.speechSynthesis) {
+          return;
+        }
+        if (!getSpeechVoices().length) {
+          refreshVoiceSelect();
+        }
+        if (!resolveCurrentVoice()) {
+          const msg =
+            "Aucune voix utilisable. Verifiez qu'une voix francaise est installee (parametres Windows / navigateur) puis rouvrez la page.";
+          if (voiceNoteEl) {
+            const prev = voiceNoteEl.textContent;
+            voiceNoteEl.textContent = msg;
+            setTimeout(() => {
+              voiceNoteEl.textContent = prev;
+            }, 8000);
+          }
+          return;
+        }
+        speakProchainArret("Test, Place de l'Europe", true);
+      });
+
+      initVocalUI();
+      burgerMenuBtn?.addEventListener("click", () =>
+        openControlPanel("mission"),
+      );
+      recapToggleBtn?.addEventListener("click", () => {
+        const isOn = !!mapRecapEl?.classList.contains("show");
+        setRecapVisible(!isOn);
+      });
+      closeMenuBtn?.addEventListener("click", closeControlPanel);
+      missionTabBtn?.addEventListener("click", () => setPanelTab("mission"));
+      opsTabBtn?.addEventListener("click", () => setPanelTab("ops"));
+      voiceTabBtn?.addEventListener("click", () => setPanelTab("voice"));
+      controlPanelEl?.addEventListener("click", (e) => {
+        if (e.target === controlPanelEl) {
+          closeControlPanel();
+        }
+      });
+      window.addEventListener("resize", refreshMapLayout);
+      window.addEventListener("orientationchange", refreshMapLayout);
+      try {
+        const recapOn = localStorage.getItem(LS_KEY_RECAP);
+        setRecapVisible(recapOn === "1" || recapOn === "true");
+      } catch (e) {
+        setRecapVisible(false);
+      }
+      refreshMapLayout();
+
+      fetch("./simulation_data.json")
+        .then((resp) => resp.json())
+        .then((json) => {
+          data = json;
+          updateLines();
+          requestAnimationFrame(tickRaf);
+          refreshMapLayout();
+        })
+        .catch((err) => {
+          alert(
+            "Impossible de charger simulation_data.json. Lancez d'abord build_simulator_data.py",
+          );
+          console.error(err);
+        });
+    </script>
+  </body>
 </html>
