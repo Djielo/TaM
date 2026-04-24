@@ -182,6 +182,7 @@
         <div><b>Arret courant:</b> <span id="currentStop">-</span></div>
         <div><b>Prochain arret:</b> <span id="nextStop">-</span></div>
         <div><b>Progression:</b> <span id="progressPct" class="mono">0%</span></div>
+        <div><b>Intersections detectees :</b> <span id="multiPassCount" class="mono">-</span></div>
       </div>
     </div>
     <div class="card">
@@ -193,6 +194,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+  <script src="intersections_multipassage.js"></script>
   <script>
     let data = null;
     let filteredByLine = [];
@@ -237,6 +239,7 @@
     const currentStopEl = document.getElementById("currentStop");
     const nextStopEl = document.getElementById("nextStop");
     const progressPctEl = document.getElementById("progressPct");
+    const multiPassCountEl = document.getElementById("multiPassCount");
 
     const map = L.map("map", {
       rotate: true,
@@ -256,6 +259,8 @@
     });
     let fullLine = L.polyline([], { color: "#005ca9", weight: 6, opacity: 0.6 }).addTo(map);
     let doneLine = L.polyline([], { color: "#9aa3ad", weight: 8, opacity: 0.95 }).addTo(map);
+    /** Couche provisoire : tracé qui se recoupe / même zone reparcourue (voir intersections_multipassage.js) */
+    const multiPassLayer = L.layerGroup().addTo(map);
     let marker = L.marker([43.61, 3.88], { icon: navIcon, zIndexOffset: 800 }).addTo(map);
 
     function uniqueValues(arr, getter) {
@@ -797,6 +802,17 @@
 
       fullLine.setLatLngs(activeCoordinates);
       doneLine.setLatLngs([activeCoordinates[0]]);
+
+      let nMulti = 0;
+      if (typeof tamUpdateMultiPassDebug === "function") {
+        nMulti = tamUpdateMultiPassDebug(map, multiPassLayer, activeCoordinates);
+      } else {
+        multiPassLayer.clearLayers();
+      }
+      if (multiPassCountEl) {
+        multiPassCountEl.textContent = nMulti ? String(nMulti) : "0";
+      }
+
       if (headingUpEl.checked) {
         updateMapNavigation({ centerCamera: true, zoom: 16 });
       } else {
