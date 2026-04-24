@@ -536,12 +536,29 @@
       return best;
     }
 
+    function normalizeStopMeters(raw, total) {
+      if (!raw.length) return [];
+      if (raw.length === 1) return [0];
+      const eps = 0.5; // metres mini entre deux arrets consecutifs
+      const out = new Array(raw.length);
+      out[0] = 0;
+      for (let i = 1; i < raw.length; i++) {
+        const remaining = raw.length - 1 - i;
+        const maxAllowed = Math.max(0, total - remaining * eps);
+        const candidate = Math.min(maxAllowed, Math.max(out[i - 1] + eps, raw[i]));
+        out[i] = Math.max(out[i - 1], candidate);
+      }
+      out[out.length - 1] = total;
+      return out;
+    }
+
     function buildStopMetersAlong(pattern) {
       const stops = pattern?.stops;
       if (!stops || !stops.length) {
         return [];
       }
-      return stops.map(s => distanceAlongPathForLatLng(s.lat, s.lon));
+      const raw = stops.map(s => distanceAlongPathForLatLng(s.lat, s.lon));
+      return normalizeStopMeters(raw, pathTotalMeters);
     }
 
     function pointAtDistanceMeters(d) {
@@ -574,6 +591,49 @@
       const segM = d1 - d0;
       const t = segM < 1e-6 ? 0 : (d - d0) / segM;
       return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+    }
+
+    function pathWindowBetweenMeters(d0, d1) {
+      const coords = activeCoordinates;
+      const cum = pathCumMeters;
+      if (!coords || coords.length < 2 || !cum.length) {
+        return [];
+      }
+      const total = pathTotalMeters;
+      const from = Math.max(0, Math.min(total, d0));
+      const to = Math.max(0, Math.min(total, d1));
+      if (Math.abs(to - from) < 1e-3) {
+        return [];
+      }
+      const lo = Math.min(from, to);
+      const hi = Math.max(from, to);
+      const pts = [pointAtDistanceMeters(lo)];
+      for (let i = 1; i < coords.length - 1; i++) {
+        if (cum[i] > lo && cum[i] < hi) {
+          pts.push(coords[i]);
+        }
+      }
+      pts.push(pointAtDistanceMeters(hi));
+      if (from > to) {
+        pts.reverse();
+      }
+      return pts;
+    }
+
+    function trimActivePathToPatternStops(pattern) {
+      const stops = pattern?.stops || [];
+      if (!stops.length || activeCoordinates.length < 2 || pathTotalMeters <= 0) {
+        return;
+      }
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const dStart = distanceAlongPathForLatLng(first.lat, first.lon);
+      const dEnd = distanceAlongPathForLatLng(last.lat, last.lon);
+      const cropped = pathWindowBetweenMeters(dStart, dEnd);
+      if (cropped.length >= 2) {
+        activeCoordinates = cropped;
+        rebuildPathMetrics(activeCoordinates);
+      }
     }
 
     /** Cap (degres, horaire depuis le nord) entre deux points [lat, lon]. */
@@ -756,17 +816,19 @@
         return;
       }
       const voice = resolveCurrentVoice();
-      if (!voice) {
-        return;
-      }
       try {
         window.speechSynthesis.cancel();
       } catch (e) {
         // ignore
       }
       const u = new SpeechSynthesisUtterance(`Prochain arrêt, ${nom}.`);
-      u.voice = voice;
-      u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
+      if (voice) {
+        u.voice = voice;
+        u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
+      } else {
+        // Fallback: on laisse le moteur choisir la voix systeme.
+        u.lang = "fr-FR";
+      }
       u.rate = 0.92;
       u.pitch = 1.0;
       u.volume = 1.0;
@@ -793,9 +855,6 @@
 
     function maybeAnnounceProchainArret(prev, curr) {
       if (!voiceEnabledEl.checked || !currentPattern) {
-        return;
-      }
-      if (!getSpeechVoices().length || !resolveCurrentVoice()) {
         return;
       }
       const mode = voiceModeEl.value;
@@ -826,6 +885,18 @@
           }
         }
       }
+    }
+
+    function announceInitialNextStopIfNeeded() {
+      if (!voiceEnabledEl.checked || !currentPattern?.stops || currentPattern.stops.length < 2) {
+        return;
+      }
+      const mode = voiceModeEl.value;
+      if (voixAnnounced.has("d0")) {
+        return;
+      }
+      voixAnnounced.add("d0");
+      speakProchainArret(currentPattern.stops[1].stop_name);
     }
 
     function refreshVoiceSelect() {
@@ -968,10 +1039,14 @@
       }
 
       rebuildPathMetrics(activeCoordinates);
+      trimActivePathToPatternStops(pattern);
       stopMetersAlong = buildStopMetersAlong(pattern);
 
       fullLine.setLatLngs(activeCoordinates);
       doneLine.setLatLngs([activeCoordinates[0]]);
+      // Reset explicite a chaque mission pour forcer le redraw du troncon actif.
+      stopToStopLayer.clearLayers();
+      stopToStopLayer.__tamSegIdx = -1;
 
       updateStopToStopOverlay();
 
@@ -981,6 +1056,7 @@
         map.fitBounds(fullLine.getBounds(), { padding: [20, 20] });
         updateMapNavigation({ centerCamera: false });
       }
+      announceInitialNextStopIfNeeded();
       updateStats();
     }
 
