@@ -144,8 +144,11 @@
       .panel-sheet {
         max-width: 760px;
         margin: 0 auto;
-        background: #fff;
+        background: rgba(255, 255, 255, 0.58);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
         border-radius: 12px;
+        border: 1px solid rgba(215, 221, 228, 0.9);
         padding: 10px;
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
       }
@@ -243,6 +246,106 @@
           max-height: calc(100% - 44px);
         }
       }
+      .line-select-dual {
+        position: relative;
+      }
+      /* Le menu <select> natif sur mobile n’affiche presque jamais les couleurs des
+         <option> : on affiche un sélecteur HTML (pastilles) avec les mêmes teintes
+         qu’en simulation bureau. */
+      @media (max-width: 900px) {
+        .line-select-native {
+          position: absolute !important;
+          width: 1px !important;
+          height: 1px !important;
+          padding: 0 !important;
+          margin: -1px !important;
+          overflow: hidden !important;
+          clip: rect(0, 0, 0, 0) !important;
+          clip-path: inset(50%) !important;
+          border: 0 !important;
+          white-space: nowrap !important;
+          pointer-events: none;
+        }
+        .line-select-custom {
+          display: block;
+        }
+        .line-select-trigger {
+          position: relative;
+          width: 100%;
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          border-radius: 8px;
+          border: 1px solid #bbc4cf;
+          padding: 10px 12px;
+          font-size: 16px;
+          background: #fff;
+          color: #1b1f24;
+          font-weight: 600;
+          text-align: left;
+          box-sizing: border-box;
+        }
+        .line-select-caret {
+          flex-shrink: 0;
+          opacity: 0.7;
+        }
+        .line-select-listbox[hidden] {
+          display: none !important;
+        }
+        .line-select-listbox {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: calc(100% + 4px);
+          z-index: 5000;
+          max-height: min(50vh, 360px);
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          background: rgba(255, 255, 255, 0.98);
+          border: 1px solid #c5cdd6;
+          border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+          padding: 8px 10px 10px;
+        }
+        .line-pick-sep {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #64748b;
+          font-weight: 700;
+          padding: 8px 4px 4px;
+          margin: 0;
+        }
+        .line-pick-sep:first-child {
+          padding-top: 0;
+        }
+        .line-pick-row {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 12px 14px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          border-radius: 8px;
+          margin: 0 0 6px 0;
+          font-size: 16px;
+          line-height: 1.2;
+          cursor: pointer;
+          background: #e8ecf1;
+          color: #1b1f24;
+          font-weight: 600;
+          box-sizing: border-box;
+        }
+        .line-pick-row:active {
+          filter: brightness(0.95);
+        }
+      }
+      @media (min-width: 901px) {
+        .line-select-custom {
+          display: none !important;
+        }
+      }
     </style>
   </head>
   <body>
@@ -275,15 +378,38 @@
               </button>
             </div>
             <div class="row panel-section panel-mission">
-              <div class="grow">
+              <div class="grow line-field">
                 <label for="lineSelect">1) Ligne</label>
-                <select id="lineSelect"></select>
+                <div class="line-select-dual" id="lineSelectDual">
+                  <select id="lineSelect" class="line-select-native"></select>
+                  <div class="line-select-custom" id="lineSelectCustom">
+                    <button
+                      type="button"
+                      class="line-select-trigger"
+                      id="lineSelectTrigger"
+                      aria-haspopup="listbox"
+                      aria-expanded="false"
+                      aria-controls="lineSelectListbox"
+                    >
+                      <span id="lineSelectTriggerLabel" class="line-select-trigger-txt"
+                        >—</span
+                      >
+                      <span class="line-select-caret" aria-hidden="true">▾</span>
+                    </button>
+                    <div
+                      class="line-select-listbox"
+                      id="lineSelectListbox"
+                      role="listbox"
+                      hidden
+                    ></div>
+                  </div>
+                </div>
               </div>
-              <div class="grow">
+              <div class="grow" id="headsignField">
                 <label for="headsignSelect">2) Terminus / sens</label>
                 <select id="headsignSelect"></select>
               </div>
-              <div class="grow">
+              <div class="grow" id="variantField">
                 <label for="variantSelect">3) Variante</label>
                 <select id="variantSelect"></select>
               </div>
@@ -555,6 +681,11 @@
       let activeStopMetersForGuide = [];
 
       const lineSelect = document.getElementById("lineSelect");
+      const lineSelectDual = document.getElementById("lineSelectDual");
+      const lineSelectTrigger = document.getElementById("lineSelectTrigger");
+      const lineSelectTriggerLabel = document.getElementById("lineSelectTriggerLabel");
+      const lineSelectListbox = document.getElementById("lineSelectListbox");
+      let lineListboxOpen = false;
       const controlPanelEl = document.getElementById("controlPanel");
       const mapRecapEl = document.getElementById("mapRecap");
       const recapToggleBtn = document.getElementById("recapToggleBtn");
@@ -669,6 +800,7 @@
       }
 
       function closeControlPanel() {
+        setLineListboxOpen(false);
         controlPanelEl?.classList.remove("open");
         refreshMapLayout();
       }
@@ -1237,6 +1369,109 @@
         return `#${v}`;
       }
 
+      /**
+       * Lignes au fond souvent très clair (données GTFS) : libellé en foncé pour le contraste.
+       * T3 (tram) + bus listés.
+       */
+      const LINE_LABEL_DARK_TEXT_NUMERIC = new Set([
+        "8",
+        "10",
+        "11",
+        "14",
+        "17",
+        "19",
+        "21",
+        "22",
+        "30",
+        "33",
+        "40",
+        "43",
+        "52",
+        "53",
+      ]);
+
+      function lineLabelPrefersDarkText(item) {
+        if (!item) {
+          return false;
+        }
+        const code = String(item.route_short_name || "").trim();
+        if (String(item.route_type) === "0" && code === "3") {
+          return true;
+        }
+        return LINE_LABEL_DARK_TEXT_NUMERIC.has(code);
+      }
+
+      function lineLabelContrastTextColor(item) {
+        if (lineLabelPrefersDarkText(item)) {
+          return "#1b1f24";
+        }
+        return "#ffffff";
+      }
+
+      /**
+       * Même logique de couleurs qu’en bureau : option native (PC) + pastilles
+       * (mobile, sélecteur custom).
+       * @param {"option"|"row"|"trigger"|"missionSelect"} context
+       */
+      function applyLineColorStyling(el, item, context) {
+        const bg =
+          forcedLineColor(item?.route_short_name) ||
+          lineColorHex(item?.route_color);
+        if (bg) {
+          const tx = lineLabelContrastTextColor(item);
+          el.style.backgroundColor = bg;
+          el.style.color = tx;
+          el.style.fontWeight = "700";
+          el.style.setProperty("-webkit-text-fill-color", tx);
+          if (context === "missionSelect") {
+            el.style.border = "1px solid rgba(0, 0, 0, 0.2)";
+            /* Bande couleur ligne uniquement sur le menu, pas sur le label (évite le « rose » à côté du 2 / 3). */
+            el.style.borderLeft = `4px solid ${bg}`;
+            el.classList.add("line-themed-select");
+          }
+          return;
+        }
+        el.style.backgroundColor = "";
+        el.style.color = "";
+        el.style.fontWeight = "";
+        el.style.removeProperty("-webkit-text-fill-color");
+        if (context === "missionSelect") {
+          el.style.border = "";
+          el.style.borderLeft = "";
+          el.classList.remove("line-themed-select");
+        }
+        if (context === "row") {
+          el.style.backgroundColor = "#e8ecf1";
+          el.style.color = "#1b1f24";
+          el.style.fontWeight = "600";
+        } else if (context === "trigger") {
+          el.style.backgroundColor = "#ffffff";
+          el.style.color = "#1b1f24";
+          el.style.fontWeight = "600";
+        } else if (context === "missionSelect") {
+          el.style.backgroundColor = "#ffffff";
+          el.style.color = "#1b1f24";
+        }
+      }
+
+      function applyLineThemeToMissionSubselects(item) {
+        if (!headsignSelect || !variantSelect) {
+          return;
+        }
+        const payload =
+          item && item.route_short_name != null ? item : { route_short_name: "" };
+        applyLineColorStyling(headsignSelect, payload, "missionSelect");
+        applyLineColorStyling(variantSelect, payload, "missionSelect");
+        const hf = document.getElementById("headsignField");
+        const vf = document.getElementById("variantField");
+        if (hf) {
+          hf.style.boxShadow = "";
+        }
+        if (vf) {
+          vf.style.boxShadow = "";
+        }
+      }
+
       function forcedLineColor(code) {
         const key = String(code || "")
           .trim()
@@ -1304,60 +1539,33 @@
           ),
         };
 
-        function addSpacer(label) {
+        /**
+         * Note mobile (Chrome / WebView) : des options "fantôme" (spacer) entre
+         * chaque vraie ligne s'affichent comme des pastilles vides + décalage
+         * des libellés. On regroupe donc par <optgroup> sans option décorative.
+         */
+        function appendLineOption(og, item) {
           const opt = document.createElement("option");
-          opt.value = "";
-          opt.textContent = label || " ";
-          opt.disabled = true;
-          opt.style.color = "#68707a";
-          opt.style.fontStyle = "italic";
-          lineSelect.appendChild(opt);
+          opt.value = String(lineOptionLookup.length);
+          opt.textContent = displayLineLabel(item);
+          applyLineColorStyling(opt, item, "option");
+          og.appendChild(opt);
+          lineOptionLookup.push(item);
         }
 
-        function addTinySpacer() {
-          const opt = document.createElement("option");
-          opt.value = "";
-          opt.textContent = " ";
-          opt.disabled = true;
-          opt.style.fontSize = "1px";
-          opt.style.lineHeight = "1px";
-          opt.style.padding = "0";
-          opt.style.margin = "0";
-          opt.style.color = "transparent";
-          lineSelect.appendChild(opt);
-        }
-
-        function appendGroup(items) {
+        function addLineGroup(label, items) {
+          if (!items || !items.length) return;
+          const og = document.createElement("optgroup");
+          og.label = label;
           for (const item of items) {
-            const opt = document.createElement("option");
-            opt.value = String(lineOptionLookup.length);
-            opt.textContent = displayLineLabel(item);
-            const bg =
-              forcedLineColor(item?.route_short_name) ||
-              lineColorHex(item?.route_color);
-            if (bg) {
-              opt.style.backgroundColor = bg;
-              opt.style.color = "#ffffff";
-              opt.style.fontWeight = "700";
-            }
-            lineSelect.appendChild(opt);
-            lineOptionLookup.push(item);
-            addTinySpacer();
+            appendLineOption(og, item);
           }
+          lineSelect.appendChild(og);
         }
 
-        appendGroup(groups.tram);
-        if (
-          groups.tram.length &&
-          (groups.navette.length || groups.bus.length)
-        ) {
-          addSpacer("──");
-        }
-        appendGroup(groups.navette);
-        if (groups.navette.length && groups.bus.length) {
-          addSpacer("──");
-        }
-        appendGroup(groups.bus);
+        addLineGroup("Tram", groups.tram);
+        addLineGroup("Navette", groups.navette);
+        addLineGroup("Bus", groups.bus);
 
         // Positionner sur la premiere vraie ligne selectable.
         for (let i = 0; i < lineSelect.options.length; i++) {
@@ -1366,7 +1574,89 @@
             break;
           }
         }
+        rebuildLineCustomList(groups);
         lineSelect.dispatchEvent(new Event("change"));
+      }
+
+      function rebuildLineCustomList(groups) {
+        if (!lineSelectListbox) {
+          return;
+        }
+        lineSelectListbox.innerHTML = "";
+        if (!lineOptionLookup.length || !groups) {
+          if (lineSelectTrigger) {
+            lineSelectTrigger.setAttribute("aria-expanded", "false");
+          }
+          if (lineSelectListbox) {
+            lineSelectListbox.hidden = true;
+          }
+          lineListboxOpen = false;
+          return;
+        }
+        const sections = [
+          { label: "Tram", items: groups.tram },
+          { label: "Navette", items: groups.navette },
+          { label: "Bus", items: groups.bus },
+        ];
+        for (const sec of sections) {
+          if (!sec.items || !sec.items.length) {
+            continue;
+          }
+          const sep = document.createElement("div");
+          sep.className = "line-pick-sep";
+          sep.textContent = sec.label;
+          lineSelectListbox.appendChild(sep);
+          for (const item of sec.items) {
+            const idx = lineOptionLookup.indexOf(item);
+            if (idx < 0) {
+              continue;
+            }
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "line-pick-row";
+            btn.setAttribute("data-line-idx", String(idx));
+            btn.setAttribute("role", "option");
+            btn.textContent = displayLineLabel(item);
+            applyLineColorStyling(btn, item, "row");
+            lineSelectListbox.appendChild(btn);
+          }
+        }
+        setLineListboxOpen(false);
+      }
+
+      function setLineListboxOpen(open) {
+        if (!lineSelectListbox || !lineSelectTrigger) {
+          lineListboxOpen = false;
+          if (lineSelectListbox) {
+            lineSelectListbox.hidden = true;
+          }
+          return;
+        }
+        lineListboxOpen = open;
+        lineSelectListbox.hidden = !open;
+        lineSelectTrigger.setAttribute("aria-expanded", open ? "true" : "false");
+        const v = String(lineSelect.value);
+        for (const row of lineSelectListbox.querySelectorAll(".line-pick-row")) {
+          const ok = row.getAttribute("data-line-idx") === v;
+          row.setAttribute("aria-selected", ok ? "true" : "false");
+        }
+      }
+
+      function syncLineCustomTrigger() {
+        if (lineSelectTrigger && lineSelectTriggerLabel) {
+          const val = lineSelect.value;
+          const item = lineOptionLookup[Number(val)];
+          if (!item) {
+            lineSelectTriggerLabel.textContent = "—";
+            applyLineColorStyling(lineSelectTrigger, { route_short_name: "" }, "trigger");
+          } else {
+            lineSelectTriggerLabel.textContent = displayLineLabel(item);
+            applyLineColorStyling(lineSelectTrigger, item, "trigger");
+          }
+        }
+        applyLineThemeToMissionSubselects(
+          lineOptionLookup[Number(lineSelect.value)] || null,
+        );
       }
 
       function updateHeadsigns() {
@@ -2388,6 +2678,41 @@
       });
 
       lineSelect.addEventListener("change", updateHeadsigns);
+      lineSelect.addEventListener("change", syncLineCustomTrigger);
+      lineSelectTrigger?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!lineSelectListbox) {
+          return;
+        }
+        setLineListboxOpen(!lineListboxOpen);
+      });
+      lineSelectListbox?.addEventListener("click", (e) => {
+        const row = e.target.closest?.(".line-pick-row");
+        if (!row) {
+          return;
+        }
+        e.preventDefault();
+        const idx = row.getAttribute("data-line-idx");
+        if (idx == null) {
+          return;
+        }
+        lineSelect.value = String(idx);
+        lineSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        setLineListboxOpen(false);
+      });
+      document.addEventListener("click", (e) => {
+        if (!lineListboxOpen) {
+          return;
+        }
+        if (lineSelectDual && !lineSelectDual.contains(e.target)) {
+          setLineListboxOpen(false);
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && lineListboxOpen) {
+          setLineListboxOpen(false);
+        }
+      });
       headsignSelect.addEventListener("change", updateVariants);
       variantSelect.addEventListener("change", () => {
         previewSelectedMission().catch((e) => {
