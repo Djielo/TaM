@@ -27,6 +27,9 @@
         margin-bottom: 10px;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
       }
+      .card--header {
+        padding-bottom: 4px;
+      }
       .row {
         display: flex;
         gap: 8px;
@@ -100,7 +103,67 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
+      }
+      .mission-context-bar {
+        display: block;
+        max-width: 100%;
+        margin: 0 0 0 0;
+        font-size: 14px;
+        line-height: 1.35;
+        min-height: 1.4em;
+      }
+      .mission-context-bar[hidden] {
+        display: none !important;
+      }
+      .mission-context-scroll {
+        max-width: 100%;
+        overflow-x: hidden;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        border-radius: 6px;
+        outline: none;
+      }
+      .mission-context-scroll--pan {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        box-shadow: inset 0 0 0 1px rgba(0, 92, 169, 0.22);
+        padding: 1px 0;
+        cursor: grab;
+      }
+      .mission-context-scroll--pan:active {
+        cursor: grabbing;
+      }
+      .mission-context-row-inner {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+      }
+      .mission-context-scroll--pan .mission-context-row-inner {
+        width: max-content;
+        min-width: 100%;
+      }
+      .mission-context-pill {
+        flex: 0 0 auto;
+      }
+      .mission-context-dest {
+        flex: 1 1 auto;
+        min-width: 0;
+        color: #1b1f24;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mission-context-scroll--pan .mission-context-dest {
+        flex: 0 0 auto;
+        min-width: 0;
+        overflow: visible;
+        text-overflow: clip;
       }
       .title-inline {
         margin: 0;
@@ -350,7 +413,7 @@
   </head>
   <body>
     <div class="container">
-      <div class="card">
+      <div class="card card--header">
         <div class="burger-row">
           <h2 class="title-inline">SAE TAM</h2>
           <div class="header-actions">
@@ -360,6 +423,27 @@
             <button id="burgerMenuBtn" type="button" class="burger-btn">
               ☰ Menu
             </button>
+          </div>
+        </div>
+        <div
+          id="missionContextBar"
+          class="mission-context-bar"
+          role="status"
+          aria-live="polite"
+          hidden
+        >
+          <div
+            class="mission-context-scroll"
+            id="missionContextScroll"
+            role="group"
+            tabindex="0"
+            title="Appui long, puis defiler sur le cote pour lire la direction."
+            aria-label="Ligne et direction, appui long pour defiler le texte"
+          >
+            <div class="mission-context-row-inner">
+              <span id="missionContextPill" class="mission-context-pill"></span
+              ><span id="missionContextDest" class="mission-context-dest"></span>
+            </div>
           </div>
         </div>
         <div id="controlPanel" class="control-panel">
@@ -705,6 +789,111 @@
       const headingUpEl = document.getElementById("headingUp");
 
       const missionName = document.getElementById("missionName");
+      const missionContextBar = document.getElementById("missionContextBar");
+      const missionContextScroll = document.getElementById("missionContextScroll");
+      const missionContextPill = document.getElementById("missionContextPill");
+      const missionContextDest = document.getElementById("missionContextDest");
+      const MISSION_PAN_LONG_MS = 700;
+      let missionContextPanTimer = null;
+
+      function clearMissionContextPanTimer() {
+        if (missionContextPanTimer) {
+          clearTimeout(missionContextPanTimer);
+          missionContextPanTimer = null;
+        }
+      }
+
+      function setupMissionContextPan() {
+        const el = missionContextScroll;
+        if (!el) {
+          return;
+        }
+        function armPanMode() {
+          if (missionContextBar && missionContextBar.hidden) {
+            return;
+          }
+          el.classList.add("mission-context-scroll--pan");
+          try {
+            el.focus({ preventScroll: true });
+          } catch (e) {
+            el.focus();
+          }
+        }
+        let touchArmStartX = 0;
+        let touchArmStartY = 0;
+        el.addEventListener(
+          "touchstart",
+          (e) => {
+            if (el.classList.contains("mission-context-scroll--pan")) {
+              return;
+            }
+            if (e.touches.length !== 1) {
+              return;
+            }
+            const t0 = e.touches[0];
+            touchArmStartX = t0.clientX;
+            touchArmStartY = t0.clientY;
+            clearMissionContextPanTimer();
+            missionContextPanTimer = setTimeout(armPanMode, MISSION_PAN_LONG_MS);
+          },
+          { passive: true },
+        );
+        const cancelPanArm = () => clearMissionContextPanTimer();
+        function onTouchOrPanEnd() {
+          if (el.classList.contains("mission-context-scroll--pan")) {
+            el.classList.remove("mission-context-scroll--pan");
+            el.scrollLeft = 0;
+          }
+          clearMissionContextPanTimer();
+        }
+        el.addEventListener(
+          "touchmove",
+          (e) => {
+            if (el.classList.contains("mission-context-scroll--pan")) {
+              return;
+            }
+            if (e.touches.length !== 1) {
+              cancelPanArm();
+              return;
+            }
+            const t0 = e.touches[0];
+            const dx = Math.abs(t0.clientX - touchArmStartX);
+            const dy = Math.abs(t0.clientY - touchArmStartY);
+            if (dx > 14 || dy > 14) {
+              cancelPanArm();
+            }
+          },
+          { passive: true },
+        );
+        el.addEventListener("touchend", onTouchOrPanEnd, { passive: true });
+        el.addEventListener("touchcancel", onTouchOrPanEnd, { passive: true });
+        el.addEventListener("mousedown", (e) => {
+          if (e.button !== 0) {
+            return;
+          }
+          if (el.classList.contains("mission-context-scroll--pan")) {
+            return;
+          }
+          clearMissionContextPanTimer();
+          missionContextPanTimer = setTimeout(armPanMode, MISSION_PAN_LONG_MS);
+        });
+        el.addEventListener("mouseup", (e) => {
+          if (e.button !== 0) {
+            return;
+          }
+          onTouchOrPanEnd();
+        });
+        el.addEventListener("mouseleave", () => {
+          clearMissionContextPanTimer();
+        });
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && el.classList.contains("mission-context-scroll--pan")) {
+            el.classList.remove("mission-context-scroll--pan");
+            el.scrollLeft = 0;
+          }
+        });
+      }
+      setupMissionContextPan();
       const modeActiveEl = document.getElementById("modeActive");
       const modeStatusEl = document.getElementById("modeStatus");
       const currentStopEl = document.getElementById("currentStop");
@@ -1411,7 +1600,7 @@
       /**
        * Même logique de couleurs qu’en bureau : option native (PC) + pastilles
        * (mobile, sélecteur custom).
-       * @param {"option"|"row"|"trigger"|"missionSelect"} context
+       * @param {"option"|"row"|"trigger"|"missionSelect"|"contextPill"} context
        */
       function applyLineColorStyling(el, item, context) {
         const bg =
@@ -1428,6 +1617,15 @@
             /* Bande couleur ligne uniquement sur le menu, pas sur le label (évite le « rose » à côté du 2 / 3). */
             el.style.borderLeft = `4px solid ${bg}`;
             el.classList.add("line-themed-select");
+          } else if (context === "contextPill") {
+            el.style.padding = "3px 10px";
+            el.style.borderRadius = "6px";
+            el.style.display = "inline-block";
+            el.style.verticalAlign = "baseline";
+            el.style.flexShrink = "0";
+            el.style.lineHeight = "1.2";
+            el.style.border = "1px solid rgba(0, 0, 0, 0.12)";
+            el.style.boxSizing = "border-box";
           }
           return;
         }
@@ -1440,6 +1638,16 @@
           el.style.borderLeft = "";
           el.classList.remove("line-themed-select");
         }
+        if (context === "contextPill") {
+          el.style.padding = "";
+          el.style.borderRadius = "";
+          el.style.display = "";
+          el.style.verticalAlign = "";
+          el.style.flexShrink = "";
+          el.style.lineHeight = "";
+          el.style.border = "";
+          el.style.boxSizing = "";
+        }
         if (context === "row") {
           el.style.backgroundColor = "#e8ecf1";
           el.style.color = "#1b1f24";
@@ -1451,6 +1659,18 @@
         } else if (context === "missionSelect") {
           el.style.backgroundColor = "#ffffff";
           el.style.color = "#1b1f24";
+        } else if (context === "contextPill") {
+          el.style.backgroundColor = "#e8ecf1";
+          el.style.color = "#1b1f24";
+          el.style.fontWeight = "600";
+          el.style.padding = "3px 10px";
+          el.style.borderRadius = "6px";
+          el.style.display = "inline-block";
+          el.style.verticalAlign = "baseline";
+          el.style.flexShrink = "0";
+          el.style.lineHeight = "1.2";
+          el.style.border = "1px solid #ccd3db";
+          el.style.boxSizing = "border-box";
         }
       }
 
@@ -1710,12 +1930,67 @@
         fillSelect(variantSelect, filteredByHeadsign, (p) => {
           return `${p.variant_name} - ${p.start_stop} -> ${p.end_stop} (${p.stop_count} arrets)`;
         });
+        updateMissionContextBar();
         if (!running) {
           ensureOpsTargetPattern();
         }
         previewSelectedMission().catch((e) => {
           console.warn("Preview mission failed:", e);
         });
+      }
+
+      /** Texte apres "->" dans l’option 2) Terminus (libelle destination pour le bandeau). */
+      function parseHeadsignForContextBar(optionText) {
+        if (!optionText || !String(optionText).trim()) {
+          return "";
+        }
+        const raw = String(optionText);
+        const idx = raw.indexOf("->");
+        if (idx === -1) {
+          return raw.trim();
+        }
+        return raw.slice(idx + 2).trim();
+      }
+
+      function updateMissionContextBar() {
+        if (!missionContextBar || !missionContextPill || !missionContextDest) {
+          return;
+        }
+        if (typeof data === "undefined" || !data || !lineOptionLookup.length) {
+          if (missionContextScroll) {
+            missionContextScroll.classList.remove("mission-context-scroll--pan");
+            missionContextScroll.scrollLeft = 0;
+          }
+          missionContextBar.hidden = true;
+          return;
+        }
+        const val = lineSelect.value;
+        const item = lineOptionLookup[Number(val)];
+        if (!item) {
+          if (missionContextScroll) {
+            missionContextScroll.classList.remove("mission-context-scroll--pan");
+            missionContextScroll.scrollLeft = 0;
+          }
+          missionContextBar.hidden = true;
+          return;
+        }
+        if (missionContextScroll) {
+          missionContextScroll.classList.remove("mission-context-scroll--pan");
+          missionContextScroll.scrollLeft = 0;
+        }
+        missionContextBar.hidden = false;
+        missionContextPill.textContent = displayLineLabel(item);
+        applyLineColorStyling(missionContextPill, item, "contextPill");
+        const headOpt =
+          headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
+        const dest = parseHeadsignForContextBar(headOpt);
+        if (dest) {
+          missionContextDest.textContent = "\u00a0\u2014\u00a0" + dest;
+          missionContextDest.setAttribute("title", dest);
+        } else {
+          missionContextDest.textContent = "";
+          missionContextDest.removeAttribute("title");
+        }
       }
 
       function selectedPattern() {
