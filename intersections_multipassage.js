@@ -17,11 +17,13 @@
       return global.L.latLng(a).distanceTo(global.L.latLng(b));
     }
     const R = 6371000;
-    const t1 = a[0] * Math.PI / 180;
-    const t2 = b[0] * Math.PI / 180;
+    const t1 = (a[0] * Math.PI) / 180;
+    const t2 = (b[0] * Math.PI) / 180;
     const dt = t2 - t1;
-    const dl = (b[1] - a[1]) * Math.PI / 180;
-    const s = Math.sin(dt / 2) ** 2 + Math.cos(t1) * Math.cos(t2) * Math.sin(dl / 2) ** 2;
+    const dl = ((b[1] - a[1]) * Math.PI) / 180;
+    const s =
+      Math.sin(dt / 2) ** 2 +
+      Math.cos(t1) * Math.cos(t2) * Math.sin(dl / 2) ** 2;
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
   }
 
@@ -34,7 +36,7 @@
   function headingDeg(p1, p2) {
     const y = p2[0] - p1[0];
     const x = p2[1] - p1[1];
-    const deg = Math.atan2(x, y) * 180 / Math.PI;
+    const deg = (Math.atan2(x, y) * 180) / Math.PI;
     return (deg + 360) % 360;
   }
 
@@ -71,7 +73,7 @@
     const b = coords[i + 1];
     const d0 = cum[i];
     const d1 = cum[i + 1];
-    const t = (d1 - d0) < 1e-6 ? 0 : (d - d0) / (d1 - d0);
+    const t = d1 - d0 < 1e-6 ? 0 : (d - d0) / (d1 - d0);
     return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
   }
 
@@ -80,8 +82,14 @@
    * Retourne {latlng, t, u} où t/u sont les positions (0..1) sur chaque segment.
    */
   function segmentIntersection(p1, p2, p3, p4) {
-    const x1 = p1[1], y1 = p1[0], x2 = p2[1], y2 = p2[0];
-    const x3 = p3[1], y3 = p3[0], x4 = p4[1], y4 = p4[0];
+    const x1 = p1[1],
+      y1 = p1[0],
+      x2 = p2[1],
+      y2 = p2[0];
+    const x3 = p3[1],
+      y3 = p3[0],
+      x4 = p4[1],
+      y4 = p4[0];
     const d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
     if (Math.abs(d) < 1e-16) {
       return null;
@@ -95,19 +103,26 @@
     return {
       latlng: [y1 + t * (y2 - y1), x1 + t * (x2 - x1)],
       t,
-      u
+      u,
     };
   }
 
   function segBbox2d(p1, p2) {
     return {
-      minX: Math.min(p1[1], p2[1]), maxX: Math.max(p1[1], p2[1]),
-      minY: Math.min(p1[0], p2[0]), maxY: Math.max(p1[0], p2[0])
+      minX: Math.min(p1[1], p2[1]),
+      maxX: Math.max(p1[1], p2[1]),
+      minY: Math.min(p1[0], p2[0]),
+      maxY: Math.max(p1[0], p2[0]),
     };
   }
 
   function bboxesOverlap2d(a, b) {
-    return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+    return (
+      a.minX <= b.maxX &&
+      a.maxX >= b.minX &&
+      a.minY <= b.maxY &&
+      a.maxY >= b.minY
+    );
   }
 
   function collectCrossings(coords, cum) {
@@ -167,7 +182,7 @@
           center: it.latlng.slice(),
           kinds: new Set([it.kind]),
           items: [it.latlng],
-          meters: typeof it.meter === "number" ? [it.meter] : []
+          meters: typeof it.meter === "number" ? [it.meter] : [],
         });
       }
     }
@@ -222,13 +237,13 @@
         coordinates,
         cum,
         d - INTERSECTION_WINDOW_BEFORE_M,
-        d + INTERSECTION_WINDOW_AFTER_M
+        d + INTERSECTION_WINDOW_AFTER_M,
       );
       if (guide.length >= 2) {
         global.L.polyline(guide, {
           color: "#00a152",
           weight: 7,
-          opacity: 0.95
+          opacity: 0.95,
         }).addTo(layerGroup);
       }
       const m = global.L.circleMarker(c.center, {
@@ -236,9 +251,11 @@
         color: "#b71c1c",
         weight: 2,
         fillColor: "#e53935",
-        fillOpacity: 0.85
+        fillOpacity: 0.85,
       });
-      m.bindPopup("<b>Intersection du tracé</b><br>Fenêtre guidage: -50m / +50m");
+      m.bindPopup(
+        "<b>Intersection du tracé</b><br>Fenêtre guidage: -50m / +50m",
+      );
       m.addTo(layerGroup);
     }
 
