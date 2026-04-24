@@ -2,6 +2,19 @@
 
 Memo dedoublonne des liens utiles pour le projet simulateur.
 
+## Portail API et developpeurs (hors datasets « catalogue »)
+
+- Portail API (acces REST, documentation)  
+  https://portail-api.montpellier3m.fr/
+- Page « Portail API » sur le site Open Data (annonce / contexte)  
+  https://data.montpellier3m.fr/portail-api
+- Espace developpeurs (DKAN, acces API aux jeux de donnees)  
+  https://data.montpellier3m.fr/developpeurs
+- GitLab Open Data 3M (sources / outillage interne, reference)  
+  https://gitlab.montpellier3m.fr/opendata3m
+
+Ces URL completent les **fiches dataset** ci-dessous (GTFS, GTFS-RT, reseau vectoriel).
+
 ## Datasets reseau et arrets
 
 - Reseau bustram  

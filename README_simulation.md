@@ -78,5 +78,4 @@ Section de suivi technique pour controler rapidement la coherence des donnees ch
 - Les variantes sont construites depuis `trips.txt` + `stop_times.txt`.
 - Le GTFS local peut ne pas inclure `shapes.txt`; le trace officiel est alors reconstruit via Open Data reseau (bus/tram) puis OSRM si necessaire.
 - Le guidage stop-to-stop est implemente dans `guidage_troncons_arrets.js`.
-- Le module `intersections_multipassage.js` est conserve pour tests, mais il n'est plus la strategie de guidage principale.
 - Si vous mettez a jour `gtfs_data`, regenez `simulation_data.json`.
