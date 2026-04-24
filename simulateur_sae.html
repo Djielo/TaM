@@ -439,8 +439,9 @@
       </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
     <script src="guidage_troncons_arrets.js"></script>
     <script>
       let data = null;
@@ -463,6 +464,7 @@
       /** Cles deja annoncees : d{i} = passage arret i, m{i} = mi-parcours segment i->i+1. */
       let voixAnnounced = new Set();
       let running = false;
+      let previewOnlyMode = false;
       let speed = 1;
       /** rAF : vitesse en m/s réelle, pas "un pas par sommet" (croisements). */
       let lastRafTime = 0;
@@ -474,6 +476,56 @@
       const LS_KEY_HEADING = "tam_sim_heading_up";
       const LS_KEY_OPS_LOG = "tam_sim_ops_log";
       const LS_KEY_RECAP = "tam_sim_recap_on";
+      const GTFS_RT_ALERT_URLS = [
+        "https://data.montpellier3m.fr/GTFS/Urbain/Alert.pb",
+        "https://data.montpellier3m.fr/GTFS/Suburbain/Alert.pb",
+      ];
+      const GTFS_RT_TRIP_URLS = [
+        "https://data.montpellier3m.fr/GTFS/Urbain/TripUpdate.pb",
+        "https://data.montpellier3m.fr/GTFS/Suburbain/TripUpdate.pb",
+      ];
+      const TAM_PERTURBATIONS_URL = "https://www.tam-voyages.com/perturbation/?ptano=1106&rub_code=17";
+      const LOCAL_API_PROXY = "./api/tam/proxy?url=";
+      const LOCAL_API_PERTURBATIONS = "./api/tam/perturbations";
+      const CORS_PROXY_RAW_PREFIX = "https://api.allorigins.win/raw?url=";
+      const TAM_PERTURBATIONS_LOCAL_JSON = "./tam_perturbations.json";
+      const GTFS_RT_PROTO = `
+        syntax = "proto2";
+        package transit_realtime;
+        message FeedMessage { required FeedHeader header = 1; repeated FeedEntity entity = 2; }
+        message FeedHeader { required string gtfs_realtime_version = 1; optional uint64 timestamp = 3; }
+        message FeedEntity { required string id = 1; optional bool is_deleted = 2 [default = false]; optional TripUpdate trip_update = 3; optional Alert alert = 5; }
+        message TripDescriptor {
+          optional string trip_id = 1;
+          optional string route_id = 5;
+          enum ScheduleRelationship { SCHEDULED = 0; ADDED = 1; UNSCHEDULED = 2; CANCELED = 3; DUPLICATED = 5; DELETED = 6; }
+          optional ScheduleRelationship schedule_relationship = 4;
+        }
+        message TripUpdate {
+          message StopTimeEvent { optional int32 delay = 1; optional int64 time = 2; }
+          message StopTimeUpdate {
+            optional uint32 stop_sequence = 1;
+            optional string stop_id = 4;
+            optional StopTimeEvent arrival = 2;
+            optional StopTimeEvent departure = 3;
+            enum ScheduleRelationship { SCHEDULED = 0; SKIPPED = 1; NO_DATA = 2; UNSCHEDULED = 3; }
+            optional ScheduleRelationship schedule_relationship = 5;
+          }
+          required TripDescriptor trip = 1;
+          repeated StopTimeUpdate stop_time_update = 2;
+        }
+        message TimeRange { optional uint64 start = 1; optional uint64 end = 2; }
+        message EntitySelector { optional string agency_id = 1; optional string route_id = 2; optional string stop_id = 3; optional TripDescriptor trip = 4; }
+        message TranslatedString { message Translation { required string text = 1; optional string language = 2; } repeated Translation translation = 1; }
+        message Alert {
+          repeated TimeRange active_period = 1;
+          repeated EntitySelector informed_entity = 5;
+          enum Effect { NO_SERVICE = 1; REDUCED_SERVICE = 2; SIGNIFICANT_DELAYS = 3; DETOUR = 4; ADDITIONAL_SERVICE = 5; MODIFIED_SERVICE = 6; OTHER_EFFECT = 7; UNKNOWN_EFFECT = 8; STOP_MOVED = 9; NO_EFFECT = 10; ACCESSIBILITY_ISSUE = 11; }
+          optional Effect effect = 7;
+          optional TranslatedString header_text = 10;
+          optional TranslatedString description_text = 11;
+        }
+      `;
 
       const OPS_MODE = {
         BASE: "BASE",
@@ -490,7 +542,17 @@
         initialMode: OPS_MODE.BASE,
         returnMode: OPS_MODE.BASE,
         targetPatternId: "",
+        baseCoordinates: null,
+        modeCoordinates: {
+          PLANIFIE_ACTIF: null,
+          RT_ACTIF: null,
+          MANUEL_ACTIF: null,
+        },
       };
+      let localPlannedPerturbations = null;
+      let skippedStopIdSet = new Set();
+      let skippedStopNameSet = new Set();
+      let activeStopMetersForGuide = [];
 
       const lineSelect = document.getElementById("lineSelect");
       const controlPanelEl = document.getElementById("controlPanel");
@@ -552,6 +614,7 @@
       }).addTo(map);
       /** Couche temporaire : segment actif entre l'arret courant et le suivant. */
       const stopToStopLayer = L.layerGroup().addTo(map);
+      const skippedStopsLayer = L.layerGroup().addTo(map);
       let marker = L.marker([43.61, 3.88], {
         icon: navIcon,
         zIndexOffset: 800,
@@ -676,11 +739,17 @@
         opsState.initialMode = OPS_MODE.BASE;
         opsState.returnMode = OPS_MODE.BASE;
         opsState.targetPatternId = "";
+        opsState.baseCoordinates = null;
+        opsState.modeCoordinates = {
+          PLANIFIE_ACTIF: null,
+          RT_ACTIF: null,
+          MANUEL_ACTIF: null,
+        };
         applyOpsStateUi();
       }
 
       function ensureOpsTargetPattern() {
-        const p = currentPattern || selectedPattern();
+        const p = selectedPattern() || currentPattern;
         if (!p) return null;
         if (!opsState.targetPatternId) {
           opsState.targetPatternId = p.pattern_id || "";
@@ -692,6 +761,19 @@
           applyOpsStateUi();
         }
         return p;
+      }
+
+      let previewMissionToken = 0;
+      async function previewSelectedMission() {
+        const p = selectedPattern();
+        if (!p) return;
+        const token = ++previewMissionToken;
+        running = false;
+        await setMission(p, { previewOnly: true });
+        if (token !== previewMissionToken) return;
+        // Un aperçu ne doit jamais lancer la simulation.
+        running = false;
+        lastRafTime = 0;
       }
 
       function finalizeInitialOpsMode() {
@@ -706,6 +788,433 @@
         opsState.planifieActive = mode === OPS_MODE.PLANIFIE;
         opsState.rtActive = mode === OPS_MODE.RT;
         opsState.manualActive = mode === OPS_MODE.MANUEL;
+      }
+
+      let gtfsRtFeedType = null;
+      function getGtfsRtFeedType() {
+        if (gtfsRtFeedType) return gtfsRtFeedType;
+        if (!window.protobuf || !window.protobuf.parse) return null;
+        const root = window.protobuf.parse(GTFS_RT_PROTO).root;
+        gtfsRtFeedType = root.lookupType("transit_realtime.FeedMessage");
+        return gtfsRtFeedType;
+      }
+
+      async function fetchGtfsRtFeed(url) {
+        const FeedMessage = getGtfsRtFeedType();
+        if (!FeedMessage) return null;
+        const targets = [
+          `${LOCAL_API_PROXY}${encodeURIComponent(url)}`,
+          url,
+        ];
+        let lastErr = null;
+        for (const t of targets) {
+          try {
+            const resp = await fetch(t, { cache: "no-store" });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const arr = new Uint8Array(await resp.arrayBuffer());
+            return FeedMessage.decode(arr);
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr || new Error("GTFS-RT unreachable");
+      }
+
+      function translatedToText(ts) {
+        if (!ts || !Array.isArray(ts.translation) || !ts.translation.length) return "";
+        return String(ts.translation[0].text || "").trim();
+      }
+
+      function normalizeText(s) {
+        return String(s || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .trim();
+      }
+
+      function normalizeStopName(s) {
+        return normalizeText(s)
+          .replace(/['’]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function extractLineCodes(text) {
+        const out = new Set();
+        const t = String(text || "").toUpperCase();
+        const rx = /\b(?:L|T)?\s*(A|\d{1,3})\b/g;
+        let m;
+        while ((m = rx.exec(t))) {
+          out.add(String(m[1]).trim());
+        }
+        return [...out];
+      }
+
+      async function fetchTextWithCorsFallback(url) {
+        try {
+          const r0 = await fetch(`${LOCAL_API_PROXY}${encodeURIComponent(url)}`, {
+            cache: "no-store",
+          });
+          if (r0.ok) return { text: await r0.text(), source: "local_api_proxy" };
+        } catch (e) {
+          // ignore and continue
+        }
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (r.ok) return { text: await r.text(), source: "direct" };
+        } catch (e) {
+          // ignore and fallback
+        }
+        const proxies = [
+          `${CORS_PROXY_RAW_PREFIX}${encodeURIComponent(url)}`,
+          `https://cors.isomorphic-git.org/${url}`,
+        ];
+        for (const proxy of proxies) {
+          try {
+            const rp = await fetch(proxy, { cache: "no-store" });
+            if (rp.ok) return { text: await rp.text(), source: proxy };
+          } catch (e) {
+            // continue
+          }
+        }
+        throw new Error("unreachable");
+      }
+
+      function checkTamTrafficPageForLine(html, lineCode) {
+        const wanted = String(lineCode || "").toUpperCase().trim();
+        if (!html || !wanted) return { found: false, reason: "" };
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const blocks = [...doc.querySelectorAll("h2")];
+        for (const h2 of blocks) {
+          const title = String(h2.textContent || "").trim();
+          if (!title) continue;
+          const codes = extractLineCodes(title);
+          if (!codes.includes(wanted)) continue;
+          const chunk = [];
+          let n = h2.nextElementSibling;
+          while (n && n.tagName !== "H2") {
+            chunk.push(String(n.textContent || ""));
+            n = n.nextElementSibling;
+          }
+          const body = normalizeText(chunk.join(" "));
+          if (body.includes("a venir")) continue;
+          // On retient les perturbations actuelles/plannifiees, typiquement travaux/arrets non desservis.
+          if (
+            body.includes("non desserv") ||
+            body.includes("travaux") ||
+            body.includes("detour") ||
+            body.includes("deviation")
+          ) {
+            return { found: true, reason: title };
+          }
+        }
+        return { found: false, reason: "" };
+      }
+
+      function checkLocalPlannedForLine(lineCode) {
+        const wanted = String(lineCode || "").toUpperCase().trim();
+        const rows = localPlannedPerturbations?.items || [];
+        if (!wanted || !Array.isArray(rows) || !rows.length) {
+          return { found: false, reason: "" };
+        }
+        for (const row of rows) {
+          const codes = Array.isArray(row?.line_codes)
+            ? row.line_codes.map((x) => String(x).toUpperCase().trim())
+            : [];
+          if (!codes.includes(wanted)) continue;
+          if (row?.is_coming_soon) continue;
+          if (row?.is_active === false) continue;
+          return {
+            found: true,
+            reason: String(row?.title || `Perturbation planifiée détectée (L${wanted})`),
+          };
+        }
+        return { found: false, reason: "" };
+      }
+
+      function extractNonServedStopsFromBody(bodyText) {
+        const raw = String(bodyText || "");
+        const m = raw.match(/arr[êe]ts?\s+(.+?)\s+ne\s+sont\s+pas\s+desservis/i);
+        if (!m || !m[1]) return [];
+        return m[1]
+          .replace(/\./g, " ")
+          .split(/,| et /i)
+          .map((x) => normalizeStopName(x))
+          .filter(Boolean);
+      }
+
+      function getPlannedEntriesForCurrentLine(lineCode) {
+        const wanted = String(lineCode || "").toUpperCase().trim();
+        const rows = localPlannedPerturbations?.items || [];
+        if (!wanted || !Array.isArray(rows) || !rows.length) return [];
+        return rows.filter((row) => {
+          const codes = Array.isArray(row?.line_codes)
+            ? row.line_codes.map((x) => String(x).toUpperCase().trim())
+            : [];
+          if (!codes.includes(wanted)) return false;
+          if (row?.is_coming_soon) return false;
+          if (row?.is_active === false) return false;
+          return true;
+        });
+      }
+
+      function recomputeSkippedStopsForCurrentMission() {
+        skippedStopIdSet = new Set();
+        skippedStopNameSet = new Set();
+        if (!currentPattern?.stops || !opsState.planifieActive) return;
+        const entries = getPlannedEntriesForCurrentLine(currentPattern.route_short_name);
+        for (const e of entries) {
+          for (const name of extractNonServedStopsFromBody(e?.body || "")) {
+            skippedStopNameSet.add(name);
+          }
+        }
+        for (const st of currentPattern.stops) {
+          const norm = normalizeStopName(st?.stop_name || "");
+          if (!norm) continue;
+          for (const bad of skippedStopNameSet) {
+            if (norm === bad || norm.includes(bad) || bad.includes(norm)) {
+              skippedStopIdSet.add(String(st.stop_id || ""));
+              break;
+            }
+          }
+        }
+      }
+
+      function getServedStopIndices() {
+        const stops = currentPattern?.stops || [];
+        if (!stops.length) return [];
+        const arr = [];
+        for (let i = 0; i < stops.length; i++) {
+          const sid = String(stops[i]?.stop_id || "");
+          const skipped = opsState.planifieActive && skippedStopIdSet.has(sid);
+          if (!skipped) arr.push(i);
+        }
+        return arr.length >= 2 ? arr : stops.map((_, i) => i);
+      }
+
+      function rebuildActiveGuideStops() {
+        const served = getServedStopIndices();
+        activeStopMetersForGuide = served
+          .map((i) => stopMetersAlong[i])
+          .filter((x) => Number.isFinite(x));
+        if (activeStopMetersForGuide.length < 2) {
+          activeStopMetersForGuide = [...stopMetersAlong];
+        }
+      }
+
+      function getCurrentAndNextServedIndex(d) {
+        const stops = currentPattern?.stops || [];
+        if (!stops.length || !stopMetersAlong.length) return { curr: 0, next: 0 };
+        const served = getServedStopIndices();
+        let pos = 0;
+        for (let p = 0; p < served.length; p++) {
+          const idx = served[p];
+          if ((stopMetersAlong[idx] || 0) <= d + 0.5) pos = p;
+        }
+        const curr = served[pos] ?? 0;
+        const next = served[Math.min(pos + 1, served.length - 1)] ?? curr;
+        return { curr, next };
+      }
+
+      function drawSkippedStopsOverlay() {
+        skippedStopsLayer.clearLayers();
+        if (!currentPattern?.stops || !opsState.planifieActive) return;
+        for (const st of currentPattern.stops) {
+          const sid = String(st?.stop_id || "");
+          if (!skippedStopIdSet.has(sid)) continue;
+          L.circleMarker([st.lat, st.lon], {
+            radius: 7,
+            color: "#c62828",
+            fillColor: "#ef5350",
+            fillOpacity: 0.95,
+            weight: 2,
+          })
+            .bindTooltip(`Arrêt non desservi: ${st.stop_name}`, {
+              direction: "top",
+              opacity: 0.95,
+            })
+            .addTo(skippedStopsLayer);
+        }
+      }
+
+      async function loadLocalPlannedPerturbations() {
+        try {
+          const rApi = await fetch(LOCAL_API_PERTURBATIONS, { cache: "no-store" });
+          if (rApi.ok) {
+            const jsonApi = await rApi.json();
+            if (jsonApi && Array.isArray(jsonApi.items)) {
+              localPlannedPerturbations = jsonApi;
+              return;
+            }
+          }
+        } catch (e) {
+          // optional backend source
+        }
+        try {
+          const r = await fetch(TAM_PERTURBATIONS_LOCAL_JSON, { cache: "no-store" });
+          if (!r.ok) return;
+          const json = await r.json();
+          if (json && Array.isArray(json.items)) {
+            localPlannedPerturbations = json;
+          }
+        } catch (e) {
+          // optional local source
+        }
+      }
+
+      async function checkPlannedDeviationOnline(pattern) {
+        const routeId = String(pattern.route_id || "");
+        const routeShortName = String(pattern.route_short_name || "").trim();
+        let found = false;
+        let reason = "";
+        let gtfsRouteAlertCount = 0;
+        let gtfsPlannedCount = 0;
+        let tamFallbackReachable = false;
+        let localSourceHit = false;
+
+        // 0) Source locale synchronisée (robuste, sans CORS)
+        if (routeShortName) {
+          const local = checkLocalPlannedForLine(routeShortName);
+          if (local.found) {
+            localSourceHit = true;
+            return {
+              found: true,
+              reason: local.reason,
+              diagnostics: {
+                gtfsRouteAlertCount: 0,
+                gtfsPlannedCount: 0,
+                tamFallbackReachable: true,
+                localSourceHit: true,
+              },
+            };
+          }
+        }
+        // 1) Source officielle GTFS-RT Alert.pb
+        for (const url of GTFS_RT_ALERT_URLS) {
+          try {
+            const feed = await fetchGtfsRtFeed(url);
+            const entities = feed?.entity || [];
+            for (const e of entities) {
+              const a = e?.alert;
+              if (!a) continue;
+              const informed = a.informed_entity || [];
+              const hitRoute = informed.some((inf) => String(inf?.route_id || "") === routeId);
+              if (!hitRoute) continue;
+              gtfsRouteAlertCount += 1;
+              const txt = (translatedToText(a.header_text) + " " + translatedToText(a.description_text)).toLowerCase();
+              const effect = Number(a.effect || 0);
+              const plannedLike = [4, 6, 9].includes(effect) || txt.includes("travaux") || txt.includes("déviation") || txt.includes("deviation");
+              if (plannedLike) {
+                found = true;
+                gtfsPlannedCount += 1;
+                reason = translatedToText(a.header_text) || "Alerte planifiée détectée";
+                break;
+              }
+            }
+          } catch (e) {
+            // ignore source failures, continue with others
+          }
+          if (found) break;
+        }
+        // 2) Fallback: page perturbations TAM (certaines perturbations n'apparaissent pas en Alert.pb)
+        if (!found && routeShortName) {
+          try {
+            const fetched = await fetchTextWithCorsFallback(TAM_PERTURBATIONS_URL);
+            tamFallbackReachable = true;
+            const rs = checkTamTrafficPageForLine(fetched.text, routeShortName);
+            if (rs.found) {
+              found = true;
+              reason = rs.reason || `Perturbation planifiée détectée (ligne ${routeShortName})`;
+            }
+          } catch (e) {
+            // Si indisponible/CORS, on conserve le resultat GTFS-RT.
+          }
+        }
+        return {
+          found,
+          reason,
+          diagnostics: {
+            gtfsRouteAlertCount,
+            gtfsPlannedCount,
+            tamFallbackReachable,
+            localSourceHit,
+          },
+        };
+      }
+
+      async function checkRealtimeDeviationOnline(pattern) {
+        const routeId = String(pattern.route_id || "");
+        let found = false;
+        let reason = "";
+        for (const url of GTFS_RT_TRIP_URLS) {
+          try {
+            const feed = await fetchGtfsRtFeed(url);
+            const entities = feed?.entity || [];
+            for (const e of entities) {
+              const tu = e?.trip_update;
+              if (!tu?.trip) continue;
+              if (String(tu.trip.route_id || "") !== routeId) continue;
+              const tripRel = Number(tu.trip.schedule_relationship || 0);
+              if ([1, 3, 6].includes(tripRel)) {
+                found = true;
+                reason = "TripUpdate signale une course modifiée";
+                break;
+              }
+              const updates = tu.stop_time_update || [];
+              for (const u of updates) {
+                const rel = Number(u.schedule_relationship || 0);
+                const ad = Number(u?.arrival?.delay || 0);
+                const dd = Number(u?.departure?.delay || 0);
+                if ([1, 2].includes(rel) || Math.abs(ad) >= 120 || Math.abs(dd) >= 120) {
+                  found = true;
+                  reason = "TripUpdate signale un écart temps réel";
+                  break;
+                }
+              }
+              if (found) break;
+            }
+          } catch (e) {
+            // ignore source failures, continue with others
+          }
+          if (found) break;
+        }
+        return { found, reason };
+      }
+
+      async function applyTraceForOpsMode(mode) {
+        if (!currentPattern) return;
+        const oldTotal = pathTotalMeters || 1;
+        const oldD = distanceAlongPathMeters || 0;
+        const ratio = Math.max(0, Math.min(1, oldD / oldTotal));
+        let coords = opsState.baseCoordinates;
+        if (mode === OPS_MODE.PLANIFIE || mode === OPS_MODE.RT) {
+          if (!opsState.modeCoordinates[mode]) {
+            const routed = await fetchRoadGeometry(currentPattern);
+            if (routed && routed.length >= 2) {
+              opsState.modeCoordinates[mode] = routed;
+            }
+          }
+          coords = opsState.modeCoordinates[mode] || opsState.baseCoordinates;
+        } else if (mode === OPS_MODE.MANUEL) {
+          coords = opsState.modeCoordinates[OPS_MODE.MANUEL] || opsState.baseCoordinates;
+        } else {
+          coords = opsState.baseCoordinates;
+        }
+        if (!coords || coords.length < 2) return;
+        activeCoordinates = coords;
+        rebuildPathMetrics(activeCoordinates);
+        trimActivePathToPatternStops(currentPattern);
+        stopMetersAlong = buildStopMetersAlong(currentPattern);
+        rebuildActiveGuideStops();
+        fullLine.setLatLngs(activeCoordinates);
+        const newD = Math.min(pathTotalMeters, Math.max(0, ratio * pathTotalMeters));
+        distanceAlongPathMeters = newD;
+        redrawDoneLineAtDistance(distanceAlongPathMeters);
+        updateMapNavigation({ centerCamera: true, zoom: map.getZoom() });
+        updateStopToStopOverlay();
+        updateStats();
       }
 
       function fillSelect(selectEl, values, labelFn) {
@@ -914,6 +1423,9 @@
         if (!running) {
           ensureOpsTargetPattern();
         }
+        previewSelectedMission().catch((e) => {
+          console.warn("Preview mission failed:", e);
+        });
       }
 
       function selectedPattern() {
@@ -1348,17 +1860,16 @@
         ) {
           return;
         }
-        const n = currentPattern.stops.length;
-        for (let i = 0; i < n - 1; i++) {
+        const served = getServedStopIndices();
+        for (let p = 0; p < served.length - 1; p++) {
+          const i = served[p];
+          const j = served[p + 1];
           if (d > (stopMetersAlong[i] || 0) + 0.5) {
-            voixAnnounced.add(`d${i}`);
+            voixAnnounced.add(`d${i}_${j}`);
           }
-          if (i < n - 1) {
-            const mid =
-              ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
-            if (d > mid + 0.5) {
-              voixAnnounced.add(`m${i}`);
-            }
+          const mid = ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
+          if (d > mid + 0.5) {
+            voixAnnounced.add(`m${i}_${j}`);
           }
         }
       }
@@ -1378,20 +1889,23 @@
         if (prev == null || curr == null || prev > curr) {
           return;
         }
-        for (let i = 0; i < stops.length - 1; i++) {
-          const nextName = stops[i + 1] ? stops[i + 1].stop_name : "";
+        const served = getServedStopIndices();
+        for (let p = 0; p < served.length - 1; p++) {
+          const i = served[p];
+          const j = served[p + 1];
+          const nextName = stops[j] ? stops[j].stop_name : "";
           if (mode === "depart" || mode === "both") {
             const t = stopMetersAlong[i] || 0;
-            if (prev < t && curr >= t && !voixAnnounced.has(`d${i}`)) {
-              voixAnnounced.add(`d${i}`);
+            if (prev < t && curr >= t && !voixAnnounced.has(`d${i}_${j}`)) {
+              voixAnnounced.add(`d${i}_${j}`);
               speakProchainArret(nextName);
             }
           }
           if (mode === "mid" || mode === "both") {
             const t =
-              ((stopMetersAlong[i] || 0) + (stopMetersAlong[i + 1] || 0)) / 2;
-            if (prev < t && curr >= t && !voixAnnounced.has(`m${i}`)) {
-              voixAnnounced.add(`m${i}`);
+              ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
+            if (prev < t && curr >= t && !voixAnnounced.has(`m${i}_${j}`)) {
+              voixAnnounced.add(`m${i}_${j}`);
               speakProchainArret(nextName);
             }
           }
@@ -1406,12 +1920,17 @@
         ) {
           return;
         }
-        const mode = voiceModeEl.value;
-        if (voixAnnounced.has("d0")) {
+        const served = getServedStopIndices();
+        if (served.length < 2) {
           return;
         }
-        voixAnnounced.add("d0");
-        speakProchainArret(currentPattern.stops[1].stop_name);
+        const first = served[0];
+        const second = served[1];
+        if (voixAnnounced.has(`d${first}_${second}`)) {
+          return;
+        }
+        voixAnnounced.add(`d${first}_${second}`);
+        speakProchainArret(currentPattern.stops[second].stop_name);
       }
 
       function refreshVoiceSelect() {
@@ -1527,7 +2046,7 @@
           stopToStopLayer,
           activeCoordinates,
           pathCumMeters,
-          stopMetersAlong,
+          activeStopMetersForGuide,
           distanceAlongPathMeters,
         );
         if (segmentGuideInfoEl) {
@@ -1539,7 +2058,9 @@
         }
       }
 
-      async function setMission(pattern) {
+      async function setMission(pattern, opts) {
+        const o = opts || {};
+        previewOnlyMode = !!o.previewOnly;
         currentPattern = pattern;
         distanceAlongPathMeters = 0;
         lastRafTime = 0;
@@ -1578,10 +2099,17 @@
             traceSource = "GTFS arret->arret";
           }
         }
+        opsState.baseCoordinates = [...activeCoordinates];
+        opsState.modeCoordinates.PLANIFIE_ACTIF = null;
+        opsState.modeCoordinates.RT_ACTIF = null;
+        opsState.modeCoordinates.MANUEL_ACTIF = null;
 
         rebuildPathMetrics(activeCoordinates);
         trimActivePathToPatternStops(pattern);
         stopMetersAlong = buildStopMetersAlong(pattern);
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawSkippedStopsOverlay();
 
         fullLine.setLatLngs(activeCoordinates);
         doneLine.setLatLngs([activeCoordinates[0]]);
@@ -1597,7 +2125,9 @@
           map.fitBounds(fullLine.getBounds(), { padding: [20, 20] });
           updateMapNavigation({ centerCamera: false });
         }
-        announceInitialNextStopIfNeeded();
+        if (!previewOnlyMode) {
+          announceInitialNextStopIfNeeded();
+        }
         finalizeInitialOpsMode();
         refreshMapLayout();
         updateStats();
@@ -1613,13 +2143,20 @@
           currentStopEl.textContent = "-";
           nextStopEl.textContent = "-";
         } else {
-          const stopIdx = currentStopIndexForDistance(d);
-          const nextIdx = Math.min(stopIdx + 1, stops.length - 1);
+          const pair = getCurrentAndNextServedIndex(d);
+          const stopIdx = pair.curr;
+          const nextIdx = pair.next;
+          const currSkipped =
+            opsState.planifieActive &&
+            skippedStopIdSet.has(String(stops[stopIdx]?.stop_id || ""));
+          const nextSkipped =
+            opsState.planifieActive &&
+            skippedStopIdSet.has(String(stops[nextIdx]?.stop_id || ""));
           currentStopEl.textContent = stops[stopIdx]
-            ? stops[stopIdx].stop_name
+            ? `${stops[stopIdx].stop_name}${currSkipped ? " (non desservi)" : ""}`
             : "-";
           nextStopEl.textContent = stops[nextIdx]
-            ? stops[nextIdx].stop_name
+            ? `${stops[nextIdx].stop_name}${nextSkipped ? " (non desservi)" : ""}`
             : "-";
         }
 
@@ -1633,7 +2170,7 @@
       }
 
       function tickRaf(now) {
-        if (running && currentPattern && pathTotalMeters > 0) {
+        if (running && !previewOnlyMode && currentPattern && pathTotalMeters > 0) {
           if (lastRafTime === 0) {
             lastRafTime = now;
           } else {
@@ -1664,11 +2201,14 @@
         const startBtn = document.getElementById("startBtn");
         const p = selectedPattern();
         if (!p) return;
+        const token = ++previewMissionToken;
         running = false;
         startBtn.disabled = true;
         startBtn.textContent = "Chargement trace...";
-        setMission(p)
+        setMission(p, { previewOnly: false })
           .then(() => {
+            if (token !== previewMissionToken) return;
+            previewOnlyMode = false;
             lastRafTime = 0;
             running = true;
           })
@@ -1679,6 +2219,11 @@
       });
 
       document.getElementById("pauseBtn").addEventListener("click", () => {
+        if (previewOnlyMode) {
+          running = false;
+          lastRafTime = 0;
+          return;
+        }
         running = !running;
         if (!running) {
           lastRafTime = 0;
@@ -1686,33 +2231,59 @@
       });
 
       checkPlannedBtn.addEventListener("click", () => {
+        (async () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
-        const yes = window.confirm(
-          "Deviation planifiee detectee pour cette mission ?\n\nOK = activer mode PLANIFIE\nAnnuler = rester dans l'etat actuel",
-        );
-        if (!yes) return;
+        const rs = await checkPlannedDeviationOnline(p);
+        if (!rs.found) {
+          const d = rs.diagnostics || {};
+          const hasNonPlannedAlert = Number(d.gtfsRouteAlertCount || 0) > 0 && Number(d.gtfsPlannedCount || 0) === 0;
+          const tamDown = !d.tamFallbackReachable;
+          if (hasNonPlannedAlert) {
+            window.alert("Alerte détectée sur la ligne, mais non classée comme planifiée (ex: incident/retard temps réel).");
+          } else if (tamDown) {
+            window.alert("Aucune déviation planifiée détectée. Si besoin, lance le serveur local `python serve_tam.py` pour activer la collecte perturbations sans blocage CORS.");
+          } else {
+            window.alert("Aucune déviation planifiée détectée en ligne pour cette mission.");
+          }
+          appendOpsLog("check_planifie_none", "Aucun resultat detecte");
+          return;
+        }
         opsState.planifieActive = true;
         // Le mode planifie devient le nouvel etat de reference.
         opsState.returnMode = OPS_MODE.PLANIFIE;
         applyOpsStateUi();
+        await applyTraceForOpsMode(OPS_MODE.PLANIFIE);
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawSkippedStopsOverlay();
+        updateStopToStopOverlay();
+        updateStats();
+        window.alert(`Déviation planifiée détectée: ${rs.reason}`);
         appendOpsLog("activate_planifie", "Activation manuelle V1");
+        })();
       });
 
       checkRtBtn.addEventListener("click", () => {
+        (async () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
-        const yes = window.confirm(
-          "Deviation temps reel detectee ?\n\nOK = activer mode RT\nAnnuler = laisser l'etat actuel (ou passer en manuel)",
-        );
-        if (!yes) return;
+        const rs = await checkRealtimeDeviationOnline(p);
+        if (!rs.found) {
+          window.alert("Aucune déviation temps réel détectée en ligne pour cette mission.");
+          appendOpsLog("check_rt_none", "Aucun resultat detecte");
+          return;
+        }
         // Snapshot du mode stable precedent pour le retour etat initial.
         opsState.returnMode = opsState.planifieActive
           ? OPS_MODE.PLANIFIE
           : OPS_MODE.BASE;
         opsState.rtActive = true;
         applyOpsStateUi();
+        await applyTraceForOpsMode(OPS_MODE.RT);
+        window.alert(`Déviation temps réel détectée: ${rs.reason}`);
         appendOpsLog("activate_rt", "Activation manuelle V1");
+        })();
       });
 
       manualBtn.addEventListener("click", () => {
@@ -1722,6 +2293,8 @@
         opsState.returnMode = recomputeOpsMode();
         opsState.manualActive = true;
         applyOpsStateUi();
+        // V1: mode manuel conserve le tracé courant, en attendant l'editeur de deviation.
+        applyTraceForOpsMode(OPS_MODE.MANUEL);
         appendOpsLog("activate_manual", "Activation conducteur");
       });
 
@@ -1730,6 +2303,12 @@
         if (!p) return;
         applyModeFlags(opsState.returnMode || OPS_MODE.BASE);
         applyOpsStateUi();
+        applyTraceForOpsMode(recomputeOpsMode());
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawSkippedStopsOverlay();
+        updateStopToStopOverlay();
+        updateStats();
         appendOpsLog("return_initial", "Retour etat initial mission");
       });
 
@@ -1741,6 +2320,12 @@
         opsState.manualActive = false;
         opsState.returnMode = OPS_MODE.BASE;
         applyOpsStateUi();
+        applyTraceForOpsMode(OPS_MODE.BASE);
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawSkippedStopsOverlay();
+        updateStopToStopOverlay();
+        updateStats();
         appendOpsLog("return_base", "Forcage mode BASE");
       });
 
@@ -1752,8 +2337,15 @@
         if (!stops || !stops.length || !stopMetersAlong.length) {
           return;
         }
-        let idx = currentStopIndexForDistance(distanceAlongPathMeters);
-        idx = Math.min(idx + 1, stops.length - 1);
+        const served = getServedStopIndices();
+        let idx = served[0] || 0;
+        for (let p = 0; p < served.length; p++) {
+          if ((stopMetersAlong[served[p]] || 0) <= distanceAlongPathMeters + 0.5) {
+            idx = served[p];
+          }
+        }
+        const pos = Math.max(0, served.indexOf(idx));
+        idx = served[Math.min(pos + 1, served.length - 1)] ?? idx;
         distanceAlongPathMeters = stopMetersAlong[idx];
         lastRafTime = 0;
         resyncVoixForPosition(distanceAlongPathMeters);
@@ -1772,8 +2364,15 @@
         if (!stops || !stops.length || !stopMetersAlong.length) {
           return;
         }
-        let idx = currentStopIndexForDistance(distanceAlongPathMeters);
-        idx = Math.max(idx - 1, 0);
+        const served = getServedStopIndices();
+        let idx = served[0] || 0;
+        for (let p = 0; p < served.length; p++) {
+          if ((stopMetersAlong[served[p]] || 0) <= distanceAlongPathMeters + 0.5) {
+            idx = served[p];
+          }
+        }
+        const pos = Math.max(0, served.indexOf(idx));
+        idx = served[Math.max(pos - 1, 0)] ?? idx;
         distanceAlongPathMeters = stopMetersAlong[idx];
         lastRafTime = 0;
         resyncVoixForPosition(distanceAlongPathMeters);
@@ -1790,6 +2389,11 @@
 
       lineSelect.addEventListener("change", updateHeadsigns);
       headsignSelect.addEventListener("change", updateVariants);
+      variantSelect.addEventListener("change", () => {
+        previewSelectedMission().catch((e) => {
+          console.warn("Preview mission failed:", e);
+        });
+      });
 
       function saveMapPrefs() {
         try {
@@ -1913,9 +2517,11 @@
       }
       refreshMapLayout();
 
-      fetch("./simulation_data.json")
-        .then((resp) => resp.json())
-        .then((json) => {
+      Promise.all([
+        fetch("./simulation_data.json").then((resp) => resp.json()),
+        loadLocalPlannedPerturbations(),
+      ])
+        .then(([json]) => {
           data = json;
           updateLines();
           requestAnimationFrame(tickRaf);

@@ -32,15 +32,21 @@ la donnee tram est disponible localement.
 python build_simulator_data.py
 ```
 
-2. Demarrer un serveur web local dans le dossier du projet:
+2. Demarrer le serveur local TAM (statique + API locale anti-CORS):
 
 ```bash
-python -m http.server 8000
+python serve_tam.py
 ```
 
 3. Ouvrir dans le navigateur:
 
 - [http://localhost:8000/simulateur_sae.html](http://localhost:8000/simulateur_sae.html)
+
+Optionnel (secours hors ligne pour le mode planifie):
+
+```bash
+python update_tam_perturbations.py
+```
 
 ## Donnees Open Data locales
 

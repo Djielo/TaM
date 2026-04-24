@@ -12,3 +12,8 @@ Thumbs.db
 # Donnees locales Open Data (volumineux / non versionnees)
 arrts-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
 rseau-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
+Alert.pb
+TripUpdate.pb
+VehiclePosition.pb
+TAM_MMM_TpsReel.csv
+tam_perturbations.json
