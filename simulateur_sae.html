@@ -317,39 +317,33 @@
             <div class="row panel-section panel-ops">
               <div class="grow">
                 <button id="checkPlannedBtn" class="secondary" type="button">
-                  Verifier planifie
+                  Vérifier si déviation planifiée prévue
                 </button>
               </div>
               <div class="grow">
                 <button id="checkRtBtn" class="secondary" type="button">
-                  Verifier temps reel
-                </button>
-              </div>
-              <div class="grow">
-                <button id="manualBtn" class="secondary" type="button">
-                  Activer manuel
+                  Vérifier si déviation temps réel prévue
                 </button>
               </div>
             </div>
             <div class="row panel-section panel-ops">
               <div class="grow">
-                <button id="disableManualBtn" class="secondary" type="button">
-                  Desactiver manuel
+                <button id="manualBtn" class="secondary" type="button">
+                  Saisir une déviation en Mode manuel
                 </button>
               </div>
-              <div class="grow">
-                <button id="disableRtBtn" class="secondary" type="button">
-                  Desactiver temps reel
-                </button>
-              </div>
+            </div>
+            <div class="row panel-section panel-ops">
               <div class="grow">
                 <button id="returnInitialBtn" class="secondary" type="button">
-                  Retour etat initial
+                  Revenir au Mode planifié si actif au départ
                 </button>
               </div>
+            </div>
+            <div class="row panel-section panel-ops">
               <div class="grow">
                 <button id="returnBaseBtn" class="secondary" type="button">
-                  Retour base
+                  Revenir au Mode base
                 </button>
               </div>
             </div>
@@ -494,6 +488,8 @@
         rtActive: false,
         manualActive: false,
         initialMode: OPS_MODE.BASE,
+        returnMode: OPS_MODE.BASE,
+        targetPatternId: "",
       };
 
       const lineSelect = document.getElementById("lineSelect");
@@ -525,8 +521,6 @@
       const checkPlannedBtn = document.getElementById("checkPlannedBtn");
       const checkRtBtn = document.getElementById("checkRtBtn");
       const manualBtn = document.getElementById("manualBtn");
-      const disableManualBtn = document.getElementById("disableManualBtn");
-      const disableRtBtn = document.getElementById("disableRtBtn");
       const returnInitialBtn = document.getElementById("returnInitialBtn");
       const returnBaseBtn = document.getElementById("returnBaseBtn");
 
@@ -629,14 +623,15 @@
       }
 
       function appendOpsLog(action, note) {
+        const p = currentPattern || selectedPattern();
         try {
           const raw = localStorage.getItem(LS_KEY_OPS_LOG);
           const logs = raw ? JSON.parse(raw) : [];
           logs.push({
             ts: new Date().toISOString(),
-            line: currentPattern?.route_short_name || "",
-            headsign: currentPattern?.headsign || "",
-            variant: currentPattern?.variant_name || "",
+            line: p?.route_short_name || "",
+            headsign: p?.headsign || "",
+            variant: p?.variant_name || "",
             action,
             mode: opsState.mode,
             note: note || "",
@@ -679,14 +674,38 @@
         opsState.manualActive = false;
         opsState.mode = OPS_MODE.BASE;
         opsState.initialMode = OPS_MODE.BASE;
+        opsState.returnMode = OPS_MODE.BASE;
+        opsState.targetPatternId = "";
         applyOpsStateUi();
+      }
+
+      function ensureOpsTargetPattern() {
+        const p = currentPattern || selectedPattern();
+        if (!p) return null;
+        if (!opsState.targetPatternId) {
+          opsState.targetPatternId = p.pattern_id || "";
+          return p;
+        }
+        if (opsState.targetPatternId !== (p.pattern_id || "")) {
+          resetOpsStateForMission();
+          opsState.targetPatternId = p.pattern_id || "";
+          applyOpsStateUi();
+        }
+        return p;
       }
 
       function finalizeInitialOpsMode() {
         opsState.mode = recomputeOpsMode();
         opsState.initialMode = opsState.mode;
+        opsState.returnMode = opsState.mode;
         applyOpsStateUi();
         appendOpsLog("mission_start", "Mode initial enregistre");
+      }
+
+      function applyModeFlags(mode) {
+        opsState.planifieActive = mode === OPS_MODE.PLANIFIE;
+        opsState.rtActive = mode === OPS_MODE.RT;
+        opsState.manualActive = mode === OPS_MODE.MANUEL;
       }
 
       function fillSelect(selectEl, values, labelFn) {
@@ -892,6 +911,9 @@
         fillSelect(variantSelect, filteredByHeadsign, (p) => {
           return `${p.variant_name} - ${p.start_stop} -> ${p.end_stop} (${p.stop_count} arrets)`;
         });
+        if (!running) {
+          ensureOpsTargetPattern();
+        }
       }
 
       function selectedPattern() {
@@ -1523,7 +1545,13 @@
         lastRafTime = 0;
         lastVoiceDistance = 0;
         voixAnnounced = new Set();
-        resetOpsStateForMission();
+        const keepPrefill =
+          !!opsState.targetPatternId &&
+          opsState.targetPatternId === (pattern.pattern_id || "");
+        if (!keepPrefill) {
+          resetOpsStateForMission();
+        }
+        opsState.targetPatternId = pattern.pattern_id || "";
         missionName.textContent = `Ligne ${pattern.route_short_name} | ${pattern.headsign} | ${pattern.variant_name}`;
 
         const isTram = String(pattern.route_type) === "0";
@@ -1658,62 +1686,60 @@
       });
 
       checkPlannedBtn.addEventListener("click", () => {
-        if (!currentPattern) return;
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
         const yes = window.confirm(
           "Deviation planifiee detectee pour cette mission ?\n\nOK = activer mode PLANIFIE\nAnnuler = rester dans l'etat actuel",
         );
         if (!yes) return;
         opsState.planifieActive = true;
+        // Le mode planifie devient le nouvel etat de reference.
+        opsState.returnMode = OPS_MODE.PLANIFIE;
         applyOpsStateUi();
         appendOpsLog("activate_planifie", "Activation manuelle V1");
       });
 
       checkRtBtn.addEventListener("click", () => {
-        if (!currentPattern) return;
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
         const yes = window.confirm(
           "Deviation temps reel detectee ?\n\nOK = activer mode RT\nAnnuler = laisser l'etat actuel (ou passer en manuel)",
         );
         if (!yes) return;
+        // Snapshot du mode stable precedent pour le retour etat initial.
+        opsState.returnMode = opsState.planifieActive
+          ? OPS_MODE.PLANIFIE
+          : OPS_MODE.BASE;
         opsState.rtActive = true;
         applyOpsStateUi();
         appendOpsLog("activate_rt", "Activation manuelle V1");
       });
 
       manualBtn.addEventListener("click", () => {
-        if (!currentPattern) return;
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
+        // Snapshot du mode stable precedent pour le retour etat initial.
+        opsState.returnMode = recomputeOpsMode();
         opsState.manualActive = true;
         applyOpsStateUi();
         appendOpsLog("activate_manual", "Activation conducteur");
       });
 
-      disableManualBtn.addEventListener("click", () => {
-        if (!currentPattern) return;
-        opsState.manualActive = false;
-        applyOpsStateUi();
-        appendOpsLog("disable_manual", "Retour cascade automatique");
-      });
-
-      disableRtBtn.addEventListener("click", () => {
-        if (!currentPattern) return;
-        opsState.rtActive = false;
-        applyOpsStateUi();
-        appendOpsLog("disable_rt", "Retour planifie/base");
-      });
-
       returnInitialBtn.addEventListener("click", () => {
-        if (!currentPattern) return;
-        opsState.planifieActive = opsState.initialMode === OPS_MODE.PLANIFIE;
-        opsState.rtActive = opsState.initialMode === OPS_MODE.RT;
-        opsState.manualActive = opsState.initialMode === OPS_MODE.MANUEL;
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
+        applyModeFlags(opsState.returnMode || OPS_MODE.BASE);
         applyOpsStateUi();
         appendOpsLog("return_initial", "Retour etat initial mission");
       });
 
       returnBaseBtn.addEventListener("click", () => {
-        if (!currentPattern) return;
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
         opsState.planifieActive = false;
         opsState.rtActive = false;
         opsState.manualActive = false;
+        opsState.returnMode = OPS_MODE.BASE;
         applyOpsStateUi();
         appendOpsLog("return_base", "Forcage mode BASE");
       });
