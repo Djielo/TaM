@@ -25,8 +25,8 @@ def clean_line_name(raw_short_name):
     return raw_short_name.strip()
 
 
-def read_bus_network_geojson():
-    local_geojson = os.path.join(BASE_DIR, "MMM_MMM_BusLigne.json")
+def read_network_geojson(resource_name):
+    local_geojson = os.path.join(BASE_DIR, resource_name)
     if os.path.exists(local_geojson):
         with open(local_geojson, "r", encoding="utf-8") as handle:
             return json.load(handle)
@@ -39,13 +39,61 @@ def read_bus_network_geojson():
         archive_path = os.path.join(BASE_DIR, filename)
         try:
             with zipfile.ZipFile(archive_path, "r") as archive:
-                if "MMM_MMM_BusLigne.json" not in archive.namelist():
+                if resource_name not in archive.namelist():
                     continue
-                payload = archive.read("MMM_MMM_BusLigne.json").decode("utf-8-sig")
+                payload = archive.read(resource_name).decode("utf-8-sig")
                 return json.loads(payload)
         except (OSError, zipfile.BadZipFile, KeyError, json.JSONDecodeError):
             continue
     return None
+
+
+def parse_network_features(raw_geojson, line_key_candidates):
+    features = []
+    if not raw_geojson or not isinstance(raw_geojson.get("features"), list):
+        return features
+
+    for feature in raw_geojson["features"]:
+        props = feature.get("properties") or {}
+        geom = feature.get("geometry") or {}
+        coords = geom.get("coordinates") or []
+        if geom.get("type") != "LineString" or len(coords) < 2:
+            continue
+
+        line_code = ""
+        for key in line_key_candidates:
+            val = props.get(key)
+            if val is None:
+                continue
+            line_code = str(val).strip()
+            if line_code:
+                break
+        if not line_code:
+            continue
+
+        latlon_coordinates = []
+        for point in coords:
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                continue
+            lon, lat = point[0], point[1]
+            try:
+                latlon_coordinates.append([float(lat), float(lon)])
+            except (TypeError, ValueError):
+                continue
+
+        if len(latlon_coordinates) < 2:
+            continue
+
+        features.append(
+            {
+                "line_code": line_code,
+                "nom_ligne": str(props.get("nom_ligne", "")).strip(),
+                "sens": str(props.get("sens", "")).strip(),
+                "reseau": str(props.get("reseau", "")).strip(),
+                "coordinates": latlon_coordinates,
+            }
+        )
+    return features
 
 
 def build_data():
@@ -148,6 +196,7 @@ def build_data():
             "route_id": route_id,
             "route_short_name": route_by_id[route_id]["route_short_name"],
             "route_long_name": route_by_id[route_id]["route_long_name"],
+            "route_type": route_by_id[route_id]["route_type"],
             "route_color": route_by_id[route_id]["route_color"],
             "direction_id": direction_id,
             "headsign": headsign,
@@ -182,43 +231,10 @@ def build_data():
         )
     )
 
-    raw_bus_network = read_bus_network_geojson()
-    bus_network_features = []
-    if raw_bus_network and isinstance(raw_bus_network.get("features"), list):
-        for feature in raw_bus_network["features"]:
-            props = feature.get("properties") or {}
-            geom = feature.get("geometry") or {}
-            coords = geom.get("coordinates") or []
-            if geom.get("type") != "LineString" or len(coords) < 2:
-                continue
-
-            line_number = str(props.get("num_commercial", "")).strip()
-            if not line_number:
-                continue
-
-            # GeoJSON stores points as [lon, lat].
-            latlon_coordinates = []
-            for point in coords:
-                if not isinstance(point, (list, tuple)) or len(point) < 2:
-                    continue
-                lon, lat = point[0], point[1]
-                try:
-                    latlon_coordinates.append([float(lat), float(lon)])
-                except (TypeError, ValueError):
-                    continue
-
-            if len(latlon_coordinates) < 2:
-                continue
-
-            bus_network_features.append(
-                {
-                    "num_commercial": line_number,
-                    "nom_ligne": str(props.get("nom_ligne", "")).strip(),
-                    "sens": str(props.get("sens", "")).strip(),
-                    "reseau": str(props.get("reseau", "")).strip(),
-                    "coordinates": latlon_coordinates,
-                }
-            )
+    raw_bus_network = read_network_geojson("MMM_MMM_BusLigne.json")
+    raw_tram_network = read_network_geojson("MMM_MMM_LigneTram.json")
+    bus_network_features = parse_network_features(raw_bus_network, ["num_commercial", "num_exploitation"])
+    tram_network_features = parse_network_features(raw_tram_network, ["num_exploitation", "num_commercial"])
 
     return {
         "meta": {
@@ -226,9 +242,11 @@ def build_data():
             "route_count": len(route_by_id),
             "pattern_count": len(numbered_patterns),
             "bus_network_feature_count": len(bus_network_features),
+            "tram_network_feature_count": len(tram_network_features),
         },
         "patterns": numbered_patterns,
         "bus_network_features": bus_network_features,
+        "tram_network_features": tram_network_features,
     }
 
 

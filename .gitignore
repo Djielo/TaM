@@ -8,3 +8,7 @@ __pycache__/
 # Éditeurs / OS (optionnel, léger)
 Thumbs.db
 .DS_Store
+
+# Donnees locales Open Data (volumineux / non versionnees)
+arrts-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
+rseau-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip

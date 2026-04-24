@@ -182,7 +182,7 @@
         <div><b>Arret courant:</b> <span id="currentStop">-</span></div>
         <div><b>Prochain arret:</b> <span id="nextStop">-</span></div>
         <div><b>Progression:</b> <span id="progressPct" class="mono">0%</span></div>
-        <div><b>Intersections detectees :</b> <span id="multiPassCount" class="mono">-</span></div>
+        <div><b>Troncon guide :</b> <span id="segmentGuideInfo" class="mono">-</span></div>
       </div>
     </div>
     <div class="card">
@@ -194,11 +194,13 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
-  <script src="intersections_multipassage.js"></script>
+  <script src="guidage_troncons_arrets.js"></script>
   <script>
     let data = null;
     let filteredByLine = [];
     let filteredByHeadsign = [];
+    let lineOptions = [];
+    let lineOptionLookup = [];
     let currentPattern = null;
     let activeCoordinates = [];
     let traceSource = "Aucune";
@@ -239,7 +241,7 @@
     const currentStopEl = document.getElementById("currentStop");
     const nextStopEl = document.getElementById("nextStop");
     const progressPctEl = document.getElementById("progressPct");
-    const multiPassCountEl = document.getElementById("multiPassCount");
+    const segmentGuideInfoEl = document.getElementById("segmentGuideInfo");
 
     const map = L.map("map", {
       rotate: true,
@@ -259,8 +261,8 @@
     });
     let fullLine = L.polyline([], { color: "#005ca9", weight: 6, opacity: 0.6 }).addTo(map);
     let doneLine = L.polyline([], { color: "#9aa3ad", weight: 8, opacity: 0.95 }).addTo(map);
-    /** Couche provisoire : tracé qui se recoupe / même zone reparcourue (voir intersections_multipassage.js) */
-    const multiPassLayer = L.layerGroup().addTo(map);
+    /** Couche temporaire : segment actif entre l'arret courant et le suivant. */
+    const stopToStopLayer = L.layerGroup().addTo(map);
     let marker = L.marker([43.61, 3.88], { icon: navIcon, zIndexOffset: 800 }).addTo(map);
 
     function uniqueValues(arr, getter) {
@@ -277,14 +279,145 @@
       });
     }
 
+    function lineColorHex(raw) {
+      const v = String(raw || "").trim().replace("#", "");
+      if (!/^[0-9a-fA-F]{6}$/.test(v)) {
+        return null;
+      }
+      return `#${v}`;
+    }
+
+    function forcedLineColor(code) {
+      const key = String(code || "").trim().toUpperCase();
+      if (key === "A") return "#931731";
+      if (key === "5") return "#277232";
+      return null;
+    }
+
+    function isTramDisplayLine(item) {
+      const code = String(item.route_short_name || "");
+      const n = Number(code);
+      return item.route_type === "0" && Number.isInteger(n) && n >= 1 && n <= 5;
+    }
+
+    function linePriority(item) {
+      if (isTramDisplayLine(item)) return 0; // T1..T5
+      if (String(item.route_short_name) === "A") return 1; // Navette A
+      if (/^\d+$/.test(String(item.route_short_name))) return 2; // bus numeriques
+      return 3; // reste
+    }
+
+    function displayLineLabel(item) {
+      const code = String(item.route_short_name);
+      if (isTramDisplayLine(item)) return `T${code}`;
+      return code;
+    }
+
     function updateLines() {
-      const lines = uniqueValues(data.patterns, p => p.route_short_name).sort((a, b) => String(a).localeCompare(String(b), "fr"));
-      fillSelect(lineSelect, lines, line => `Ligne ${line}`);
+      const byCode = new Map();
+      for (const p of data.patterns) {
+        const code = String(p.route_short_name || "").trim();
+        if (!code) continue;
+        if (!byCode.has(code)) {
+          byCode.set(code, {
+            route_short_name: code,
+            route_type: String(p.route_type || ""),
+            route_color: p.route_color || ""
+          });
+        }
+      }
+      lineOptions = [...byCode.values()].sort((a, b) => {
+        const pa = linePriority(a);
+        const pb = linePriority(b);
+        if (pa !== pb) return pa - pb;
+        const aCode = String(a.route_short_name);
+        const bCode = String(b.route_short_name);
+        if (/^\d+$/.test(aCode) && /^\d+$/.test(bCode)) {
+          return Number(aCode) - Number(bCode);
+        }
+        return aCode.localeCompare(bCode, "fr");
+      });
+
+      lineSelect.innerHTML = "";
+      lineOptionLookup = [];
+      const groups = {
+        tram: lineOptions.filter(isTramDisplayLine),
+        navette: lineOptions.filter(x => String(x.route_short_name) === "A"),
+        bus: lineOptions.filter(x => !isTramDisplayLine(x) && String(x.route_short_name) !== "A")
+      };
+
+      function addSpacer(label) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = label || " ";
+        opt.disabled = true;
+        opt.style.color = "#68707a";
+        opt.style.fontStyle = "italic";
+        lineSelect.appendChild(opt);
+      }
+
+      function addTinySpacer() {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = " ";
+        opt.disabled = true;
+        opt.style.fontSize = "1px";
+        opt.style.lineHeight = "1px";
+        opt.style.padding = "0";
+        opt.style.margin = "0";
+        opt.style.color = "transparent";
+        lineSelect.appendChild(opt);
+      }
+
+      function appendGroup(items) {
+        for (const item of items) {
+          const opt = document.createElement("option");
+          opt.value = String(lineOptionLookup.length);
+          opt.textContent = displayLineLabel(item);
+          const bg = forcedLineColor(item?.route_short_name) || lineColorHex(item?.route_color);
+          if (bg) {
+            opt.style.backgroundColor = bg;
+            opt.style.color = "#ffffff";
+            opt.style.fontWeight = "700";
+          }
+          lineSelect.appendChild(opt);
+          lineOptionLookup.push(item);
+          addTinySpacer();
+        }
+      }
+
+      appendGroup(groups.tram);
+      if (groups.tram.length && (groups.navette.length || groups.bus.length)) {
+        addSpacer("──");
+      }
+      appendGroup(groups.navette);
+      if (groups.navette.length && groups.bus.length) {
+        addSpacer("──");
+      }
+      appendGroup(groups.bus);
+
+      // Positionner sur la premiere vraie ligne selectable.
+      for (let i = 0; i < lineSelect.options.length; i++) {
+        if (!lineSelect.options[i].disabled) {
+          lineSelect.selectedIndex = i;
+          break;
+        }
+      }
       lineSelect.dispatchEvent(new Event("change"));
     }
 
     function updateHeadsigns() {
-      const selectedLine = lineSelect.options[lineSelect.selectedIndex]?.textContent.replace("Ligne ", "");
+      const selectedValue = lineSelect.options[lineSelect.selectedIndex]?.value || "";
+      let selectedLine = lineOptionLookup[Number(selectedValue)]?.route_short_name || "";
+      if (!selectedLine) {
+        for (let i = 0; i < lineSelect.options.length; i++) {
+          const opt = lineSelect.options[i];
+          if (opt.disabled) continue;
+          lineSelect.selectedIndex = i;
+          selectedLine = lineOptionLookup[Number(opt.value)]?.route_short_name || "";
+          break;
+        }
+      }
       filteredByLine = data.patterns.filter(p => p.route_short_name === selectedLine);
 
       const headsignKeys = uniqueValues(
@@ -733,15 +866,14 @@
       return copy;
     }
 
-    function getBusNetworkGeometry(pattern) {
-      const features = data?.bus_network_features || [];
+    function getNetworkGeometryByLine(features, pattern) {
       if (!features.length) return null;
 
       const line = String(pattern.route_short_name);
       const start = pattern.coordinates[0];
       const end = pattern.coordinates[pattern.coordinates.length - 1];
 
-      const candidates = features.filter(f => String(f.num_commercial) === line && f.coordinates?.length > 1);
+      const candidates = features.filter(f => String(f.line_code) === line && f.coordinates?.length > 1);
       if (!candidates.length) return null;
 
       let best = null;
@@ -772,6 +904,39 @@
       return best;
     }
 
+    function getBusNetworkGeometry(pattern) {
+      return getNetworkGeometryByLine(data?.bus_network_features || [], pattern);
+    }
+
+    function getTramNetworkGeometry(pattern) {
+      return getNetworkGeometryByLine(data?.tram_network_features || [], pattern);
+    }
+
+    function updateStopToStopOverlay() {
+      if (typeof tamUpdateStopToStopGuide !== "function") {
+        stopToStopLayer.clearLayers();
+        if (segmentGuideInfoEl) {
+          segmentGuideInfoEl.textContent = "-";
+        }
+        return;
+      }
+      const info = tamUpdateStopToStopGuide(
+        map,
+        stopToStopLayer,
+        activeCoordinates,
+        pathCumMeters,
+        stopMetersAlong,
+        distanceAlongPathMeters
+      );
+      if (segmentGuideInfoEl) {
+        if (!info || info.segmentIndex < 0 || info.totalSegments <= 0) {
+          segmentGuideInfoEl.textContent = "-";
+        } else {
+          segmentGuideInfoEl.textContent = `${info.segmentIndex + 1}/${info.totalSegments}`;
+        }
+      }
+    }
+
     async function setMission(pattern) {
       currentPattern = pattern;
       distanceAlongPathMeters = 0;
@@ -780,8 +945,13 @@
       voixAnnounced = new Set();
       missionName.textContent = `Ligne ${pattern.route_short_name} | ${pattern.headsign} | ${pattern.variant_name}`;
 
-      const busGeom = getBusNetworkGeometry(pattern);
-      if (busGeom) {
+      const isTram = String(pattern.route_type) === "0";
+      const tramGeom = isTram ? getTramNetworkGeometry(pattern) : null;
+      const busGeom = !isTram ? getBusNetworkGeometry(pattern) : null;
+      if (tramGeom) {
+        activeCoordinates = tramGeom.coords;
+        traceSource = `Reseau tram 3M (${tramGeom.nom_ligne || "ligne"})`;
+      } else if (busGeom) {
         activeCoordinates = busGeom.coords;
         traceSource = `Reseau bus 3M (${busGeom.nom_ligne || "ligne"})`;
       } else {
@@ -803,15 +973,7 @@
       fullLine.setLatLngs(activeCoordinates);
       doneLine.setLatLngs([activeCoordinates[0]]);
 
-      let nMulti = 0;
-      if (typeof tamUpdateMultiPassDebug === "function") {
-        nMulti = tamUpdateMultiPassDebug(map, multiPassLayer, activeCoordinates);
-      } else {
-        multiPassLayer.clearLayers();
-      }
-      if (multiPassCountEl) {
-        multiPassCountEl.textContent = nMulti ? String(nMulti) : "0";
-      }
+      updateStopToStopOverlay();
 
       if (headingUpEl.checked) {
         updateMapNavigation({ centerCamera: true, zoom: 16 });
@@ -867,6 +1029,7 @@
           lastVoiceDistance = distanceAlongPathMeters;
           updateMapNavigation();
           redrawDoneLineAtDistance(distanceAlongPathMeters);
+          updateStopToStopOverlay();
           updateStats();
         }
       }
@@ -912,6 +1075,7 @@
       lastVoiceDistance = distanceAlongPathMeters;
       updateMapNavigation();
       redrawDoneLineAtDistance(distanceAlongPathMeters);
+      updateStopToStopOverlay();
       updateStats();
     });
 
@@ -931,6 +1095,7 @@
       lastVoiceDistance = distanceAlongPathMeters;
       updateMapNavigation();
       redrawDoneLineAtDistance(distanceAlongPathMeters);
+      updateStopToStopOverlay();
       updateStats();
     });
 
