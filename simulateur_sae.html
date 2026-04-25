@@ -686,19 +686,14 @@
       const LS_KEY_HEADING = "tam_sim_heading_up";
       const LS_KEY_OPS_LOG = "tam_sim_ops_log";
       const LS_KEY_RECAP = "tam_sim_recap_on";
-      const GTFS_RT_ALERT_URLS = [
-        "https://data.montpellier3m.fr/GTFS/Urbain/Alert.pb",
-        "https://data.montpellier3m.fr/GTFS/Suburbain/Alert.pb",
-      ];
       const GTFS_RT_TRIP_URLS = [
         "https://data.montpellier3m.fr/GTFS/Urbain/TripUpdate.pb",
         "https://data.montpellier3m.fr/GTFS/Suburbain/TripUpdate.pb",
       ];
-      const TAM_PERTURBATIONS_URL = "https://www.tam-voyages.com/perturbation/?ptano=1106&rub_code=17";
       const LOCAL_API_PROXY = "./api/tam/proxy?url=";
       const LOCAL_API_PERTURBATIONS = "./api/tam/perturbations";
-      const CORS_PROXY_RAW_PREFIX = "https://api.allorigins.win/raw?url=";
       const TAM_PERTURBATIONS_LOCAL_JSON = "./tam_perturbations.json";
+      const LS_KEY_PLANNED_PERT = "tam_sim_planned_perturbations_v1";
       const GTFS_RT_PROTO = `
         syntax = "proto2";
         package transit_realtime;
@@ -1141,11 +1136,6 @@
         throw lastErr || new Error("GTFS-RT unreachable");
       }
 
-      function translatedToText(ts) {
-        if (!ts || !Array.isArray(ts.translation) || !ts.translation.length) return "";
-        return String(ts.translation[0].text || "").trim();
-      }
-
       function normalizeText(s) {
         return String(s || "")
           .normalize("NFD")
@@ -1159,79 +1149,6 @@
           .replace(/['’]/g, " ")
           .replace(/\s+/g, " ")
           .trim();
-      }
-
-      function extractLineCodes(text) {
-        const out = new Set();
-        const t = String(text || "").toUpperCase();
-        const rx = /\b(?:L|T)?\s*(A|\d{1,3})\b/g;
-        let m;
-        while ((m = rx.exec(t))) {
-          out.add(String(m[1]).trim());
-        }
-        return [...out];
-      }
-
-      async function fetchTextWithCorsFallback(url) {
-        try {
-          const r0 = await fetch(`${LOCAL_API_PROXY}${encodeURIComponent(url)}`, {
-            cache: "no-store",
-          });
-          if (r0.ok) return { text: await r0.text(), source: "local_api_proxy" };
-        } catch (e) {
-          // ignore and continue
-        }
-        try {
-          const r = await fetch(url, { cache: "no-store" });
-          if (r.ok) return { text: await r.text(), source: "direct" };
-        } catch (e) {
-          // ignore and fallback
-        }
-        const proxies = [
-          `${CORS_PROXY_RAW_PREFIX}${encodeURIComponent(url)}`,
-          `https://cors.isomorphic-git.org/${url}`,
-        ];
-        for (const proxy of proxies) {
-          try {
-            const rp = await fetch(proxy, { cache: "no-store" });
-            if (rp.ok) return { text: await rp.text(), source: proxy };
-          } catch (e) {
-            // continue
-          }
-        }
-        throw new Error("unreachable");
-      }
-
-      function checkTamTrafficPageForLine(html, lineCode) {
-        const wanted = String(lineCode || "").toUpperCase().trim();
-        if (!html || !wanted) return { found: false, reason: "" };
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-        const blocks = [...doc.querySelectorAll("h2")];
-        for (const h2 of blocks) {
-          const title = String(h2.textContent || "").trim();
-          if (!title) continue;
-          const codes = extractLineCodes(title);
-          if (!codes.includes(wanted)) continue;
-          const chunk = [];
-          let n = h2.nextElementSibling;
-          while (n && n.tagName !== "H2") {
-            chunk.push(String(n.textContent || ""));
-            n = n.nextElementSibling;
-          }
-          const body = normalizeText(chunk.join(" "));
-          if (body.includes("a venir")) continue;
-          // On retient les perturbations actuelles/plannifiees, typiquement travaux/arrets non desservis.
-          if (
-            body.includes("non desserv") ||
-            body.includes("travaux") ||
-            body.includes("detour") ||
-            body.includes("deviation")
-          ) {
-            return { found: true, reason: title };
-          }
-        }
-        return { found: false, reason: "" };
       }
 
       function checkLocalPlannedForLine(lineCode) {
@@ -1360,107 +1277,73 @@
         }
       }
 
+      /**
+       * A chaque chargement: tenter la page TAM via serve_tam (sans CORS), persister le JSON
+       * dans localStorage ; sinon JSON statique, sinon dernier cache.
+       */
       async function loadLocalPlannedPerturbations() {
+        const apply = (json) => {
+          if (json && Array.isArray(json.items)) {
+            localPlannedPerturbations = json;
+            return true;
+          }
+          return false;
+        };
         try {
           const rApi = await fetch(LOCAL_API_PERTURBATIONS, { cache: "no-store" });
           if (rApi.ok) {
             const jsonApi = await rApi.json();
-            if (jsonApi && Array.isArray(jsonApi.items)) {
-              localPlannedPerturbations = jsonApi;
+            if (apply(jsonApi)) {
+              try {
+                localStorage.setItem(LS_KEY_PLANNED_PERT, JSON.stringify(jsonApi));
+              } catch (e) {
+                /* ignore quota */
+              }
               return;
             }
           }
         } catch (e) {
-          // optional backend source
+          /* serve_tam absent */
         }
         try {
           const r = await fetch(TAM_PERTURBATIONS_LOCAL_JSON, { cache: "no-store" });
-          if (!r.ok) return;
-          const json = await r.json();
-          if (json && Array.isArray(json.items)) {
-            localPlannedPerturbations = json;
+          if (r.ok) {
+            const json = await r.json();
+            if (apply(json)) return;
           }
         } catch (e) {
-          // optional local source
+          /* pas de fichier */
         }
+        try {
+          const raw = localStorage.getItem(LS_KEY_PLANNED_PERT);
+          if (raw) {
+            const json = JSON.parse(raw);
+            if (apply(json)) return;
+          }
+        } catch (e) {
+          /* ignore */
+        }
+        localPlannedPerturbations = null;
       }
 
+      /** Planifié = uniquement les données chargées au démarrage (TAM via serve_tam, JSON, cache). */
       async function checkPlannedDeviationOnline(pattern) {
-        const routeId = String(pattern.route_id || "");
         const routeShortName = String(pattern.route_short_name || "").trim();
-        let found = false;
-        let reason = "";
-        let gtfsRouteAlertCount = 0;
-        let gtfsPlannedCount = 0;
-        let tamFallbackReachable = false;
-        let localSourceHit = false;
-
-        // 0) Source locale synchronisée (robuste, sans CORS)
-        if (routeShortName) {
-          const local = checkLocalPlannedForLine(routeShortName);
-          if (local.found) {
-            localSourceHit = true;
-            return {
-              found: true,
-              reason: local.reason,
-              diagnostics: {
-                gtfsRouteAlertCount: 0,
-                gtfsPlannedCount: 0,
-                tamFallbackReachable: true,
-                localSourceHit: true,
-              },
-            };
-          }
+        if (!routeShortName) {
+          return {
+            found: false,
+            reason: "",
+            diagnostics: { itemCount: 0, hadDataset: false },
+          };
         }
-        // 1) Source officielle GTFS-RT Alert.pb
-        for (const url of GTFS_RT_ALERT_URLS) {
-          try {
-            const feed = await fetchGtfsRtFeed(url);
-            const entities = feed?.entity || [];
-            for (const e of entities) {
-              const a = e?.alert;
-              if (!a) continue;
-              const informed = a.informed_entity || [];
-              const hitRoute = informed.some((inf) => String(inf?.route_id || "") === routeId);
-              if (!hitRoute) continue;
-              gtfsRouteAlertCount += 1;
-              const txt = (translatedToText(a.header_text) + " " + translatedToText(a.description_text)).toLowerCase();
-              const effect = Number(a.effect || 0);
-              const plannedLike = [4, 6, 9].includes(effect) || txt.includes("travaux") || txt.includes("déviation") || txt.includes("deviation");
-              if (plannedLike) {
-                found = true;
-                gtfsPlannedCount += 1;
-                reason = translatedToText(a.header_text) || "Alerte planifiée détectée";
-                break;
-              }
-            }
-          } catch (e) {
-            // ignore source failures, continue with others
-          }
-          if (found) break;
-        }
-        // 2) Fallback: page perturbations TAM (certaines perturbations n'apparaissent pas en Alert.pb)
-        if (!found && routeShortName) {
-          try {
-            const fetched = await fetchTextWithCorsFallback(TAM_PERTURBATIONS_URL);
-            tamFallbackReachable = true;
-            const rs = checkTamTrafficPageForLine(fetched.text, routeShortName);
-            if (rs.found) {
-              found = true;
-              reason = rs.reason || `Perturbation planifiée détectée (ligne ${routeShortName})`;
-            }
-          } catch (e) {
-            // Si indisponible/CORS, on conserve le resultat GTFS-RT.
-          }
-        }
+        const local = checkLocalPlannedForLine(routeShortName);
+        const items = localPlannedPerturbations?.items;
         return {
-          found,
-          reason,
+          found: local.found,
+          reason: local.reason,
           diagnostics: {
-            gtfsRouteAlertCount,
-            gtfsPlannedCount,
-            tamFallbackReachable,
-            localSourceHit,
+            itemCount: Array.isArray(items) ? items.length : 0,
+            hadDataset: Array.isArray(items) && items.length > 0,
           },
         };
       }
@@ -2802,14 +2685,12 @@
         const rs = await checkPlannedDeviationOnline(p);
         if (!rs.found) {
           const d = rs.diagnostics || {};
-          const hasNonPlannedAlert = Number(d.gtfsRouteAlertCount || 0) > 0 && Number(d.gtfsPlannedCount || 0) === 0;
-          const tamDown = !d.tamFallbackReachable;
-          if (hasNonPlannedAlert) {
-            window.alert("Alerte détectée sur la ligne, mais non classée comme planifiée (ex: incident/retard temps réel).");
-          } else if (tamDown) {
-            window.alert("Aucune déviation planifiée détectée. Si besoin, lance le serveur local `python serve_tam.py` pour activer la collecte perturbations sans blocage CORS.");
+          if (!d.hadDataset) {
+            window.alert(
+              "Aucun jeu de perturbations planifiées. Lancez `python serve_tam.py` à la place de http.server, ou fournissez `tam_perturbations.json`.",
+            );
           } else {
-            window.alert("Aucune déviation planifiée détectée en ligne pour cette mission.");
+            window.alert("Aucune perturbation planifiée pour cette ligne dans les données du jour.");
           }
           appendOpsLog("check_planifie_none", "Aucun resultat detecte");
           return;

@@ -48,6 +48,56 @@ Optionnel (secours hors ligne pour le mode planifie):
 python update_tam_perturbations.py
 ```
 
+## Deploiement de `serve_tam` sur un serveur (ex. VM Oracle Cloud)
+
+Memo pour un **seul** but : exposer `GET /api/tam/perturbations` (HTML TAM parse en JSON) sur Internet pour une appli mobile / PWA, sans CORS cote TAM.
+
+### Comportement reseau important
+
+- Par defaut le script **ecoute sur 127.0.0.1** : inutilisable depuis l'exterieur. En cloud, lancer avec :
+  - `SERVE_TAM_BIND=0.0.0.0 python3 serve_tam.py`  
+  ou le code actuel lit la variable d'environnement (voir en-tete de `serve_tam.py`).
+
+### Oracle Cloud Infrastructure (OCI) — a minima
+
+1. **Subnets** : instance dans un **subnet public** + **IP publique** sur la VNIC.
+2. **Security list** (subnet public) : regle d'**ingress** **TCP 8000** (ou le port choisi) depuis `0.0.0.0/0` (puis, en prod, restreindre si besoin). Pas de **Network security group** sur la VNIC dans notre cas simple : inutile si vide.
+
+### Ubuntu sur la VM (pare-feu) — point souvent bloquant
+
+Les images classiques n'ouvrent en **entree** que **SSH (22)** ; une regle **REJECT** en fin de chaine `INPUT` bloque le reste. Il faut une regle **ACCEPT** sur le **port du serveur** (ex. 8000) **avant** ce `REJECT`. Vérifier avec `sudo iptables -L INPUT -n -v`.
+
+**Persister les regles** apres un reboot : paquet `iptables-persistent` + `sudo netfilter-persistent save` + `systemctl enable netfilter-persistent`.
+
+### Demarrer `serve_tam` au boot (systemd)
+
+Fichier d'exemple fourni : `systemd/serve-tam.service` (adapte `User=` et chemins). Installation typique : copie sous `/etc/systemd/system/`, puis `systemctl daemon-reload`, `enable`, `start`.
+
+### Accès SSH (depuis Windows)
+
+```text
+ssh -i "C:\chemin\vers\cle_privee.key" ubuntu@ADRESSE_IP_PUBLIQUE
+```
+
+**Copie du script** (ordinateur -> serveur) :
+
+```text
+scp -i "C:\chemin\vers\cle_privee.key" D:\...\serve_tam.py ubuntu@ADRESSE_IP_PUBLIQUE:~/
+```
+
+### Adresse IP publique : faut-il la changer souvent ?
+
+- **Reboot** du systeme d'exploitation : l'**IP publique ephemere est en principe la meme**.
+- **Stop** de l'instance puis **Start** (ou reconfiguration) : l'ephemere **peut** changer. Pour une adresse **fixe** : reserver une **IP publique reservee** (Reserved public IP) dans OCI et l'attacher. Pour l'appli, privilegier a terme un **nom DNS** pointant vers cette IP plutot que l'IP en dur partout.
+
+### Test rapide (machine locale)
+
+```text
+curl "http://IP_PUBLIQUE:8000/api/tam/perturbations"
+```
+
+(HTTP, pas HTTPS, tant qu'aucun certificat n'est en face.)
+
 ## Donnees Open Data locales
 
 - Les archives Open Data volumineuses (notamment ZIP tram) sont utilisees en local mais ne sont pas versionnees dans Git (`.gitignore`).

@@ -9,6 +9,7 @@ Serveur local unique pour le simulateur TAM:
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -19,7 +20,10 @@ from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-HOST = "127.0.0.1"
+# 127.0.0.1 = uniquement la machine (dev local). Sur un VM cloud, les connexions Internet
+# arrivent sur l’IP privée du VNIC : il faut 0.0.0.0, ex. :
+#   SERVE_TAM_BIND=0.0.0.0 python3 serve_tam.py
+HOST = os.environ.get("SERVE_TAM_BIND", "127.0.0.1")
 PORT = 8000
 TAM_INFOS_TRAFIC_URL = "https://www.tam-voyages.com/perturbation/?ptano=1106&rub_code=17"
 
@@ -194,7 +198,7 @@ class TamHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     root = Path(__file__).resolve().parent
     print(f"Serving from: {root}")
-    print(f"Open: http://{HOST}:{PORT}/simulateur_sae.html")
+    print(f"Listening on {HOST}:{PORT} — ex. http://127.0.0.1:{PORT}/ ou IP publique si bind 0.0.0.0")
     server = ThreadingHTTPServer((HOST, PORT), TamHandler)
     try:
         server.serve_forever()
