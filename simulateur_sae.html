@@ -60,9 +60,26 @@
         border: 0;
         color: #fff;
         font-weight: 600;
+        transition:
+          transform 90ms ease,
+          filter 120ms ease,
+          box-shadow 120ms ease,
+          background-color 120ms ease;
       }
       button.secondary {
         background: #4a5563;
+      }
+      button:active {
+        transform: translateY(1px) scale(0.985);
+        filter: brightness(0.92);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .panel-section button.active {
+        background: #0f7d2f;
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
       }
       .map-wrap {
         position: relative;
@@ -557,6 +574,11 @@
                   Saisir une déviation en Mode manuel
                 </button>
               </div>
+              <div class="grow">
+                <button id="nonServedBtn" class="secondary" type="button">
+                  Saisir arrêt non desservi
+                </button>
+              </div>
             </div>
             <div class="row panel-section panel-ops">
               <div class="grow">
@@ -777,6 +799,7 @@
         planifieActive: false,
         rtActive: false,
         manualActive: false,
+        nonServedEditActive: false,
         initialMode: OPS_MODE.BASE,
         returnMode: OPS_MODE.BASE,
         targetPatternId: "",
@@ -787,6 +810,7 @@
           MANUEL_ACTIF: null,
         },
         manualProfile: null,
+        manualStopOverrides: {},
       };
       let localPlannedPerturbations = null;
       let skippedStopIdSet = new Set();
@@ -934,6 +958,7 @@
       const checkPlannedBtn = document.getElementById("checkPlannedBtn");
       const checkRtBtn = document.getElementById("checkRtBtn");
       const manualBtn = document.getElementById("manualBtn");
+      const nonServedBtn = document.getElementById("nonServedBtn");
       const manualDrawStartBtn = document.getElementById("manualDrawStartBtn");
       const manualDrawUndoBtn = document.getElementById("manualDrawUndoBtn");
       const manualDrawSaveBtn = document.getElementById("manualDrawSaveBtn");
@@ -1170,6 +1195,12 @@
         }
         if (manualBtn) {
           manualBtn.disabled = manualDrawActive;
+        }
+        if (nonServedBtn) {
+          nonServedBtn.classList.toggle("active", !!opsState.nonServedEditActive);
+          nonServedBtn.textContent = opsState.nonServedEditActive
+            ? "Quitter le mode arrêt non desservi"
+            : "Saisir arrêt non desservi";
         }
       }
 
@@ -1456,6 +1487,7 @@
         opsState.planifieActive = false;
         opsState.rtActive = false;
         opsState.manualActive = false;
+        opsState.nonServedEditActive = false;
         opsState.mode = OPS_MODE.BASE;
         opsState.initialMode = OPS_MODE.BASE;
         opsState.returnMode = OPS_MODE.BASE;
@@ -1467,6 +1499,7 @@
           MANUEL_ACTIF: null,
         };
         opsState.manualProfile = null;
+        opsState.manualStopOverrides = {};
         manualBypassedLine.setLatLngs([]);
         manualDetourLine.setLatLngs([]);
         applyOpsStateUi();
@@ -1648,13 +1681,22 @@
             }
           }
         }
+
+        const overrides = opsState.manualStopOverrides || {};
+        for (const st of currentPattern.stops) {
+          const sid = String(st?.stop_id || "");
+          if (!sid || !Object.prototype.hasOwnProperty.call(overrides, sid)) continue;
+          if (overrides[sid]) skippedStopIdSet.add(sid);
+          else skippedStopIdSet.delete(sid);
+        }
       }
 
       function getServedStopIndices() {
         const stops = currentPattern?.stops || [];
         if (!stops.length) return [];
+        const hasSkipped = skippedStopIdSet.size > 0;
         const skipModeActive =
-          opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile);
+          opsState.planifieActive || opsState.manualActive || hasSkipped;
         const arr = [];
         for (let i = 0; i < stops.length; i++) {
           const sid = String(stops[i]?.stop_id || "");
@@ -1690,8 +1732,9 @@
 
       function drawSkippedStopsOverlay() {
         skippedStopsLayer.clearLayers();
+        const hasSkipped = skippedStopIdSet.size > 0;
         const skipModeActive =
-          opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile);
+          opsState.planifieActive || opsState.manualActive || hasSkipped;
         if (!currentPattern?.stops || !skipModeActive) return;
         const p = getMapVisualProfile();
         for (const st of currentPattern.stops) {
@@ -1703,6 +1746,8 @@
             fillColor: "#ef5350",
             fillOpacity: 0.95,
             weight: p.skippedStroke,
+            interactive: false,
+            bubblingMouseEvents: false,
           })
             .bindTooltip(`Arrêt non desservi: ${st.stop_name}`, {
               direction: "top",
@@ -1720,18 +1765,43 @@
           const lat = Number(st?.lat);
           const lon = Number(st?.lon);
           if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-          L.circleMarker([lat, lon], {
+          const sid = String(st?.stop_id || "");
+          const isSkipped = skippedStopIdSet.has(sid);
+          const marker = L.circleMarker([lat, lon], {
             radius: p.stopRadius,
-            color: "#b71c1c",
-            fillColor: "#e53935",
+            color: isSkipped ? "#c62828" : "#b71c1c",
+            fillColor: isSkipped ? "#ef5350" : "#e53935",
             fillOpacity: 0.9,
             weight: p.stopStroke,
-          })
-            .bindTooltip(`Arrêt: ${st.stop_name || "-"}`, {
+          });
+          marker
+            .bindTooltip(
+              isSkipped
+                ? `Arrêt non desservi: ${st.stop_name || "-"}`
+                : `Arrêt: ${st.stop_name || "-"}`,
+              {
               direction: "top",
               opacity: 0.95,
-            })
+              },
+            )
             .addTo(allStopsLayer);
+          marker.on("click", () => {
+            if (!(opsState.manualActive && opsState.nonServedEditActive)) return;
+            const current = skippedStopIdSet.has(sid);
+            const next = !current;
+            opsState.manualStopOverrides[sid] = next;
+            recomputeSkippedStopsForCurrentMission();
+            rebuildActiveGuideStops();
+            drawAllStopsOverlay();
+            drawSkippedStopsOverlay();
+            updateStopToStopOverlay();
+            updateStats();
+            setGpsStatus(
+              next
+                ? `Arrêt non desservi activé: ${st.stop_name || "-"}`
+                : `Arrêt desservi réactivé: ${st.stop_name || "-"}`,
+            );
+          });
         }
       }
 
@@ -3025,6 +3095,8 @@
           opsState.modeCoordinates.RT_ACTIF = null;
           opsState.modeCoordinates.MANUEL_ACTIF = null;
           opsState.manualProfile = null;
+          opsState.manualStopOverrides = {};
+          opsState.nonServedEditActive = false;
           manualBypassedLine.setLatLngs([]);
           manualDetourLine.setLatLngs([]);
         }
@@ -3077,10 +3149,10 @@
           const stopIdx = pair.curr;
           const nextIdx = pair.next;
           const currSkipped =
-            (opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile)) &&
+            (opsState.planifieActive || opsState.manualActive) &&
             skippedStopIdSet.has(String(stops[stopIdx]?.stop_id || ""));
           const nextSkipped =
-            (opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile)) &&
+            (opsState.planifieActive || opsState.manualActive) &&
             skippedStopIdSet.has(String(stops[nextIdx]?.stop_id || ""));
           currentStopEl.textContent = stops[stopIdx]
             ? `${stops[stopIdx].stop_name}${currSkipped ? " (non desservi)" : ""}`
@@ -3258,6 +3330,25 @@
         drawSkippedStopsOverlay();
         applyTraceForOpsMode(OPS_MODE.MANUEL);
         appendOpsLog("activate_manual", "Activation conducteur");
+      });
+
+      nonServedBtn?.addEventListener("click", () => {
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
+        opsState.manualActive = true;
+        opsState.nonServedEditActive = !opsState.nonServedEditActive;
+        applyOpsStateUi();
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawAllStopsOverlay();
+        drawSkippedStopsOverlay();
+        updateStopToStopOverlay();
+        updateStats();
+        setGpsStatus(
+          opsState.nonServedEditActive
+            ? "Mode arrêt non desservi actif: cliquez une pastille pour activer/désactiver."
+            : "Mode arrêt non desservi désactivé.",
+        );
       });
 
       manualDrawStartBtn?.addEventListener("click", () => {
