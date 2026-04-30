@@ -1,0 +1,77 @@
+PROCÉDURE TÉLÉPHONE (ADB) — Simulateur TAM
+==========================================
+
+But :
+Ouvrir l’application du PC sur le téléphone avec :
+http://localhost:8000/simulateur_sae.html
+
+
+ÉTAPE 1 — Brancher le téléphone
+-------------------------------
+1) Brancher le téléphone en USB.
+2) Activer le mode développeur + débogage USB sur le téléphone.
+3) Accepter la demande “Autoriser le débogage USB ?” sur le téléphone.
+
+
+ÉTAPE 2 — Lancer le serveur TAM sur le PC
+-----------------------------------------
+Ouvrir PowerShell dans le dossier du projet, puis taper :
+
+cd D:\DEV_CODE\TaM
+$env:SERVE_TAM_BIND="0.0.0.0"
+python serve_tam.py
+
+Laisser cette fenêtre ouverte.
+
+
+ÉTAPE 3 — Vérifier ADB puis faire le reverse USB
+------------------------------------------------
+Dans une autre fenêtre PowerShell (celle d’ADB), taper :
+
+adb devices
+
+Tu dois voir ton téléphone dans la liste.
+
+adb reverse tcp:8000 tcp:8000
+
+Si tout va bien, il n’y a pas d’erreur.
+
+
+ÉTAPE 4 — Ouvrir la page sur le téléphone
+-----------------------------------------
+Dans le navigateur du téléphone :
+
+http://localhost:8000/simulateur_sae.html
+
+
+ÉTAPE 5 — Utiliser le mode GPS réel
+-----------------------------------
+Dans l’app :
+1) Choisir ligne / terminus / variante
+2) Choisir le mode de conduite (Réel ou Simu)
+3) Cliquer sur Démarrer
+4) Accepter la géolocalisation
+
+
+SI ÇA NE MARCHE PAS
+-------------------
+- Refaire : adb devices
+- Refaire : adb reverse tcp:8000 tcp:8000
+- Vérifier que le serveur tourne toujours (fenêtre python ouverte)
+- Recharger la page sur le téléphone
+- Essayer en navigation privée
+
+
+ALTERNATIVE (SANS ADB, EN WIFI)
+-------------------------------
+1) Lancer :
+   cd D:\DEV_CODE\TaM
+   $env:SERVE_TAM_BIND="0.0.0.0"
+   python serve_tam.py
+
+2) Trouver l’IP du PC :
+   ipconfig
+
+3) Ouvrir sur le téléphone :
+   http://IP_DU_PC:8000/simulateur_sae.html
+

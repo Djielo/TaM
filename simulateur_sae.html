@@ -418,7 +418,7 @@
           <h2 class="title-inline">SAE TAM</h2>
           <div class="header-actions">
             <button id="recapToggleBtn" type="button" class="recap-toggle-btn">
-              Recap
+              Récap
             </button>
             <button id="burgerMenuBtn" type="button" class="burger-btn">
               ☰ Menu
@@ -500,7 +500,21 @@
             </div>
             <div class="row panel-section panel-mission">
               <div class="grow">
-                <button id="startBtn">Demarrer simulation</button>
+                <label for="driveModeSelect">Choisir le mode de conduite (Réel ou Simu)</label>
+                <select id="driveModeSelect">
+                  <option value="simulation">Simulation (avance auto)</option>
+                  <option value="real">Réel GPS (position téléphone)</option>
+                </select>
+              </div>
+              <div class="grow">
+                <p class="note" id="gpsStatus" style="margin: 0">
+                  GPS inactif.
+                </p>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow">
+                <button id="startBtn">Démarrer simulation</button>
               </div>
               <div class="grow">
                 <button id="pauseBtn" class="secondary">
@@ -510,10 +524,10 @@
             </div>
             <div class="row panel-section panel-mission">
               <div class="grow">
-                <button id="prevBtn" class="secondary">Arret precedent</button>
+                <button id="prevBtn" class="secondary">Arrêt précédent</button>
               </div>
               <div class="grow">
-                <button id="nextBtn" class="secondary">Arret suivant</button>
+                <button id="nextBtn" class="secondary">Arrêt suivant</button>
               </div>
               <div class="grow">
                 <label for="speedSelect">Vitesse</label>
@@ -567,12 +581,12 @@
                 />
                 <label for="headingUp" style="margin: 0; font-weight: 600"
                   >Cap en haut (carte qui tourne, comme en conduite
-                  reelle)</label
+                  réelle)</label
                 >
               </div>
               <div class="grow">
                 <p class="note" style="margin: 0">
-                  Desactivez pour le mode classique (nord en haut, le triangle
+                  Désactivez pour le mode classique (nord en haut, le triangle
                   tourne sur la carte).
                 </p>
               </div>
@@ -585,23 +599,23 @@
                   title="Annonces vocales"
                 />
                 <label for="voiceEnabled" style="margin: 0; font-weight: 600"
-                  >Annonces « prochain arret »</label
+                  >Annonces « prochain arrêt »</label
                 >
               </div>
               <div class="grow">
                 <label for="voiceMode">Quand annoncer</label>
                 <select id="voiceMode" disabled>
                   <option value="depart">
-                    Au passage d'un arret (on annonce le suivant)
+                    Au passage d'un arrêt (on annonce le suivant)
                   </option>
-                  <option value="mid">A mi-parcours entre deux arrets</option>
+                  <option value="mid">À mi-parcours entre deux arrêts</option>
                   <option value="both">Les deux</option>
                 </select>
               </div>
             </div>
             <div class="row row-voice panel-section panel-audio">
               <div class="grow">
-                <label for="voiceSelect">Voix (navigateur / systeme)</label>
+                <label for="voiceSelect">Voix (navigateur / système)</label>
                 <select id="voiceSelect"></select>
               </div>
               <div class="grow">
@@ -611,9 +625,9 @@
               </div>
             </div>
             <p class="note panel-section panel-audio" id="voiceNote">
-              La qualite depend de votre navigateur et des voix installees sur
-              l'appareil. Utilisez « Tester la voix » : si le resultat ne vous
-              convient pas, laissez l'option desactivee. Aucun service cloud :
+              La qualité dépend de votre navigateur et des voix installées sur
+              l'appareil. Utilisez « Tester la voix » : si le résultat ne vous
+              convient pas, laissez l'option désactivée. Aucun service cloud :
               tout reste en local.
             </p>
           </div>
@@ -629,17 +643,17 @@
                 <span id="modeActive" class="mono">BASE</span>
               </div>
               <div>
-                <b>Statut deviation:</b>
-                <span id="modeStatus">Aucune deviation active.</span>
+                <b>Statut déviation:</b>
+                <span id="modeStatus">Aucune déviation active.</span>
               </div>
-              <div><b>Arret courant:</b> <span id="currentStop">-</span></div>
-              <div><b>Prochain arret:</b> <span id="nextStop">-</span></div>
+              <div><b>Arrêt courant:</b> <span id="currentStop">-</span></div>
+              <div><b>Prochain arrêt:</b> <span id="nextStop">-</span></div>
               <div>
                 <b>Progression:</b>
                 <span id="progressPct" class="mono">0%</span>
               </div>
               <div>
-                <b>Troncon guide :</b>
+                <b>Tronçon guide :</b>
                 <span id="segmentGuideInfo" class="mono">-</span>
               </div>
             </div>
@@ -686,6 +700,7 @@
       const LS_KEY_HEADING = "tam_sim_heading_up";
       const LS_KEY_OPS_LOG = "tam_sim_ops_log";
       const LS_KEY_RECAP = "tam_sim_recap_on";
+      const LS_KEY_DRIVE_MODE = "tam_sim_drive_mode";
       const GTFS_RT_TRIP_URLS = [
         "https://data.montpellier3m.fr/GTFS/Urbain/TripUpdate.pb",
         "https://data.montpellier3m.fr/GTFS/Suburbain/TripUpdate.pb",
@@ -782,6 +797,8 @@
       const voiceTestBtn = document.getElementById("voiceTest");
       const voiceNoteEl = document.getElementById("voiceNote");
       const headingUpEl = document.getElementById("headingUp");
+      const driveModeSelect = document.getElementById("driveModeSelect");
+      const gpsStatusEl = document.getElementById("gpsStatus");
 
       const missionName = document.getElementById("missionName");
       const missionContextBar = document.getElementById("missionContextBar");
@@ -900,6 +917,111 @@
       const manualBtn = document.getElementById("manualBtn");
       const returnInitialBtn = document.getElementById("returnInitialBtn");
       const returnBaseBtn = document.getElementById("returnBaseBtn");
+      const startBtn = document.getElementById("startBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+
+      const DRIVE_MODE = {
+        SIMULATION: "simulation",
+        REAL: "real",
+      };
+      let driveMode = DRIVE_MODE.SIMULATION;
+      let gpsWatchId = null;
+      let lastGpsLatLng = null;
+      let lastGpsHeadingDeg = null;
+
+      function setGpsStatus(msg) {
+        if (gpsStatusEl) {
+          gpsStatusEl.textContent = msg;
+        }
+      }
+
+      function stopGpsTracking() {
+        if (gpsWatchId != null && navigator.geolocation) {
+          navigator.geolocation.clearWatch(gpsWatchId);
+        }
+        gpsWatchId = null;
+        lastGpsLatLng = null;
+        lastGpsHeadingDeg = null;
+      }
+
+      function applyGpsPositionToMission(pos) {
+        if (!currentPattern || !pathTotalMeters || pathTotalMeters <= 0) {
+          return;
+        }
+        const acc = Number(pos?.coords?.accuracy || 0);
+        const lat = Number(pos?.coords?.latitude || 0);
+        const lon = Number(pos?.coords?.longitude || 0);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          return;
+        }
+        lastGpsLatLng = [lat, lon];
+        const gpsHeading = Number(pos?.coords?.heading);
+        lastGpsHeadingDeg = Number.isFinite(gpsHeading) ? gpsHeading : null;
+        const projected = distanceAlongPathForLatLng(lat, lon);
+        let nextDistance = Math.max(0, Math.min(pathTotalMeters, projected));
+        // Evite un retour en arriere trop brusque quand le GPS saute.
+        if (nextDistance + 15 < distanceAlongPathMeters) {
+          nextDistance = distanceAlongPathMeters;
+        }
+        const prevVoiceD = lastVoiceDistance;
+        distanceAlongPathMeters = nextDistance;
+        maybeAnnounceProchainArret(prevVoiceD, distanceAlongPathMeters);
+        lastVoiceDistance = distanceAlongPathMeters;
+        updateMapNavigation();
+        redrawDoneLineAtDistance(distanceAlongPathMeters);
+        updateStopToStopOverlay();
+        updateStats();
+        const speedKmh = Number(pos?.coords?.speed);
+        const speedInfo =
+          Number.isFinite(speedKmh) && speedKmh >= 0
+            ? ` | ~${Math.round(speedKmh * 3.6)} km/h`
+            : "";
+        const qualif = acc && acc > 80 ? "GPS actif (précision faible)" : "GPS actif";
+        setGpsStatus(
+          `${qualif} (~${Math.max(1, Math.round(acc || 0))} m${speedInfo}).`,
+        );
+      }
+
+      function startGpsTracking() {
+        if (!navigator.geolocation) {
+          window.alert("Ce téléphone ne fournit pas la géolocalisation.");
+          setGpsStatus("GPS indisponible sur cet appareil.");
+          return false;
+        }
+        stopGpsTracking();
+        gpsWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            applyGpsPositionToMission(pos);
+          },
+          (err) => {
+            const msg =
+              err?.code === 1
+                ? "GPS refuse (permission)."
+                : err?.code === 2
+                  ? "GPS indisponible."
+                  : "GPS en attente...";
+            setGpsStatus(msg);
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 2000,
+            timeout: 12000,
+          },
+        );
+        setGpsStatus("Activation GPS...");
+        return true;
+      }
+
+      function refreshDriveModeUi() {
+        if (!startBtn) return;
+        startBtn.textContent =
+          driveMode === DRIVE_MODE.REAL ? "Démarrer mode réel GPS" : "Démarrer simulation";
+        if (driveMode === DRIVE_MODE.SIMULATION) {
+          setGpsStatus("GPS inactif.");
+        } else if (gpsWatchId == null) {
+          setGpsStatus("Mode réel prêt. Appuyez sur Démarrer.");
+        }
+      }
 
       const map = L.map("map", {
         rotate: true,
@@ -1033,12 +1155,12 @@
 
       function describeOpsState() {
         if (opsState.mode === OPS_MODE.MANUEL)
-          return "Deviation manuelle active.";
+          return "Déviation manuelle active.";
         if (opsState.mode === OPS_MODE.RT)
-          return "Deviation temps reel active.";
+          return "Déviation temps réel active.";
         if (opsState.mode === OPS_MODE.PLANIFIE)
-          return "Deviation planifiee active.";
-        return "Aucune deviation active.";
+          return "Déviation planifiée active.";
+        return "Aucune déviation active.";
       }
 
       function applyOpsStateUi() {
@@ -1811,7 +1933,7 @@
         );
 
         fillSelect(variantSelect, filteredByHeadsign, (p) => {
-          return `${p.variant_name} - ${p.start_stop} -> ${p.end_stop} (${p.stop_count} arrets)`;
+          return `${p.variant_name} - ${p.start_stop} -> ${p.end_stop} (${p.stop_count} arrêts)`;
         });
         updateMissionContextBar();
         if (!running) {
@@ -2119,8 +2241,12 @@
         const o = opt || {};
         const centerCamera = o.centerCamera !== false;
         const d = distanceAlongPathMeters;
-        const pos = pointAtDistanceMeters(d);
-        const brg = getTrackBearingDeg(d);
+        const useRealGpsPosition =
+          driveMode === DRIVE_MODE.REAL && Array.isArray(lastGpsLatLng);
+        const pos = useRealGpsPosition ? lastGpsLatLng : pointAtDistanceMeters(d);
+        const brg = useRealGpsPosition
+          ? (lastGpsHeadingDeg != null ? lastGpsHeadingDeg : getTrackBearingDeg(d))
+          : getTrackBearingDeg(d);
         marker.setLatLng(pos);
         const el =
           typeof marker.getElement === "function" ? marker.getElement() : null;
@@ -2540,11 +2666,11 @@
           ) {
             traceSource = "OSRM routier";
           } else {
-            traceSource = "GTFS arret->arret";
+            traceSource = "GTFS arrêt->arrêt";
           }
           if (!activeCoordinates.length) {
             activeCoordinates = pattern.coordinates;
-            traceSource = "GTFS arret->arret";
+            traceSource = "GTFS arrêt->arrêt";
           }
         }
         opsState.baseCoordinates = [...activeCoordinates];
@@ -2618,7 +2744,13 @@
       }
 
       function tickRaf(now) {
-        if (running && !previewOnlyMode && currentPattern && pathTotalMeters > 0) {
+        if (
+          running &&
+          driveMode === DRIVE_MODE.SIMULATION &&
+          !previewOnlyMode &&
+          currentPattern &&
+          pathTotalMeters > 0
+        ) {
           if (lastRafTime === 0) {
             lastRafTime = now;
           } else {
@@ -2645,8 +2777,7 @@
         requestAnimationFrame(tickRaf);
       }
 
-      document.getElementById("startBtn").addEventListener("click", () => {
-        const startBtn = document.getElementById("startBtn");
+      startBtn.addEventListener("click", () => {
         const p = selectedPattern();
         if (!p) return;
         const token = ++previewMissionToken;
@@ -2658,18 +2789,39 @@
             if (token !== previewMissionToken) return;
             previewOnlyMode = false;
             lastRafTime = 0;
-            running = true;
+            if (driveMode === DRIVE_MODE.REAL) {
+              running = startGpsTracking();
+              if (!running) {
+                return;
+              }
+              appendOpsLog("mode_reel_start", "GPS actif");
+            } else {
+              stopGpsTracking();
+              running = true;
+            }
           })
           .finally(() => {
             startBtn.disabled = false;
-            startBtn.textContent = "Demarrer simulation";
+            refreshDriveModeUi();
           });
       });
 
-      document.getElementById("pauseBtn").addEventListener("click", () => {
+      pauseBtn.addEventListener("click", () => {
         if (previewOnlyMode) {
           running = false;
           lastRafTime = 0;
+          stopGpsTracking();
+          return;
+        }
+        if (driveMode === DRIVE_MODE.REAL) {
+          if (!currentPattern) return;
+          if (gpsWatchId == null) {
+            running = startGpsTracking();
+          } else {
+            stopGpsTracking();
+            running = false;
+            setGpsStatus("GPS en pause.");
+          }
           return;
         }
         running = !running;
@@ -2692,7 +2844,7 @@
           } else {
             window.alert("Aucune perturbation planifiée pour cette ligne dans les données du jour.");
           }
-          appendOpsLog("check_planifie_none", "Aucun resultat detecte");
+          appendOpsLog("check_planifie_none", "Aucun résultat détecté");
           return;
         }
         opsState.planifieActive = true;
@@ -2717,7 +2869,7 @@
         const rs = await checkRealtimeDeviationOnline(p);
         if (!rs.found) {
           window.alert("Aucune déviation temps réel détectée en ligne pour cette mission.");
-          appendOpsLog("check_rt_none", "Aucun resultat detecte");
+          appendOpsLog("check_rt_none", "Aucun résultat détecté");
           return;
         }
         // Snapshot du mode stable precedent pour le retour etat initial.
@@ -2755,7 +2907,7 @@
         drawSkippedStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
-        appendOpsLog("return_initial", "Retour etat initial mission");
+        appendOpsLog("return_initial", "Retour état initial mission");
       });
 
       returnBaseBtn.addEventListener("click", () => {
@@ -2772,7 +2924,7 @@
         drawSkippedStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
-        appendOpsLog("return_base", "Forcage mode BASE");
+        appendOpsLog("return_base", "Forçage mode BASE");
       });
 
       document.getElementById("nextBtn").addEventListener("click", () => {
@@ -2958,7 +3110,7 @@
         }
         if (!resolveCurrentVoice()) {
           const msg =
-            "Aucune voix utilisable. Verifiez qu'une voix francaise est installee (parametres Windows / navigateur) puis rouvrez la page.";
+            "Aucune voix utilisable. Vérifiez qu'une voix française est installée (paramètres Windows / navigateur) puis rouvrez la page.";
           if (voiceNoteEl) {
             const prev = voiceNoteEl.textContent;
             voiceNoteEl.textContent = msg;
@@ -2972,6 +3124,34 @@
       });
 
       initVocalUI();
+      try {
+        const savedDriveMode = localStorage.getItem(LS_KEY_DRIVE_MODE);
+        if (savedDriveMode === DRIVE_MODE.REAL || savedDriveMode === DRIVE_MODE.SIMULATION) {
+          driveMode = savedDriveMode;
+        }
+      } catch (e) {
+        // ignore
+      }
+      if (driveModeSelect) {
+        driveModeSelect.value = driveMode;
+        driveModeSelect.addEventListener("change", () => {
+          const nextMode =
+            driveModeSelect.value === DRIVE_MODE.REAL
+              ? DRIVE_MODE.REAL
+              : DRIVE_MODE.SIMULATION;
+          driveMode = nextMode;
+          running = false;
+          lastRafTime = 0;
+          try {
+            localStorage.setItem(LS_KEY_DRIVE_MODE, driveMode);
+          } catch (e) {
+            // ignore
+          }
+          stopGpsTracking();
+          refreshDriveModeUi();
+        });
+      }
+      refreshDriveModeUi();
       burgerMenuBtn?.addEventListener("click", () =>
         openControlPanel("mission"),
       );
@@ -3014,6 +3194,9 @@
           );
           console.error(err);
         });
+      window.addEventListener("beforeunload", () => {
+        stopGpsTracking();
+      });
     </script>
   </body>
 </html>
