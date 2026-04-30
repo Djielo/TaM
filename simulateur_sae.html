@@ -535,6 +535,7 @@
                   <option value="1">x1</option>
                   <option value="2">x2</option>
                   <option value="4">x4</option>
+                  <option value="10">x10</option>
                 </select>
               </div>
             </div>
@@ -554,6 +555,23 @@
               <div class="grow">
                 <button id="manualBtn" class="secondary" type="button">
                   Saisir une déviation en Mode manuel
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <button id="manualDrawStartBtn" class="secondary" type="button">
+                  Tracer la déviation (carte)
+                </button>
+              </div>
+              <div class="grow">
+                <button id="manualDrawUndoBtn" class="secondary" type="button">
+                  Retirer le dernier point
+                </button>
+              </div>
+              <div class="grow">
+                <button id="manualDrawSaveBtn" type="button">
+                  Valider le tracé manuel
                 </button>
               </div>
             </div>
@@ -768,6 +786,7 @@
           RT_ACTIF: null,
           MANUEL_ACTIF: null,
         },
+        manualProfile: null,
       };
       let localPlannedPerturbations = null;
       let skippedStopIdSet = new Set();
@@ -915,6 +934,9 @@
       const checkPlannedBtn = document.getElementById("checkPlannedBtn");
       const checkRtBtn = document.getElementById("checkRtBtn");
       const manualBtn = document.getElementById("manualBtn");
+      const manualDrawStartBtn = document.getElementById("manualDrawStartBtn");
+      const manualDrawUndoBtn = document.getElementById("manualDrawUndoBtn");
+      const manualDrawSaveBtn = document.getElementById("manualDrawSaveBtn");
       const returnInitialBtn = document.getElementById("returnInitialBtn");
       const returnBaseBtn = document.getElementById("returnBaseBtn");
       const startBtn = document.getElementById("startBtn");
@@ -1049,13 +1071,33 @@
         weight: 8,
         opacity: 0.95,
       }).addTo(map);
+      let manualBypassedLine = L.polyline([], {
+        color: "#111111",
+        weight: 7,
+        opacity: 0.95,
+        dashArray: "10 8",
+      }).addTo(map);
+      let manualDetourLine = L.polyline([], {
+        color: "#ffd400",
+        weight: 7,
+        opacity: 0.95,
+      }).addTo(map);
+      const manualDraftLayer = L.layerGroup().addTo(map);
+      let manualDraftLine = null;
+      let manualDraftMarkers = [];
+      let manualDraftPoints = [];
+      let manualDrawActive = false;
       /** Couche temporaire : segment actif entre l'arret courant et le suivant. */
       const stopToStopLayer = L.layerGroup().addTo(map);
+      const allStopsLayer = L.layerGroup().addTo(map);
       const skippedStopsLayer = L.layerGroup().addTo(map);
       let marker = L.marker([43.61, 3.88], {
         icon: navIcon,
         zIndexOffset: 800,
       }).addTo(map);
+      map.on("zoomend", () => {
+        applyMapVisualProfile();
+      });
 
       function uniqueValues(arr, getter) {
         return [...new Set(arr.map(getter))];
@@ -1072,6 +1114,246 @@
         }
         refreshMapLayout();
       }
+
+      function getMapVisualProfile() {
+        const z = Number(map?.getZoom?.() || 13);
+        const t = Math.max(0, Math.min(1, (z - 11) / 7));
+        const lerp = (a, b) => a + (b - a) * t;
+        return {
+          fullWeight: lerp(4, 9),
+          doneWeight: lerp(5, 11),
+          manualBypassWeight: lerp(4, 10),
+          manualDetourWeight: lerp(4, 10),
+          draftWeight: lerp(4, 9),
+          stopRadius: lerp(5, 10),
+          stopStroke: lerp(1, 2.2),
+          skippedRadius: lerp(6, 12),
+          skippedStroke: lerp(1.2, 2.5),
+          draftPointRadiusMain: lerp(3.5, 7),
+          draftPointRadius: lerp(3, 6),
+        };
+      }
+
+      function applyMapVisualProfile() {
+        const p = getMapVisualProfile();
+        fullLine.setStyle({ weight: p.fullWeight });
+        doneLine.setStyle({ weight: p.doneWeight });
+        manualBypassedLine.setStyle({ weight: p.manualBypassWeight });
+        manualDetourLine.setStyle({ weight: p.manualDetourWeight });
+        if (manualDraftLine) {
+          manualDraftLine.setStyle({ weight: p.draftWeight });
+        }
+        if (manualDraftMarkers?.length) {
+          manualDraftMarkers.forEach((m, idx) => {
+            const r = idx === 0 ? p.draftPointRadiusMain : p.draftPointRadius;
+            if (typeof m.setRadius === "function") m.setRadius(r);
+            if (typeof m.setStyle === "function") m.setStyle({ weight: p.stopStroke });
+          });
+        }
+        drawAllStopsOverlay();
+        drawSkippedStopsOverlay();
+        stopToStopLayer.__tamSegIdx = -1;
+        updateStopToStopOverlay();
+      }
+
+      function refreshManualDrawUi() {
+        if (manualDrawStartBtn) {
+          manualDrawStartBtn.textContent = manualDrawActive
+            ? "Quitter le tracé (carte)"
+            : "Tracer la déviation (carte)";
+        }
+        if (manualDrawUndoBtn) {
+          manualDrawUndoBtn.disabled = !manualDrawActive || manualDraftPoints.length === 0;
+        }
+        if (manualDrawSaveBtn) {
+          manualDrawSaveBtn.disabled = manualDraftPoints.length < 2;
+        }
+        if (manualBtn) {
+          manualBtn.disabled = manualDrawActive;
+        }
+      }
+
+      function clearManualDraftVisuals() {
+        manualDraftLayer.clearLayers();
+        manualDraftLine = null;
+        manualDraftMarkers = [];
+      }
+
+      function redrawManualDraftVisuals() {
+        clearManualDraftVisuals();
+        if (!manualDraftPoints.length) {
+          refreshManualDrawUi();
+          return;
+        }
+        const p = getMapVisualProfile();
+        manualDraftLine = L.polyline(manualDraftPoints, {
+          color: "#ff7f00",
+          weight: p.draftWeight,
+          opacity: 0.95,
+          dashArray: "9 8",
+        }).addTo(manualDraftLayer);
+        manualDraftMarkers = manualDraftPoints.map((pt, idx) =>
+          L.circleMarker(pt, {
+            radius: idx === 0 ? p.draftPointRadiusMain : p.draftPointRadius,
+            color: "#ff7f00",
+            fillColor: "#ff7f00",
+            fillOpacity: 0.95,
+            weight: p.stopStroke,
+          }).addTo(manualDraftLayer),
+        );
+        refreshManualDrawUi();
+      }
+
+      function stopManualDrawMode(opts) {
+        const o = opts || {};
+        manualDrawActive = false;
+        if (!o.keepPoints) {
+          manualDraftPoints = [];
+          clearManualDraftVisuals();
+        }
+        refreshManualDrawUi();
+      }
+
+      function startManualDrawMode() {
+        manualDrawActive = true;
+        manualDraftPoints = [];
+        clearManualDraftVisuals();
+        refreshManualDrawUi();
+        setGpsStatus("Tracé manuel actif: touchez la carte pour poser des points.");
+      }
+
+      function buildCumMetersForCoords(coords) {
+        if (!Array.isArray(coords) || coords.length < 2) return [0];
+        const cum = [0];
+        for (let i = 0; i < coords.length - 1; i++) {
+          const d = L.latLng(coords[i]).distanceTo(L.latLng(coords[i + 1]));
+          cum.push(cum[i] + d);
+        }
+        return cum;
+      }
+
+      function distanceAlongCoordsForLatLng(coords, cum, lat, lng) {
+        if (!coords || coords.length < 2 || !cum || !cum.length) return 0;
+        const s = L.latLng(lat, lng);
+        let best = 0;
+        let bestD = Infinity;
+        for (let i = 0; i < coords.length - 1; i++) {
+          const p0 = L.latLng(coords[i]);
+          const p1 = L.latLng(coords[i + 1]);
+          const segLenM = p0.distanceTo(p1);
+          if (segLenM < 1e-6) continue;
+          const dLat = p1.lat - p0.lat;
+          const dLng = p1.lng - p0.lng;
+          const a0 = s.lat - p0.lat;
+          const b0 = s.lng - p0.lng;
+          const len2 = dLat * dLat + dLng * dLng;
+          const t = Math.max(0, Math.min(1, (a0 * dLat + b0 * dLng) / len2));
+          const proj = [p0.lat + t * dLat, p0.lng + t * dLng];
+          const d = s.distanceTo(L.latLng(proj));
+          if (d < bestD) {
+            bestD = d;
+            best = cum[i] + t * segLenM;
+          }
+        }
+        return best;
+      }
+
+      function pointAtDistanceOnCoords(coords, cum, d) {
+        if (!coords || coords.length < 2 || !cum || !cum.length) {
+          return coords && coords[0] ? coords[0] : [43.61, 3.88];
+        }
+        const total = cum[cum.length - 1] || 0;
+        if (d <= 0) return coords[0];
+        if (d >= total) return coords[coords.length - 1];
+        let lo = 0;
+        let hi = cum.length - 1;
+        while (lo < hi - 1) {
+          const mid = Math.floor((lo + hi) / 2);
+          if (cum[mid] < d) lo = mid;
+          else hi = mid;
+        }
+        const i = lo;
+        const a = coords[i];
+        const b = coords[i + 1];
+        const d0 = cum[i];
+        const d1 = cum[i + 1];
+        const seg = d1 - d0;
+        const t = seg < 1e-6 ? 0 : (d - d0) / seg;
+        return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+      }
+
+      function windowOnCoordsBetweenMeters(coords, cum, d0, d1) {
+        if (!coords || coords.length < 2 || !cum || !cum.length) return [];
+        const total = cum[cum.length - 1] || 0;
+        const from = Math.max(0, Math.min(total, d0));
+        const to = Math.max(0, Math.min(total, d1));
+        if (Math.abs(to - from) < 1e-3) return [];
+        const lo = Math.min(from, to);
+        const hi = Math.max(from, to);
+        const pts = [pointAtDistanceOnCoords(coords, cum, lo)];
+        for (let i = 1; i < coords.length - 1; i++) {
+          if (cum[i] > lo && cum[i] < hi) pts.push(coords[i]);
+        }
+        pts.push(pointAtDistanceOnCoords(coords, cum, hi));
+        if (from > to) pts.reverse();
+        return pts;
+      }
+
+      function buildManualProfileFromDraft(draftPoints) {
+        const base = opsState.baseCoordinates;
+        if (!Array.isArray(base) || base.length < 2) return null;
+        if (!Array.isArray(draftPoints) || draftPoints.length < 2) return null;
+        const cum = buildCumMetersForCoords(base);
+        const total = cum[cum.length - 1] || 0;
+        const a = draftPoints[0];
+        const b = draftPoints[draftPoints.length - 1];
+        let dA = distanceAlongCoordsForLatLng(base, cum, a[0], a[1]);
+        let dB = distanceAlongCoordsForLatLng(base, cum, b[0], b[1]);
+        if (!Number.isFinite(dA) || !Number.isFinite(dB)) {
+          return null;
+        }
+        let detourCoords = draftPoints.map((pt) => [...pt]);
+        if (dA > dB) {
+          const tmp = dA;
+          dA = dB;
+          dB = tmp;
+          detourCoords = [...detourCoords].reverse();
+        }
+        if (Math.abs(dB - dA) < 1) return null;
+        const before = windowOnCoordsBetweenMeters(base, cum, 0, dA);
+        const after = windowOnCoordsBetweenMeters(base, cum, dB, total);
+        const bypassedCoords = windowOnCoordsBetweenMeters(base, cum, dA, dB);
+        const mergedCoords = [...before, ...detourCoords, ...after];
+        if (mergedCoords.length < 2) return null;
+        return {
+          startDistance: dA,
+          endDistance: dB,
+          detourCoords,
+          bypassedCoords,
+          mergedCoords,
+        };
+      }
+
+      function updateManualDeviationVisual(mode) {
+        if (mode === OPS_MODE.MANUEL && opsState.manualProfile) {
+          manualBypassedLine.setLatLngs(opsState.manualProfile.bypassedCoords || []);
+          manualDetourLine.setLatLngs(opsState.manualProfile.detourCoords || []);
+          return;
+        }
+        manualBypassedLine.setLatLngs([]);
+        manualDetourLine.setLatLngs([]);
+      }
+
+      map.on("click", (e) => {
+        if (!manualDrawActive) return;
+        const lat = Number(e?.latlng?.lat);
+        const lng = Number(e?.latlng?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return;
+        }
+        manualDraftPoints.push([lat, lng]);
+        redrawManualDraftVisuals();
+      });
 
       function setPanelTab(panelName) {
         if (!controlPanelEl) return;
@@ -1167,6 +1449,7 @@
         opsState.mode = recomputeOpsMode();
         if (modeActiveEl) modeActiveEl.textContent = opsState.mode;
         if (modeStatusEl) modeStatusEl.textContent = describeOpsState();
+        refreshManualDrawUi();
       }
 
       function resetOpsStateForMission() {
@@ -1183,6 +1466,9 @@
           RT_ACTIF: null,
           MANUEL_ACTIF: null,
         };
+        opsState.manualProfile = null;
+        manualBypassedLine.setLatLngs([]);
+        manualDetourLine.setLatLngs([]);
         applyOpsStateUi();
       }
 
@@ -1323,20 +1609,42 @@
       function recomputeSkippedStopsForCurrentMission() {
         skippedStopIdSet = new Set();
         skippedStopNameSet = new Set();
-        if (!currentPattern?.stops || !opsState.planifieActive) return;
-        const entries = getPlannedEntriesForCurrentLine(currentPattern.route_short_name);
-        for (const e of entries) {
-          for (const name of extractNonServedStopsFromBody(e?.body || "")) {
-            skippedStopNameSet.add(name);
+        if (!currentPattern?.stops) return;
+
+        if (opsState.planifieActive) {
+          const entries = getPlannedEntriesForCurrentLine(currentPattern.route_short_name);
+          for (const e of entries) {
+            for (const name of extractNonServedStopsFromBody(e?.body || "")) {
+              skippedStopNameSet.add(name);
+            }
+          }
+          for (const st of currentPattern.stops) {
+            const norm = normalizeStopName(st?.stop_name || "");
+            if (!norm) continue;
+            for (const bad of skippedStopNameSet) {
+              if (norm === bad || norm.includes(bad) || bad.includes(norm)) {
+                skippedStopIdSet.add(String(st.stop_id || ""));
+                break;
+              }
+            }
           }
         }
-        for (const st of currentPattern.stops) {
-          const norm = normalizeStopName(st?.stop_name || "");
-          if (!norm) continue;
-          for (const bad of skippedStopNameSet) {
-            if (norm === bad || norm.includes(bad) || bad.includes(norm)) {
+
+        if (opsState.manualActive && opsState.manualProfile && opsState.baseCoordinates) {
+          const base = opsState.baseCoordinates;
+          const cum = buildCumMetersForCoords(base);
+          const dA = Number(opsState.manualProfile.startDistance || 0);
+          const dB = Number(opsState.manualProfile.endDistance || 0);
+          const lo = Math.min(dA, dB);
+          const hi = Math.max(dA, dB);
+          const edgeMarginMeters = 8;
+          for (const st of currentPattern.stops) {
+            const lat = Number(st?.lat);
+            const lon = Number(st?.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+            const d = distanceAlongCoordsForLatLng(base, cum, lat, lon);
+            if (d > lo + edgeMarginMeters && d < hi - edgeMarginMeters) {
               skippedStopIdSet.add(String(st.stop_id || ""));
-              break;
             }
           }
         }
@@ -1345,10 +1653,12 @@
       function getServedStopIndices() {
         const stops = currentPattern?.stops || [];
         if (!stops.length) return [];
+        const skipModeActive =
+          opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile);
         const arr = [];
         for (let i = 0; i < stops.length; i++) {
           const sid = String(stops[i]?.stop_id || "");
-          const skipped = opsState.planifieActive && skippedStopIdSet.has(sid);
+          const skipped = skipModeActive && skippedStopIdSet.has(sid);
           if (!skipped) arr.push(i);
         }
         return arr.length >= 2 ? arr : stops.map((_, i) => i);
@@ -1380,22 +1690,48 @@
 
       function drawSkippedStopsOverlay() {
         skippedStopsLayer.clearLayers();
-        if (!currentPattern?.stops || !opsState.planifieActive) return;
+        const skipModeActive =
+          opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile);
+        if (!currentPattern?.stops || !skipModeActive) return;
+        const p = getMapVisualProfile();
         for (const st of currentPattern.stops) {
           const sid = String(st?.stop_id || "");
           if (!skippedStopIdSet.has(sid)) continue;
           L.circleMarker([st.lat, st.lon], {
-            radius: 7,
+            radius: p.skippedRadius,
             color: "#c62828",
             fillColor: "#ef5350",
             fillOpacity: 0.95,
-            weight: 2,
+            weight: p.skippedStroke,
           })
             .bindTooltip(`Arrêt non desservi: ${st.stop_name}`, {
               direction: "top",
               opacity: 0.95,
             })
             .addTo(skippedStopsLayer);
+        }
+      }
+
+      function drawAllStopsOverlay() {
+        allStopsLayer.clearLayers();
+        if (!currentPattern?.stops) return;
+        const p = getMapVisualProfile();
+        for (const st of currentPattern.stops) {
+          const lat = Number(st?.lat);
+          const lon = Number(st?.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          L.circleMarker([lat, lon], {
+            radius: p.stopRadius,
+            color: "#b71c1c",
+            fillColor: "#e53935",
+            fillOpacity: 0.9,
+            weight: p.stopStroke,
+          })
+            .bindTooltip(`Arrêt: ${st.stop_name || "-"}`, {
+              direction: "top",
+              opacity: 0.95,
+            })
+            .addTo(allStopsLayer);
         }
       }
 
@@ -1509,8 +1845,9 @@
         return { found, reason };
       }
 
-      async function applyTraceForOpsMode(mode) {
+      async function applyTraceForOpsMode(mode, opts) {
         if (!currentPattern) return;
+        const o = opts || {};
         const oldTotal = pathTotalMeters || 1;
         const oldD = distanceAlongPathMeters || 0;
         const ratio = Math.max(0, Math.min(1, oldD / oldTotal));
@@ -1538,8 +1875,12 @@
         const newD = Math.min(pathTotalMeters, Math.max(0, ratio * pathTotalMeters));
         distanceAlongPathMeters = newD;
         redrawDoneLineAtDistance(distanceAlongPathMeters);
-        updateMapNavigation({ centerCamera: true, zoom: map.getZoom() });
+        updateMapNavigation({
+          centerCamera: o.centerCamera !== false,
+          zoom: map.getZoom(),
+        });
         updateStopToStopOverlay();
+        updateManualDeviationVisual(mode);
         updateStats();
       }
 
@@ -2434,6 +2775,10 @@
         ) {
           return;
         }
+        // Recalcule l'historique d'annonces depuis la position courante.
+        // Important pour "Arrêt précédent": on doit pouvoir réentendre les annonces
+        // après un retour en arrière, au lieu de garder les anciennes clés en mémoire.
+        voixAnnounced = new Set();
         const served = getServedStopIndices();
         for (let p = 0; p < served.length - 1; p++) {
           const i = served[p];
@@ -2635,6 +2980,7 @@
       async function setMission(pattern, opts) {
         const o = opts || {};
         previewOnlyMode = !!o.previewOnly;
+        stopManualDrawMode();
         currentPattern = pattern;
         distanceAlongPathMeters = 0;
         lastRafTime = 0;
@@ -2674,15 +3020,21 @@
           }
         }
         opsState.baseCoordinates = [...activeCoordinates];
-        opsState.modeCoordinates.PLANIFIE_ACTIF = null;
-        opsState.modeCoordinates.RT_ACTIF = null;
-        opsState.modeCoordinates.MANUEL_ACTIF = null;
+        if (!keepPrefill) {
+          opsState.modeCoordinates.PLANIFIE_ACTIF = null;
+          opsState.modeCoordinates.RT_ACTIF = null;
+          opsState.modeCoordinates.MANUEL_ACTIF = null;
+          opsState.manualProfile = null;
+          manualBypassedLine.setLatLngs([]);
+          manualDetourLine.setLatLngs([]);
+        }
 
         rebuildPathMetrics(activeCoordinates);
         trimActivePathToPatternStops(pattern);
         stopMetersAlong = buildStopMetersAlong(pattern);
         recomputeSkippedStopsForCurrentMission();
         rebuildActiveGuideStops();
+        drawAllStopsOverlay();
         drawSkippedStopsOverlay();
 
         fullLine.setLatLngs(activeCoordinates);
@@ -2703,6 +3055,10 @@
           announceInitialNextStopIfNeeded();
         }
         finalizeInitialOpsMode();
+        const startMode = recomputeOpsMode();
+        if (startMode !== OPS_MODE.BASE) {
+          await applyTraceForOpsMode(startMode, { centerCamera: false });
+        }
         refreshMapLayout();
         updateStats();
       }
@@ -2721,10 +3077,10 @@
           const stopIdx = pair.curr;
           const nextIdx = pair.next;
           const currSkipped =
-            opsState.planifieActive &&
+            (opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile)) &&
             skippedStopIdSet.has(String(stops[stopIdx]?.stop_id || ""));
           const nextSkipped =
-            opsState.planifieActive &&
+            (opsState.planifieActive || (opsState.manualActive && !!opsState.manualProfile)) &&
             skippedStopIdSet.has(String(stops[nextIdx]?.stop_id || ""));
           currentStopEl.textContent = stops[stopIdx]
             ? `${stops[stopIdx].stop_name}${currSkipped ? " (non desservi)" : ""}`
@@ -2780,6 +3136,7 @@
       startBtn.addEventListener("click", () => {
         const p = selectedPattern();
         if (!p) return;
+        speed = Number(speedSelect.value) || 1;
         const token = ++previewMissionToken;
         running = false;
         startBtn.disabled = true;
@@ -2854,6 +3211,7 @@
         await applyTraceForOpsMode(OPS_MODE.PLANIFIE);
         recomputeSkippedStopsForCurrentMission();
         rebuildActiveGuideStops();
+        drawAllStopsOverlay();
         drawSkippedStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
@@ -2887,13 +3245,69 @@
       manualBtn.addEventListener("click", () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
+        if (!opsState.modeCoordinates[OPS_MODE.MANUEL]) {
+          window.alert("Aucun tracé manuel enregistré. Utilisez d'abord « Tracer la déviation (carte) ».");
+          return;
+        }
         // Snapshot du mode stable precedent pour le retour etat initial.
         opsState.returnMode = recomputeOpsMode();
         opsState.manualActive = true;
         applyOpsStateUi();
-        // V1: mode manuel conserve le tracé courant, en attendant l'editeur de deviation.
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawSkippedStopsOverlay();
         applyTraceForOpsMode(OPS_MODE.MANUEL);
         appendOpsLog("activate_manual", "Activation conducteur");
+      });
+
+      manualDrawStartBtn?.addEventListener("click", () => {
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
+        if (manualDrawActive) {
+          stopManualDrawMode({ keepPoints: true });
+          setGpsStatus("Tracé manuel mis en pause.");
+          return;
+        }
+        startManualDrawMode();
+      });
+
+      manualDrawUndoBtn?.addEventListener("click", () => {
+        if (!manualDrawActive || !manualDraftPoints.length) {
+          return;
+        }
+        manualDraftPoints.pop();
+        redrawManualDraftVisuals();
+      });
+
+      manualDrawSaveBtn?.addEventListener("click", async () => {
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
+        if (manualDraftPoints.length < 2) {
+          window.alert("Ajoutez au moins 2 points sur la carte pour valider le tracé manuel.");
+          return;
+        }
+        const profile = buildManualProfileFromDraft(manualDraftPoints);
+        if (!profile) {
+          window.alert(
+            "Impossible de raccorder la déviation à la ligne. Commencez et terminez bien sur la ligne.",
+          );
+          return;
+        }
+        opsState.manualProfile = profile;
+        opsState.modeCoordinates[OPS_MODE.MANUEL] = profile.mergedCoords;
+        stopManualDrawMode();
+        opsState.returnMode = recomputeOpsMode();
+        opsState.manualActive = true;
+        applyOpsStateUi();
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawSkippedStopsOverlay();
+        await applyTraceForOpsMode(OPS_MODE.MANUEL, { centerCamera: false });
+        appendOpsLog(
+          "manual_trace_saved",
+          `Detour=${profile.detourCoords.length}pts; merged=${profile.mergedCoords.length}pts`,
+        );
+        setGpsStatus("Déviation manuelle validée: segment ligne remplacé entre A et B.");
       });
 
       returnInitialBtn.addEventListener("click", () => {
@@ -2904,6 +3318,7 @@
         applyTraceForOpsMode(recomputeOpsMode());
         recomputeSkippedStopsForCurrentMission();
         rebuildActiveGuideStops();
+        drawAllStopsOverlay();
         drawSkippedStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
@@ -2921,6 +3336,7 @@
         applyTraceForOpsMode(OPS_MODE.BASE);
         recomputeSkippedStopsForCurrentMission();
         rebuildActiveGuideStops();
+        drawAllStopsOverlay();
         drawSkippedStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
@@ -2984,6 +3400,7 @@
       speedSelect.addEventListener("change", () => {
         speed = Number(speedSelect.value) || 1;
       });
+      speed = Number(speedSelect.value) || 1;
 
       lineSelect.addEventListener("change", updateHeadsigns);
       lineSelect.addEventListener("change", syncLineCustomTrigger);
@@ -3152,6 +3569,7 @@
         });
       }
       refreshDriveModeUi();
+      refreshManualDrawUi();
       burgerMenuBtn?.addEventListener("click", () =>
         openControlPanel("mission"),
       );
@@ -3177,6 +3595,7 @@
         setRecapVisible(false);
       }
       refreshMapLayout();
+      applyMapVisualProfile();
 
       Promise.all([
         fetch("./simulation_data.json").then((resp) => resp.json()),
@@ -3185,6 +3604,7 @@
         .then(([json]) => {
           data = json;
           updateLines();
+          applyMapVisualProfile();
           requestAnimationFrame(tickRaf);
           refreshMapLayout();
         })
