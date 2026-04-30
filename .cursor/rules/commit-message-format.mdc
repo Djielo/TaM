@@ -1,0 +1,26 @@
+---
+description: Format obligatoire des messages de commit
+alwaysApply: true
+---
+
+# Format des commits
+
+Quand tu crées ou modifies un commit dans ce projet, respecte toujours ce format:
+
+1. Ligne de titre (style Conventional Commit déjà utilisé dans le repo)
+2. Ligne vide
+3. `Contexte`
+4. `--------`
+5. Liste à puces
+6. Ligne vide
+7. `Contenu principal`
+8. `-----------------`
+9. Liste à puces (fichiers + changements)
+10. Ligne vide
+11. `Impact fonctionnel`
+12. `------------------`
+13. Liste à puces orientée utilisateur
+14. Ligne vide
+15. `Made-with: Cursor`
+
+Ne pas utiliser `Contexte:` avec deux-points. Utiliser le titre seul + ligne de tirets.
