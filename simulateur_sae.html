@@ -75,6 +75,18 @@
         transform: translateY(1px) scale(0.985);
         filter: brightness(0.92);
       }
+      #savedDeviationSelect,
+      #duplicateFromDeviationSelect,
+      #duplicateTargetVariantSelect {
+        font-size: 10px !important;
+        padding: 7px;
+        line-height: 1.2;
+      }
+      #savedDeviationSelect option,
+      #duplicateFromDeviationSelect option,
+      #duplicateTargetVariantSelect option {
+        font-size: 10px !important;
+      }
       button:disabled {
         opacity: 0.6;
         cursor: not-allowed;
@@ -681,14 +693,25 @@
             </div>
             <div class="row panel-section panel-ops">
               <div class="grow">
+                <button id="duplicateToggleBtn" class="secondary" type="button">
+                  Dupliquer de -> vers
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" id="duplicatePanelRow" hidden>
+              <div class="grow">
+                <label for="duplicateFromDeviationSelect">Dupliquer de</label>
+                <select id="duplicateFromDeviationSelect"></select>
+              </div>
+              <div class="grow">
                 <label for="duplicateTargetVariantSelect"
-                  >Dupliquer vers une autre variante (même ligne / sens)</label
+                  >vers (autre variante même ligne/sens)</label
                 >
                 <select id="duplicateTargetVariantSelect"></select>
               </div>
               <div class="grow">
                 <button id="duplicateDeviationBtn" class="secondary" type="button">
-                  Dupliquer l’enregistrement sélectionné
+                  Confirmer la duplication
                 </button>
               </div>
             </div>
@@ -1025,6 +1048,11 @@
       const updateDeviationBtn = document.getElementById("updateDeviationBtn");
       const loadDeviationBtn = document.getElementById("loadDeviationBtn");
       const deleteDeviationBtn = document.getElementById("deleteDeviationBtn");
+      const duplicateToggleBtn = document.getElementById("duplicateToggleBtn");
+      const duplicatePanelRowEl = document.getElementById("duplicatePanelRow");
+      const duplicateFromDeviationSelectEl = document.getElementById(
+        "duplicateFromDeviationSelect",
+      );
       const duplicateTargetVariantSelectEl = document.getElementById(
         "duplicateTargetVariantSelect",
       );
@@ -1679,6 +1707,54 @@
         return s || "legacy_missing";
       }
 
+      function formatLineLabelForDeviation(pat) {
+        const code = String(pat?.route_short_name || "").trim();
+        if (String(pat?.route_type || "") === "0" && /^\d+$/.test(code)) {
+          return `T${code}`;
+        }
+        return code || "?";
+      }
+
+      function formatVariantLabelForDeviation(pat) {
+        const n = String(pat?.variant_name || "").match(/\d+/)?.[0];
+        return n ? `V${n}` : String(pat?.variant_name || "V?");
+      }
+
+      function buildAutoDeviationLabel(pat) {
+        const line = formatLineLabelForDeviation(pat);
+        const variant = formatVariantLabelForDeviation(pat);
+        const start = String(pat?.start_stop || "?");
+        const end = String(pat?.end_stop || "?");
+        return `${line} (${variant}: ${start} -> ${end})`;
+      }
+
+      function normalizeDeviationLabel(raw) {
+        const s = String(raw || "").trim();
+        if (!s) return "";
+        return s
+          .replace(/\s*\[V\d+\]\s*$/i, "")
+          .replace(/\s*[—-]\s*V\d+\s*$/i, "")
+          .trim();
+      }
+
+      function routeShortNameForSavedDeviation(item) {
+        const pid = String(item?.pattern_id || "");
+        const pat = data?.patterns?.find((p) => String(p.pattern_id || "") === pid);
+        return String(pat?.route_short_name || "");
+      }
+
+      function currentMissionRouteShortName() {
+        return String(selectedPattern()?.route_short_name || "");
+      }
+
+      function filterSavedDeviationsForCurrentMission(items) {
+        const missionLine = currentMissionRouteShortName();
+        if (!missionLine) return items;
+        return items.filter(
+          (it) => String(routeShortNameForSavedDeviation(it)) === missionLine,
+        );
+      }
+
       function deviationPayloadFromLiveState() {
         const merged = opsState.modeCoordinates?.[OPS_MODE.MANUEL];
         const mp = opsState.manualProfile;
@@ -1791,9 +1867,86 @@
         duplicateVariantChoices.forEach((p, i) => {
           const opt = document.createElement("option");
           opt.value = String(i);
-          opt.textContent = `${p.variant_name || "Variante"} — ${p.stop_count ?? "?"} arr. (${p.pattern_id})`;
+          opt.textContent = `${p.variant_name || "Variante"} — ${p.stop_count ?? "?"} arrêts`;
           duplicateTargetVariantSelectEl.appendChild(opt);
         });
+      }
+
+      function getDeviationLabelForUi(it) {
+        return (
+          normalizeDeviationLabel(it?.label || "") ||
+          `${it?.pattern_id || "Entrée"} (${it?.valid_from || "?"} -> ${it?.valid_to || "?"})`
+        );
+      }
+
+      function getDeviationVariantTag(patternId) {
+        const pat = data?.patterns?.find(
+          (p) => String(p.pattern_id || "") === String(patternId || ""),
+        );
+        if (!pat) return "";
+        return formatVariantLabelForDeviation(pat);
+      }
+
+      function rebuildDuplicateFromOptions() {
+        if (!duplicateFromDeviationSelectEl) return;
+        const st = readDeviationStore();
+        const sorted = filterSavedDeviationsForCurrentMission(st.items).sort((a, b) => {
+          const ta = String(b.updated_at || b.created_at || "");
+          const tb = String(a.updated_at || a.created_at || "");
+          return ta.localeCompare(tb, "fr");
+        });
+        duplicateFromDeviationSelectEl.innerHTML = "";
+        for (const it of sorted) {
+          const opt = document.createElement("option");
+          opt.value = it.id;
+          const vt = getDeviationVariantTag(it.pattern_id);
+          opt.textContent = vt
+            ? `${getDeviationLabelForUi(it)} — ${vt}`
+            : getDeviationLabelForUi(it);
+          duplicateFromDeviationSelectEl.appendChild(opt);
+        }
+        const selected = getSelectedDeviationItem();
+        if (selected) {
+          duplicateFromDeviationSelectEl.value = selected.id;
+        }
+      }
+
+      function refreshDuplicateTargetsForSelectedSource() {
+        if (!duplicateFromDeviationSelectEl?.value) {
+          rebuildDuplicateVariantChoices(null);
+          if (duplicateDeviationBtn) duplicateDeviationBtn.disabled = true;
+          return;
+        }
+        const st = readDeviationStore();
+        const src = st.items.find((x) => x.id === duplicateFromDeviationSelectEl.value);
+        rebuildDuplicateVariantChoices(src?.pattern_id || null);
+        const originId = String(src?.origin_deviation_id || src?.id || "");
+        const remaining = duplicateVariantChoices.filter((pat) => {
+          const existing = st.items.find(
+            (it) =>
+              String(it.pattern_id || "") === String(pat.pattern_id || "") &&
+              String(it.origin_deviation_id || it.id || "") === originId,
+          );
+          return !existing;
+        });
+        duplicateVariantChoices = remaining;
+        if (duplicateTargetVariantSelectEl) {
+          duplicateTargetVariantSelectEl.innerHTML = "";
+          if (!remaining.length) {
+            const opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "Aucune variante restante à dupliquer";
+            duplicateTargetVariantSelectEl.appendChild(opt);
+          } else {
+            remaining.forEach((p, i) => {
+              const opt = document.createElement("option");
+              opt.value = String(i);
+              opt.textContent = `${p.variant_name || "Variante"} — ${p.stop_count ?? "?"} arr. (${p.pattern_id})`;
+              duplicateTargetVariantSelectEl.appendChild(opt);
+            });
+          }
+        }
+        if (duplicateDeviationBtn) duplicateDeviationBtn.disabled = !remaining.length;
       }
 
       function refreshSavedDeviationBannerAndDup(item) {
@@ -1810,7 +1963,10 @@
         }
         const anchor = data.patterns.find((p) => (p.pattern_id || "") === item.pattern_id);
 
-        rebuildDuplicateVariantChoices(item.pattern_id);
+        if (duplicateFromDeviationSelectEl) {
+          duplicateFromDeviationSelectEl.value = item.id || "";
+        }
+        refreshDuplicateTargetsForSelectedSource();
 
         const warns = [];
 
@@ -1871,23 +2027,23 @@
         if (!savedDeviationSelectEl) return;
         const st = readDeviationStore();
         savedDeviationSelectEl.innerHTML = "";
-        const sorted = [...st.items].sort((a, b) => {
+        const sorted = filterSavedDeviationsForCurrentMission(st.items).sort((a, b) => {
           const ta = String(b.updated_at || b.created_at || "");
           const tb = String(a.updated_at || a.created_at || "");
           return ta.localeCompare(tb, "fr");
         });
         sorted.forEach((it) => {
-          const lab = (
-            String(it.label || "").trim() ||
+          const lab =
+            normalizeDeviationLabel(it.label || "") ||
             String(it.pattern_id || "") ||
-            "sans nom"
-          ).slice(0, 90);
+            "sans nom";
           const tag =
             datasetDigestLoaded &&
             it.dataset_digest_snapshot &&
             datasetDigestLoaded !== it.dataset_digest_snapshot
               ? " [jeu données ≠]"
               : "";
+          const vt = getDeviationVariantTag(it.pattern_id);
           const opt = document.createElement("option");
           opt.value = String(it.id);
           opt.dataset.deviationId = it.id;
@@ -1897,10 +2053,12 @@
         if (!sorted.length) {
           rebuildDuplicateVariantChoices(null);
           refreshSavedDeviationBannerAndDup(null);
+          rebuildDuplicateFromOptions();
           return;
         }
         savedDeviationSelectEl.selectedIndex = 0;
         refreshSavedDeviationBannerAndDup(sorted[0]);
+        rebuildDuplicateFromOptions();
       }
 
       function getSelectedDeviationItem() {
@@ -2032,6 +2190,7 @@
             return;
           }
           cur.pattern_id = p.pattern_id;
+          cur.origin_deviation_id = String(cur.origin_deviation_id || cur.id || "");
           cur.pattern_signature_snapshot = getPatternDigest(p);
           cur.dataset_digest_snapshot = datasetDigestLoaded || "";
           cur.updated_at = nowIso;
@@ -2064,7 +2223,8 @@
           id: idNew,
           created_at: nowIso,
           updated_at: nowIso,
-          label: labelTrim,
+          label: labelTrim || buildAutoDeviationLabel(p),
+          origin_deviation_id: idNew,
           pattern_id: p.pattern_id,
           pattern_signature_snapshot: getPatternDigest(p),
           dataset_digest_snapshot: datasetDigestLoaded || "",
@@ -2111,7 +2271,9 @@
       }
 
       function deviationDuplicateSelectionToVariant() {
-        const cur = getSelectedDeviationItem();
+        const st = readDeviationStore();
+        const srcId = duplicateFromDeviationSelectEl?.value || "";
+        const cur = st.items.find((x) => x.id === srcId) || null;
         const vi = duplicateTargetVariantSelectEl
           ? Number(duplicateTargetVariantSelectEl.value)
           : NaN;
@@ -2125,7 +2287,6 @@
           return;
         }
         const nowIso = new Date().toISOString();
-        const st = readDeviationStore();
         const idDup =
           typeof crypto !== "undefined" && crypto.randomUUID
             ? crypto.randomUUID()
@@ -2134,7 +2295,8 @@
           id: idDup,
           created_at: nowIso,
           updated_at: nowIso,
-          label: `${String(cur.label || "").trim() || "Copie"} — ${targetPat.variant_name || targetPat.pattern_id}`,
+          label: buildAutoDeviationLabel(targetPat),
+          origin_deviation_id: String(cur.origin_deviation_id || cur.id || ""),
           pattern_id: targetPat.pattern_id,
           pattern_signature_snapshot: getPatternDigest(targetPat),
           dataset_digest_snapshot: datasetDigestLoaded || "",
@@ -4196,12 +4358,30 @@
         deviationDeleteSelected();
       });
 
+      duplicateToggleBtn?.addEventListener("click", () => {
+        if (!duplicatePanelRowEl) return;
+        const willOpen = !!duplicatePanelRowEl.hidden;
+        duplicatePanelRowEl.hidden = !willOpen;
+        if (willOpen) {
+          rebuildDuplicateFromOptions();
+          refreshDuplicateTargetsForSelectedSource();
+        }
+      });
+
+      duplicateFromDeviationSelectEl?.addEventListener("change", () => {
+        refreshDuplicateTargetsForSelectedSource();
+      });
+
       duplicateDeviationBtn?.addEventListener("click", () => {
         deviationDuplicateSelectionToVariant();
       });
 
       savedDeviationSelectEl?.addEventListener("change", () => {
         refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
+        if (duplicateFromDeviationSelectEl && getSelectedDeviationItem()?.id) {
+          duplicateFromDeviationSelectEl.value = getSelectedDeviationItem().id;
+        }
+        refreshDuplicateTargetsForSelectedSource();
       });
 
       document.getElementById("nextBtn").addEventListener("click", () => {
@@ -4219,6 +4399,7 @@
 
       lineSelect.addEventListener("change", updateHeadsigns);
       lineSelect.addEventListener("change", syncLineCustomTrigger);
+      lineSelect.addEventListener("change", refreshSavedDeviationSelectOptions);
       lineSelectTrigger?.addEventListener("click", (e) => {
         e.stopPropagation();
         if (!lineSelectListbox) {
