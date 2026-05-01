@@ -1887,14 +1887,29 @@
         return formatVariantLabelForDeviation(pat);
       }
 
+      function sortSavedDeviationsForUi(items) {
+        const arr = [...items];
+        arr.sort((a, b) => {
+          const la = String(getDeviationLabelForUi(a) || "");
+          const lb = String(getDeviationLabelForUi(b) || "");
+          const c = la.localeCompare(lb, "fr", {
+            sensitivity: "base",
+            numeric: true,
+          });
+          if (c !== 0) return c;
+          const va = String(getDeviationVariantTag(a.pattern_id) || "");
+          const vb = String(getDeviationVariantTag(b.pattern_id) || "");
+          return va.localeCompare(vb, "fr", { numeric: true });
+        });
+        return arr;
+      }
+
       function rebuildDuplicateFromOptions() {
         if (!duplicateFromDeviationSelectEl) return;
         const st = readDeviationStore();
-        const sorted = filterSavedDeviationsForCurrentMission(st.items).sort((a, b) => {
-          const ta = String(b.updated_at || b.created_at || "");
-          const tb = String(a.updated_at || a.created_at || "");
-          return ta.localeCompare(tb, "fr");
-        });
+        const sorted = sortSavedDeviationsForUi(
+          filterSavedDeviationsForCurrentMission(st.items),
+        );
         duplicateFromDeviationSelectEl.innerHTML = "";
         for (const it of sorted) {
           const opt = document.createElement("option");
@@ -2027,11 +2042,9 @@
         if (!savedDeviationSelectEl) return;
         const st = readDeviationStore();
         savedDeviationSelectEl.innerHTML = "";
-        const sorted = filterSavedDeviationsForCurrentMission(st.items).sort((a, b) => {
-          const ta = String(b.updated_at || b.created_at || "");
-          const tb = String(a.updated_at || a.created_at || "");
-          return ta.localeCompare(tb, "fr");
-        });
+        const sorted = sortSavedDeviationsForUi(
+          filterSavedDeviationsForCurrentMission(st.items),
+        );
         sorted.forEach((it) => {
           const lab =
             normalizeDeviationLabel(it.label || "") ||
