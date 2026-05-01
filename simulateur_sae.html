@@ -4337,8 +4337,16 @@
       returnBaseBtn.addEventListener("click", () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
+        stopManualDrawMode();
         opsState.manualActive = false;
         opsState.returnMode = OPS_MODE.BASE;
+        opsState.modeCoordinates.MANUEL_ACTIF = null;
+        opsState.manualProfile = null;
+        opsState.manualStopOverrides = {};
+        opsState.nonServedEditActive = false;
+        opsState.provisionalStops = [];
+        opsState.provisionalEditActive = false;
+        nonServedEditFocusStopId = null;
         applyOpsStateUi();
         applyTraceForOpsMode(OPS_MODE.BASE);
         recomputeSkippedStopsForCurrentMission();
@@ -4348,6 +4356,7 @@
         drawProvisionalStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
+        setGpsStatus("Mode base rétabli : déviation courante effacée.");
         appendOpsLog("return_base", "Forçage mode BASE");
       });
 
