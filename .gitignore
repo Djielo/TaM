@@ -12,6 +12,10 @@ Thumbs.db
 # Cursor — règles et config locales d’équipe (non versionnées)
 .cursor/
 
+# Procédures d’usage personnel (garder uniquement en local)
+PROCEDURE_GPS_AUTONOME.txt
+PROCEDURE_TELEPHONE_ADB.txt
+
 # Donnees locales Open Data (volumineux / non versionnees)
 arrts-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
 rseau-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
