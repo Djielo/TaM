@@ -1,0 +1,11 @@
+---
+description: Entrée vocale / transcription — ne pas attribuer les erreurs au rédacteur
+alwaysApply: true
+---
+
+# Entrée vocale (FR)
+
+- Le contributeur peut **uniquement dicter** ; le texte qui arrive dans le chat est une **retranscription automatique** (STT), pas une frappe contrôlée.
+- Les confusions homophones / quasi homophones (**feed / field**, etc.) ou autres erreurs de transcription **ne sont pas une « faute » du contributeur**.
+- **Ne pas** formuler de reproches du type « vous avez mal écrit » ou « vous avez dit X » sur la base des **seuls** caractères transcrits si le **sens du message** est clair dans la conversation.
+- En cas de terme technique ambigu, **privilégier le sens correct dans le contexte** (ex. GTFS = *General Transit **Feed** Specification*) ou demander une confirmation **neutre**, sans imputer l’erreur à la personne.

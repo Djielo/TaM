@@ -119,6 +119,9 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - [x] **Arrêts provisoires** — **en place** (V1 : saisie carte + nom, snap sur tracé, guidage / voix / stats ; reset au changement de mission).
 - [ ] (Option) **Préremplissage** conducteur depuis **données TAM / Infos trafic** pour les « arrêts reportés » (sans doublonner la V1 manuelle déjà là) — seulement si besoin métier explicite.
 - [ ] Cohérence purement **manuel** (tracé ↔ arrêts ↔ provisoires ↔ annonces) sans réintroduire de dépendance planifié / TR.
+- [ ] **Persistance** des déviations (tracé manuel, overrides **arrêts non desservis**, liste **arrêts provisoires**, plages de dates métier quand décidées) avec **réédition** : rouvrir une fiche déjà enregistrée, modifier sans tout resaisir depuis zéro ; même exigence pour les trois volets (tracé + non desservis + provisoires sur la même entrée métier si le produit les regroupe).
+- [ ] **Garde-fou données** : comparer au chargement **empreinte jeu GTFS / JSON** (`dataset_digest`) et **signature du pattern** (`pattern_signature`) à celles mémorisées avec l’enregistrement → **alerte** si le réseau de référence a changé (voir conception build `simulation_data.json`).
+- [ ] (Après garde-fou / modèle stable) **Dupliquer** une déviation enregistrée vers **d’autres variantes** du même sens (gain de temps ; révision possible par variante).
 
 ### 4D. Emballage produit (quand le fond métier est stable)
 
@@ -155,4 +158,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-01 (terminologie arrêt reporté = provisoire manuel ; retrait planifié / TR simulateur). Mettre à jour cette date quand on modifie le mémo.*
+*Dernière révision de **ce** fichier markdown : 2026-05-01 (persistance + réédition déviation / non desservis / provisoires ; garde-fou GTFS ; duplication variantes). Mettre à jour cette date quand on modifie le mémo.*
