@@ -93,7 +93,6 @@
       .panel-section.panel-ops .row > .grow {
         min-width: 0;
       }
-      #savedDeviationNote,
       #savedDeviationValidFrom,
       #savedDeviationValidTo {
         max-width: 100%;
@@ -718,17 +717,6 @@
             </div>
             <div class="row panel-section panel-ops">
               <div class="grow">
-                <label for="savedDeviationNote">Libellé (optionnel)</label>
-                <input
-                  type="text"
-                  id="savedDeviationNote"
-                  maxlength="520"
-                  placeholder="Ex. chantier — rondelet"
-                />
-              </div>
-            </div>
-            <div class="row panel-section panel-ops">
-              <div class="grow">
                 <label for="savedDeviationValidFrom">Valide du (optionnel)</label>
                 <input type="date" id="savedDeviationValidFrom" />
               </div>
@@ -763,19 +751,19 @@
             </div>
             <div class="row panel-section panel-ops">
               <div class="grow">
-                <button id="duplicateToggleBtn" class="secondary" type="button">
-                  Dupliquer de -> vers
-                </button>
+                <p class="note" style="margin: 0">
+                  <strong>Duplication de variantes</strong> — pour dupliquer vers une autre variante (même ligne et sens), choisissez une <strong>fiche source</strong> et la <strong>variante cible</strong>, puis confirmez.
+                </p>
               </div>
             </div>
-            <div class="row panel-section panel-ops" id="duplicatePanelRow" hidden>
+            <div class="row panel-section panel-ops" id="duplicatePanelRow">
               <div class="grow">
-                <label for="duplicateFromDeviationSelect">Dupliquer de</label>
+                <label for="duplicateFromDeviationSelect">Fiche source</label>
                 <select id="duplicateFromDeviationSelect"></select>
               </div>
               <div class="grow">
                 <label for="duplicateTargetVariantSelect"
-                  >vers (autre variante même ligne/sens)</label
+                  >Variante cible (même ligne / sens)</label
                 >
                 <select id="duplicateTargetVariantSelect"></select>
               </div>
@@ -1143,7 +1131,6 @@
       const savedDeviationSelectEl = document.getElementById(
         "savedDeviationSelect",
       );
-      const savedDeviationNoteEl = document.getElementById("savedDeviationNote");
       const savedDeviationValidFromEl = document.getElementById(
         "savedDeviationValidFrom",
       );
@@ -1154,8 +1141,6 @@
       const updateDeviationBtn = document.getElementById("updateDeviationBtn");
       const loadDeviationBtn = document.getElementById("loadDeviationBtn");
       const deleteDeviationBtn = document.getElementById("deleteDeviationBtn");
-      const duplicateToggleBtn = document.getElementById("duplicateToggleBtn");
-      const duplicatePanelRowEl = document.getElementById("duplicatePanelRow");
       const duplicateFromDeviationSelectEl = document.getElementById(
         "duplicateFromDeviationSelect",
       );
@@ -2536,9 +2521,6 @@
           );
           return;
         }
-        if (savedDeviationNoteEl && !savedDeviationNoteEl.value.trim()) {
-          savedDeviationNoteEl.value = buildTemporaryDeviationDefaultLabel(p);
-        }
         const id = await deviationSaveOrUpdate("new");
         if (!id) return;
         pendingTemporaryDeviationStoreSave = false;
@@ -2857,17 +2839,14 @@
 
       /** Libellé + dates du formulaire alignés sur l’entrée sélectionnée (pas de dates résiduelles en changeant de variante). */
       function syncDeviationEditorFieldsFromSelectedItem(item) {
-        if (!savedDeviationNoteEl || !savedDeviationValidFromEl || !savedDeviationValidToEl) {
+        if (!savedDeviationValidFromEl || !savedDeviationValidToEl) {
           return;
         }
         if (!item) {
-          savedDeviationNoteEl.value = "";
           savedDeviationValidFromEl.value = "";
           savedDeviationValidToEl.value = "";
           return;
         }
-        savedDeviationNoteEl.value =
-          normalizeDeviationLabel(item.label || "") || "";
         const vf = String(item.valid_from || "").trim();
         const vt = String(item.valid_to || "").trim();
         savedDeviationValidFromEl.value = /^\d{4}-\d{2}-\d{2}$/.test(vf)
@@ -3309,7 +3288,6 @@
         }
         const nowIso = new Date().toISOString();
         const st = readDeviationStore();
-        const labelTrim = savedDeviationNoteEl?.value.trim() || "";
         const vf = savedDeviationValidFromEl?.value || "";
         const vt = savedDeviationValidToEl?.value || "";
         if (vf && vt && String(vf) > String(vt)) {
@@ -3323,7 +3301,6 @@
             return null;
           }
           stampDeviationItemPayloadMeta(cur, p, nowIso);
-          if (labelTrim) cur.label = labelTrim;
           cur.valid_from = vf || "";
           cur.valid_to = vt || "";
           cur.payload = pl;
@@ -3351,7 +3328,9 @@
         const rowNew = {
           id: idNew,
           created_at: nowIso,
-          label: labelTrim || buildAutoDeviationLabel(p),
+          label: opsState.temporaryDeviationActive
+            ? buildTemporaryDeviationDefaultLabel(p)
+            : buildAutoDeviationLabel(p),
           origin_deviation_id: idNew,
           valid_from: vf || "",
           valid_to: vt || "",
@@ -5703,16 +5682,6 @@
 
       deleteDeviationBtn?.addEventListener("click", () => {
         deviationDeleteSelected();
-      });
-
-      duplicateToggleBtn?.addEventListener("click", () => {
-        if (!duplicatePanelRowEl) return;
-        const willOpen = !!duplicatePanelRowEl.hidden;
-        duplicatePanelRowEl.hidden = !willOpen;
-        if (willOpen) {
-          rebuildDuplicateFromOptions();
-          refreshDuplicateTargetsForSelectedSource();
-        }
       });
 
       duplicateFromDeviationSelectEl?.addEventListener("change", () => {
