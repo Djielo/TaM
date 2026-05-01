@@ -9,6 +9,9 @@ __pycache__/
 Thumbs.db
 .DS_Store
 
+# Cursor — règles et config locales d’équipe (non versionnées)
+.cursor/
+
 # Donnees locales Open Data (volumineux / non versionnees)
 arrts-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
 rseau-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
