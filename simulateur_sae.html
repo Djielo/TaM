@@ -2922,6 +2922,58 @@
         speakProchainArret(currentPattern.stops[second].stop_name);
       }
 
+      /**
+       * Déplace la position simulation sur un arrêt desservi (précédent / suivant),
+       * même quand certains arrêts sont désactivés. Utilisée par précédent / suivant
+       * pour garder un seul chemin mise à jour + annonces.
+       * @param {number} delta -1 précédent, +1 suivant
+       */
+      function jumpServedStop(delta) {
+        if (!currentPattern || pathTotalMeters <= 0) return false;
+        const stops = currentPattern.stops;
+        if (!stops?.length || !stopMetersAlong.length) return false;
+        const served = getServedStopIndices();
+        if (!served.length) return false;
+
+        let idx = served[0] || 0;
+        for (let p = 0; p < served.length; p++) {
+          if ((stopMetersAlong[served[p]] || 0) <= distanceAlongPathMeters + 0.5) {
+            idx = served[p];
+          }
+        }
+        const pos = Math.max(0, served.indexOf(idx));
+        const nextPos =
+          delta < 0
+            ? Math.max(pos - 1, 0)
+            : Math.min(pos + 1, served.length - 1);
+        idx = served[nextPos] ?? idx;
+
+        distanceAlongPathMeters = stopMetersAlong[idx];
+        lastRafTime = 0;
+        resyncVoixForPosition(distanceAlongPathMeters);
+        lastVoiceDistance = distanceAlongPathMeters;
+        updateMapNavigation();
+        redrawDoneLineAtDistance(distanceAlongPathMeters);
+        updateStopToStopOverlay();
+        updateStats();
+
+        if (
+          voiceEnabledEl.checked &&
+          currentPattern?.stops &&
+          currentPattern.stops.length >= 2
+        ) {
+          const pair = getCurrentAndNextServedIndex(distanceAlongPathMeters);
+          const curr = Number(pair?.curr ?? 0);
+          const next = Number(pair?.next ?? curr);
+          const nextName = currentPattern.stops?.[next]?.stop_name || "";
+          if (nextName && next !== curr) {
+            speakProchainArret(nextName);
+          }
+        }
+
+        return true;
+      }
+
       function refreshVoiceSelect() {
         if (!voiceSelectEl) {
           return;
@@ -3435,57 +3487,11 @@
       });
 
       document.getElementById("nextBtn").addEventListener("click", () => {
-        if (!currentPattern || pathTotalMeters <= 0) {
-          return;
-        }
-        const stops = currentPattern.stops;
-        if (!stops || !stops.length || !stopMetersAlong.length) {
-          return;
-        }
-        const served = getServedStopIndices();
-        let idx = served[0] || 0;
-        for (let p = 0; p < served.length; p++) {
-          if ((stopMetersAlong[served[p]] || 0) <= distanceAlongPathMeters + 0.5) {
-            idx = served[p];
-          }
-        }
-        const pos = Math.max(0, served.indexOf(idx));
-        idx = served[Math.min(pos + 1, served.length - 1)] ?? idx;
-        distanceAlongPathMeters = stopMetersAlong[idx];
-        lastRafTime = 0;
-        resyncVoixForPosition(distanceAlongPathMeters);
-        lastVoiceDistance = distanceAlongPathMeters;
-        updateMapNavigation();
-        redrawDoneLineAtDistance(distanceAlongPathMeters);
-        updateStopToStopOverlay();
-        updateStats();
+        jumpServedStop(1);
       });
 
       document.getElementById("prevBtn").addEventListener("click", () => {
-        if (!currentPattern || pathTotalMeters <= 0) {
-          return;
-        }
-        const stops = currentPattern.stops;
-        if (!stops || !stops.length || !stopMetersAlong.length) {
-          return;
-        }
-        const served = getServedStopIndices();
-        let idx = served[0] || 0;
-        for (let p = 0; p < served.length; p++) {
-          if ((stopMetersAlong[served[p]] || 0) <= distanceAlongPathMeters + 0.5) {
-            idx = served[p];
-          }
-        }
-        const pos = Math.max(0, served.indexOf(idx));
-        idx = served[Math.max(pos - 1, 0)] ?? idx;
-        distanceAlongPathMeters = stopMetersAlong[idx];
-        lastRafTime = 0;
-        resyncVoixForPosition(distanceAlongPathMeters);
-        lastVoiceDistance = distanceAlongPathMeters;
-        updateMapNavigation();
-        redrawDoneLineAtDistance(distanceAlongPathMeters);
-        updateStopToStopOverlay();
-        updateStats();
+        jumpServedStop(-1);
       });
 
       speedSelect.addEventListener("change", () => {
