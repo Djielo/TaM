@@ -43,7 +43,9 @@
         font-weight: 600;
       }
       select,
-      button {
+      button,
+      input[type="text"],
+      input[type="date"] {
         width: 100%;
         padding: 10px;
         border-radius: 8px;
@@ -614,6 +616,82 @@
                 </button>
               </div>
             </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <p
+                  id="savedDeviationStaleNote"
+                  class="note"
+                  style="margin: 0 0 4px"
+                  hidden
+                ></p>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <label for="savedDeviationSelect"
+                  >Déviations enregistrées (stockage navigateur)</label
+                >
+                <select id="savedDeviationSelect"></select>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <label for="savedDeviationNote">Libellé (optionnel)</label>
+                <input
+                  type="text"
+                  id="savedDeviationNote"
+                  maxlength="120"
+                  placeholder="Ex. chantier — rondelet"
+                />
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <label for="savedDeviationValidFrom">Valide du (optionnel)</label>
+                <input type="date" id="savedDeviationValidFrom" />
+              </div>
+              <div class="grow">
+                <label for="savedDeviationValidTo">au (optionnel)</label>
+                <input type="date" id="savedDeviationValidTo" />
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <button id="saveDeviationBtn" type="button">
+                  Enregistrer (nouvelle entrée)
+                </button>
+              </div>
+              <div class="grow">
+                <button id="updateDeviationBtn" class="secondary" type="button">
+                  Mettre à jour l’entrée sélectionnée
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <button id="loadDeviationBtn" class="secondary" type="button">
+                  Charger la sélection
+                </button>
+              </div>
+              <div class="grow">
+                <button id="deleteDeviationBtn" class="secondary" type="button">
+                  Supprimer la sélection
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
+                <label for="duplicateTargetVariantSelect"
+                  >Dupliquer vers une autre variante (même ligne / sens)</label
+                >
+                <select id="duplicateTargetVariantSelect"></select>
+              </div>
+              <div class="grow">
+                <button id="duplicateDeviationBtn" class="secondary" type="button">
+                  Dupliquer l’enregistrement sélectionné
+                </button>
+              </div>
+            </div>
             <div class="row panel-section panel-mission">
               <div class="grow checkbox-row">
                 <input
@@ -743,6 +821,11 @@
       const LS_KEY_OPS_LOG = "tam_sim_ops_log";
       const LS_KEY_RECAP = "tam_sim_recap_on";
       const LS_KEY_DRIVE_MODE = "tam_sim_drive_mode";
+      const LS_KEY_DEVIATIONS = "tam_sim_saved_deviations_v1";
+      /** Digest du dernier jeu `simulation_data.json` charge (pour garde-fou). */
+      let datasetDigestLoaded = "";
+      /** Liste des autres variantes meme sens (duplication UI). */
+      let duplicateVariantChoices = [];
 
       const OPS_MODE = {
         BASE: "BASE",
@@ -925,6 +1008,29 @@
       const manualDrawSaveBtn = document.getElementById("manualDrawSaveBtn");
       const returnInitialBtn = document.getElementById("returnInitialBtn");
       const returnBaseBtn = document.getElementById("returnBaseBtn");
+      const savedDeviationStaleNoteEl = document.getElementById(
+        "savedDeviationStaleNote",
+      );
+      const savedDeviationSelectEl = document.getElementById(
+        "savedDeviationSelect",
+      );
+      const savedDeviationNoteEl = document.getElementById("savedDeviationNote");
+      const savedDeviationValidFromEl = document.getElementById(
+        "savedDeviationValidFrom",
+      );
+      const savedDeviationValidToEl = document.getElementById(
+        "savedDeviationValidTo",
+      );
+      const saveDeviationBtn = document.getElementById("saveDeviationBtn");
+      const updateDeviationBtn = document.getElementById("updateDeviationBtn");
+      const loadDeviationBtn = document.getElementById("loadDeviationBtn");
+      const deleteDeviationBtn = document.getElementById("deleteDeviationBtn");
+      const duplicateTargetVariantSelectEl = document.getElementById(
+        "duplicateTargetVariantSelect",
+      );
+      const duplicateDeviationBtn = document.getElementById(
+        "duplicateDeviationBtn",
+      );
       const startBtn = document.getElementById("startBtn");
       const pauseBtn = document.getElementById("pauseBtn");
 
@@ -1543,7 +1649,518 @@
         return p;
       }
 
+      function readDeviationStore() {
+        try {
+          const raw = localStorage.getItem(LS_KEY_DEVIATIONS);
+          if (!raw) return { version: 1, items: [] };
+          const j = JSON.parse(raw);
+          if (!j || j.version !== 1 || !Array.isArray(j.items)) {
+            return { version: 1, items: [] };
+          }
+          return j;
+        } catch (e) {
+          return { version: 1, items: [] };
+        }
+      }
+
+      function writeDeviationStore(store) {
+        try {
+          localStorage.setItem(LS_KEY_DEVIATIONS, JSON.stringify(store));
+        } catch (e) {
+          window.alert(
+            "Stockage local plein ou désactivé : impossible d'enregistrer la déviation.",
+          );
+        }
+      }
+
+      function getPatternDigest(pat) {
+        if (!pat) return "";
+        const s = String(pat.pattern_signature || "").trim();
+        return s || "legacy_missing";
+      }
+
+      function deviationPayloadFromLiveState() {
+        const merged = opsState.modeCoordinates?.[OPS_MODE.MANUEL];
+        const mp = opsState.manualProfile;
+        let mpCopy = null;
+        if (mp) {
+          mpCopy = {
+            startDistance: mp.startDistance,
+            endDistance: mp.endDistance,
+            detourCoords: Array.isArray(mp.detourCoords)
+              ? mp.detourCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
+              : [],
+            bypassedCoords: Array.isArray(mp.bypassedCoords)
+              ? mp.bypassedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
+              : [],
+            mergedCoords: Array.isArray(mp.mergedCoords)
+              ? mp.mergedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
+              : [],
+          };
+        }
+        return {
+          manualProfile: mpCopy,
+          mergedCoordsManual: Array.isArray(merged)
+            ? merged.map((xy) => [Number(xy[0]), Number(xy[1])])
+            : null,
+          manualStopOverrides: JSON.parse(
+            JSON.stringify(opsState.manualStopOverrides || {}),
+          ),
+          provisionalStops: JSON.parse(
+            JSON.stringify(opsState.provisionalStops || []),
+          ),
+        };
+      }
+
+      function deviationPayloadIsEmpty(pl) {
+        const ovs = pl.manualStopOverrides || {};
+        const hasOv = Object.keys(ovs).some((k) => ovs[k]);
+        const hasProv =
+          Array.isArray(pl.provisionalStops) && pl.provisionalStops.length > 0;
+        const hasTrace =
+          pl.manualProfile &&
+          Array.isArray(pl.mergedCoordsManual) &&
+          pl.mergedCoordsManual.length >= 2;
+        return !hasOv && !hasProv && !hasTrace;
+      }
+
+      /** Repositionner les trois sélecteurs mission sur un pattern exact. */
+      function selectMissionSelectorsForPattern(pat) {
+        if (!pat || !Array.isArray(data?.patterns)) return false;
+        const lineIdx = lineOptionLookup.findIndex(
+          (it) => String(it.route_short_name) === String(pat.route_short_name),
+        );
+        if (lineIdx < 0) return false;
+        lineSelect.value = String(lineIdx);
+        lineSelect.dispatchEvent(new Event("change"));
+        filteredByLine = data.patterns.filter(
+          (p) => String(p.route_short_name) === String(pat.route_short_name),
+        );
+
+        const headKey = `${pat.direction_id}|||${pat.headsign}`;
+        const headsignKeys = uniqueValues(
+          filteredByLine,
+          (x) => `${x.direction_id}|||${x.headsign}`,
+        ).sort((a, b) => a.localeCompare(b, "fr"));
+        const hi = headsignKeys.indexOf(headKey);
+        if (hi < 0) return false;
+        headsignSelect.selectedIndex = hi;
+        headsignSelect.dispatchEvent(new Event("change"));
+        filteredByHeadsign = filteredByLine.filter(
+          (x) =>
+            x.direction_id === pat.direction_id && x.headsign === pat.headsign,
+        );
+        filteredByHeadsign.sort((a, b) =>
+          a.variant_name.localeCompare(b.variant_name, "fr"),
+        );
+        const vi = filteredByHeadsign.findIndex((x) => x.pattern_id === pat.pattern_id);
+        if (vi < 0) return false;
+        variantSelect.selectedIndex = vi;
+        variantSelect.dispatchEvent(new Event("change"));
+        return true;
+      }
+
+      function rebuildDuplicateVariantChoices(pidAnchor) {
+        duplicateVariantChoices = [];
+        if (!duplicateTargetVariantSelectEl || !pidAnchor) {
+          if (duplicateTargetVariantSelectEl) {
+            duplicateTargetVariantSelectEl.innerHTML = "";
+          }
+          return;
+        }
+        const anchor = data.patterns.find((p) => (p.pattern_id || "") === pidAnchor);
+        if (!anchor) {
+          duplicateTargetVariantSelectEl.innerHTML = "";
+          return;
+        }
+
+        duplicateVariantChoices = data.patterns.filter(
+          (p) =>
+            p.route_id === anchor.route_id &&
+            String(p.direction_id) === String(anchor.direction_id) &&
+            String(p.headsign || "") === String(anchor.headsign || "") &&
+            (p.pattern_id || "") !== (anchor.pattern_id || ""),
+        );
+        duplicateVariantChoices.sort((a, b) =>
+          String(a.variant_name || "").localeCompare(
+            String(b.variant_name || ""),
+            "fr",
+          ),
+        );
+        duplicateTargetVariantSelectEl.innerHTML = "";
+        duplicateVariantChoices.forEach((p, i) => {
+          const opt = document.createElement("option");
+          opt.value = String(i);
+          opt.textContent = `${p.variant_name || "Variante"} — ${p.stop_count ?? "?"} arr. (${p.pattern_id})`;
+          duplicateTargetVariantSelectEl.appendChild(opt);
+        });
+      }
+
+      function refreshSavedDeviationBannerAndDup(item) {
+        if (savedDeviationStaleNoteEl) {
+          savedDeviationStaleNoteEl.hidden = true;
+          savedDeviationStaleNoteEl.textContent = "";
+        }
+        if (!item || !savedDeviationStaleNoteEl) {
+          if (duplicateTargetVariantSelectEl) {
+            duplicateTargetVariantSelectEl.innerHTML = "";
+          }
+          duplicateVariantChoices = [];
+          return;
+        }
+        const anchor = data.patterns.find((p) => (p.pattern_id || "") === item.pattern_id);
+
+        rebuildDuplicateVariantChoices(item.pattern_id);
+
+        const warns = [];
+
+        const dNow = String(datasetDigestLoaded || "");
+        const dSaved = String(item.dataset_digest_snapshot || "");
+        if (dSaved && dNow && dSaved !== dNow) {
+          warns.push(
+            "Le jeu de données GTFS / JSON chargé diffère du build sous lequel cet enregistrement a été sauvegardé — revérifier la déviation.",
+          );
+        }
+
+        const sSaved = String(item.pattern_signature_snapshot || "");
+        const sCur = anchor ? getPatternDigest(anchor) : "";
+        if (
+          sSaved &&
+          sCur &&
+          sSaved !== "legacy_missing" &&
+          sCur !== "legacy_missing" &&
+          sSaved !== sCur
+        ) {
+          warns.push(
+            "La mission de référence (liste d’arrêts ou sens) semble avoir changé pour ce pattern — revérifier la déviation.",
+          );
+        }
+
+        const today =
+          typeof new Date().toISOString === "function"
+            ? new Date().toISOString().slice(0, 10)
+            : "";
+
+        function hasRange() {
+          return Boolean(item.valid_from || item.valid_to);
+        }
+
+        if (today && hasRange()) {
+          if (
+            item.valid_from &&
+            String(today) < String(item.valid_from)
+          ) {
+            warns.push(
+              `Période de validité : pas encore en vigueur (début le ${item.valid_from}).`,
+            );
+          }
+          if (item.valid_to && String(today) > String(item.valid_to)) {
+            warns.push(
+              `Période de validité : peut-être hors plage affichée (fin le ${item.valid_to}).`,
+            );
+          }
+        }
+
+        if (warns.length) {
+          savedDeviationStaleNoteEl.hidden = false;
+          savedDeviationStaleNoteEl.textContent = warns.join(" ");
+        }
+      }
+
+      function refreshSavedDeviationSelectOptions() {
+        if (!savedDeviationSelectEl) return;
+        const st = readDeviationStore();
+        savedDeviationSelectEl.innerHTML = "";
+        const sorted = [...st.items].sort((a, b) => {
+          const ta = String(b.updated_at || b.created_at || "");
+          const tb = String(a.updated_at || a.created_at || "");
+          return ta.localeCompare(tb, "fr");
+        });
+        sorted.forEach((it) => {
+          const lab = (
+            String(it.label || "").trim() ||
+            String(it.pattern_id || "") ||
+            "sans nom"
+          ).slice(0, 90);
+          const tag =
+            datasetDigestLoaded &&
+            it.dataset_digest_snapshot &&
+            datasetDigestLoaded !== it.dataset_digest_snapshot
+              ? " [jeu données ≠]"
+              : "";
+          const opt = document.createElement("option");
+          opt.value = String(it.id);
+          opt.dataset.deviationId = it.id;
+          opt.textContent = `${lab}${tag}`;
+          savedDeviationSelectEl.appendChild(opt);
+        });
+        if (!sorted.length) {
+          rebuildDuplicateVariantChoices(null);
+          refreshSavedDeviationBannerAndDup(null);
+          return;
+        }
+        savedDeviationSelectEl.selectedIndex = 0;
+        refreshSavedDeviationBannerAndDup(sorted[0]);
+      }
+
+      function getSelectedDeviationItem() {
+        if (!savedDeviationSelectEl?.selectedOptions?.length) {
+          return null;
+        }
+        const id =
+          savedDeviationSelectEl.selectedOptions[0]?.dataset?.deviationId ||
+          "";
+        const st = readDeviationStore();
+        return st.items.find((i) => i.id === id) || null;
+      }
+
+      async function restoreDeviationPayloadIntoLiveState(pl) {
+        opsState.manualStopOverrides = JSON.parse(
+          JSON.stringify(pl.manualStopOverrides || {}),
+        );
+        opsState.provisionalStops = JSON.parse(
+          JSON.stringify(pl.provisionalStops || []),
+        );
+        const mpIn = pl.manualProfile;
+        opsState.manualProfile = null;
+        if (mpIn && typeof mpIn === "object") {
+          opsState.manualProfile = {
+            startDistance: mpIn.startDistance,
+            endDistance: mpIn.endDistance,
+            detourCoords: Array.isArray(mpIn.detourCoords)
+              ? mpIn.detourCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
+              : [],
+            bypassedCoords: Array.isArray(mpIn.bypassedCoords)
+              ? mpIn.bypassedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
+              : [],
+            mergedCoords: Array.isArray(mpIn.mergedCoords)
+              ? mpIn.mergedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
+              : [],
+          };
+        }
+        const merged = pl.mergedCoordsManual;
+        opsState.modeCoordinates.MANUEL_ACTIF = null;
+        opsState.manualActive = false;
+        if (Array.isArray(merged) && merged.length >= 2) {
+          opsState.modeCoordinates.MANUEL_ACTIF = merged.map((xy) => [
+            Number(xy[0]),
+            Number(xy[1]),
+          ]);
+          opsState.manualActive = true;
+          await applyTraceForOpsMode(OPS_MODE.MANUEL, { centerCamera: false });
+        } else {
+          opsState.manualProfile = null;
+          opsState.manualActive = false;
+          await applyTraceForOpsMode(OPS_MODE.BASE, { centerCamera: false });
+        }
+        opsState.nonServedEditActive = false;
+        opsState.provisionalEditActive = false;
+        nonServedEditFocusStopId = null;
+        stopManualDrawMode();
+        recomputeSkippedStopsForCurrentMission();
+        rebuildActiveGuideStops();
+        drawAllStopsOverlay();
+        drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
+        updateStopToStopOverlay();
+        updateStats();
+        resyncVoixForPosition(distanceAlongPathMeters);
+        refreshManualDrawUi();
+        refreshProvisionalUi();
+        applyOpsStateUi();
+      }
+
+      async function loadDeviationItemIntoApp(item, opts) {
+        const o = opts || {};
+        if (!item || !item.pattern_id) {
+          window.alert("Aucune entrée sélectionnée.");
+          return;
+        }
+        const pat = data?.patterns?.find(
+          (p) => (p.pattern_id || "") === item.pattern_id,
+        );
+        if (!pat) {
+          window.alert("Mission inconnue : pattern_id absent du JSON chargé.");
+          return;
+        }
+        if (!selectMissionSelectorsForPattern(pat)) {
+          window.alert("Impossible de positionner automatiquement la mission.");
+          return;
+        }
+        running = false;
+        lastRafTime = 0;
+        stopGpsTracking();
+        previewOnlyMode = false;
+        await setMission(pat, {
+          previewOnly: false,
+          forceOpsReset: !!o.forceOpsReset,
+        });
+        await restoreDeviationPayloadIntoLiveState(item.payload || {});
+        refreshSavedDeviationBannerAndDup(item);
+        appendOpsLog("deviation_loaded", item.pattern_id || "");
+      }
+
+      async function deviationSaveOrUpdate(kind) {
+        const p = selectedPattern();
+        if (!p) {
+          window.alert(
+            "Choisissez une mission puis la déviation avant d'enregistrer.",
+          );
+          return;
+        }
+        ensureOpsTargetPattern();
+        const pl = deviationPayloadFromLiveState();
+        if (deviationPayloadIsEmpty(pl)) {
+          window.alert(
+            "Rien à enregistrer : trace manuelle / overrides / provisoires vides.",
+          );
+          return;
+        }
+        const nowIso = new Date().toISOString();
+        const st = readDeviationStore();
+        const labelTrim = savedDeviationNoteEl?.value.trim() || "";
+        const vf = savedDeviationValidFromEl?.value || "";
+        const vt = savedDeviationValidToEl?.value || "";
+        if (vf && vt && String(vf) > String(vt)) {
+          window.alert("La date de fin doit être après la date de début.");
+          return;
+        }
+        if (kind === "update") {
+          const cur = getSelectedDeviationItem();
+          if (!cur) {
+            window.alert("Sélectionnez une entrée à mettre à jour.");
+            return;
+          }
+          cur.pattern_id = p.pattern_id;
+          cur.pattern_signature_snapshot = getPatternDigest(p);
+          cur.dataset_digest_snapshot = datasetDigestLoaded || "";
+          cur.updated_at = nowIso;
+          if (labelTrim) cur.label = labelTrim;
+          cur.valid_from = vf || "";
+          cur.valid_to = vt || "";
+          cur.payload = pl;
+          writeDeviationStore(st);
+          refreshSavedDeviationSelectOptions();
+          if (savedDeviationSelectEl) {
+            for (let i = 0; i < savedDeviationSelectEl.options.length; i++) {
+              if (
+                savedDeviationSelectEl.options[i].dataset.deviationId === cur.id
+              ) {
+                savedDeviationSelectEl.selectedIndex = i;
+                break;
+              }
+            }
+          }
+          refreshSavedDeviationBannerAndDup(cur);
+          appendOpsLog("deviation_updated", cur.id);
+          setGpsStatus("Déviation locale mise à jour.");
+          return;
+        }
+        const idNew =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `d_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
+        st.items.push({
+          id: idNew,
+          created_at: nowIso,
+          updated_at: nowIso,
+          label: labelTrim,
+          pattern_id: p.pattern_id,
+          pattern_signature_snapshot: getPatternDigest(p),
+          dataset_digest_snapshot: datasetDigestLoaded || "",
+          valid_from: vf || "",
+          valid_to: vt || "",
+          payload: pl,
+        });
+        writeDeviationStore(st);
+        refreshSavedDeviationSelectOptions();
+        if (savedDeviationSelectEl) {
+          for (let i = 0; i < savedDeviationSelectEl.options.length; i++) {
+            if (
+              savedDeviationSelectEl.options[i].dataset.deviationId === idNew
+            ) {
+              savedDeviationSelectEl.selectedIndex = i;
+              break;
+            }
+          }
+        }
+        refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
+        appendOpsLog("deviation_saved", idNew);
+        setGpsStatus("Déviation enregistrée en local.");
+      }
+
+      async function deviationDeleteSelected() {
+        const cur = getSelectedDeviationItem();
+        if (!cur) {
+          window.alert("Rien à supprimer.");
+          return;
+        }
+        if (
+          !window.confirm(
+            `Supprimer l'enregistrement « ${cur.label || cur.pattern_id} » ?`,
+          )
+        ) {
+          return;
+        }
+        const st = readDeviationStore();
+        st.items = st.items.filter((x) => x.id !== cur.id);
+        writeDeviationStore(st);
+        refreshSavedDeviationSelectOptions();
+        appendOpsLog("deviation_deleted", cur.id);
+        setGpsStatus("Enregistrement supprimé.");
+      }
+
+      function deviationDuplicateSelectionToVariant() {
+        const cur = getSelectedDeviationItem();
+        const vi = duplicateTargetVariantSelectEl
+          ? Number(duplicateTargetVariantSelectEl.value)
+          : NaN;
+        const targetPat = duplicateVariantChoices[
+          Number.isFinite(vi) ? vi : -1
+        ];
+        if (!cur || !targetPat) {
+          window.alert(
+            "Sélectionnez un enregistrement et une variante cible.",
+          );
+          return;
+        }
+        const nowIso = new Date().toISOString();
+        const st = readDeviationStore();
+        const idDup =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `d_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
+        st.items.push({
+          id: idDup,
+          created_at: nowIso,
+          updated_at: nowIso,
+          label: `${String(cur.label || "").trim() || "Copie"} — ${targetPat.variant_name || targetPat.pattern_id}`,
+          pattern_id: targetPat.pattern_id,
+          pattern_signature_snapshot: getPatternDigest(targetPat),
+          dataset_digest_snapshot: datasetDigestLoaded || "",
+          valid_from: cur.valid_from || "",
+          valid_to: cur.valid_to || "",
+          payload: JSON.parse(JSON.stringify(cur.payload)),
+        });
+        writeDeviationStore(st);
+        refreshSavedDeviationSelectOptions();
+        if (savedDeviationSelectEl) {
+          for (let i = 0; i < savedDeviationSelectEl.options.length; i++) {
+            if (
+              savedDeviationSelectEl.options[i].dataset.deviationId === idDup
+            ) {
+              savedDeviationSelectEl.selectedIndex = i;
+              break;
+            }
+          }
+        }
+        refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
+        appendOpsLog("deviation_duplicated", idDup);
+        setGpsStatus("Copie locale créée vers une autre variante.");
+      }
+
       let previewMissionToken = 0;
+
       async function previewSelectedMission() {
         const p = selectedPattern();
         if (!p) return;
@@ -3197,6 +3814,7 @@
         lastVoiceDistance = 0;
         voixAnnounced = new Set();
         const keepPrefill =
+          !o.forceOpsReset &&
           !!opsState.targetPatternId &&
           opsState.targetPatternId === (pattern.pattern_id || "");
         if (!keepPrefill) {
@@ -3558,6 +4176,34 @@
         appendOpsLog("return_base", "Forçage mode BASE");
       });
 
+      saveDeviationBtn?.addEventListener("click", () =>
+        deviationSaveOrUpdate("new"),
+      );
+
+      updateDeviationBtn?.addEventListener("click", () =>
+        deviationSaveOrUpdate("update"),
+      );
+
+      loadDeviationBtn?.addEventListener("click", () => {
+        (async () => {
+          await loadDeviationItemIntoApp(getSelectedDeviationItem(), {
+            forceOpsReset: true,
+          });
+        })();
+      });
+
+      deleteDeviationBtn?.addEventListener("click", () => {
+        deviationDeleteSelected();
+      });
+
+      duplicateDeviationBtn?.addEventListener("click", () => {
+        deviationDuplicateSelectionToVariant();
+      });
+
+      savedDeviationSelectEl?.addEventListener("change", () => {
+        refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
+      });
+
       document.getElementById("nextBtn").addEventListener("click", () => {
         jumpServedStop(1);
       });
@@ -3770,8 +4416,10 @@
         .then((resp) => resp.json())
         .then((json) => {
           data = json;
+          datasetDigestLoaded = String(json?.meta?.dataset_digest || "");
           updateLines();
           applyMapVisualProfile();
+          refreshSavedDeviationSelectOptions();
           requestAnimationFrame(tickRaf);
           refreshMapLayout();
         })

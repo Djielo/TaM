@@ -2,14 +2,45 @@
 # -*- coding: utf-8 -*-
 
 import csv
+import hashlib
 import json
 import os
 import zipfile
 from collections import defaultdict
+from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GTFS_DIR = os.path.join(BASE_DIR, "gtfs_data")
 OUTPUT_JSON = os.path.join(BASE_DIR, "simulation_data.json")
+
+
+def compute_dataset_digest(gtfs_dir_path):
+    """Empreinte stable du sous-ensemble GTFS utilisé pour le simulateur."""
+    blobs = []
+    for name in ("routes.txt", "trips.txt", "stop_times.txt", "stops.txt"):
+        path = os.path.join(gtfs_dir_path, name)
+        if os.path.isfile(path):
+            blobs.append(name.encode("utf-8"))
+            with open(path, "rb") as handle:
+                blobs.append(handle.read())
+    if not blobs:
+        return ""
+    joint = hashlib.sha256(b"\0".join(blobs)).hexdigest()
+    return joint
+
+
+def compute_pattern_signature(route_id, direction_id, headsign, stops_list):
+    """Identifiant de contenu : route, sens métier GTFS et chaîne d'arrêts."""
+    stop_ids = "|".join(str(s["stop_id"]) for s in stops_list)
+    raw = "|".join(
+        [
+            str(route_id),
+            str(direction_id or ""),
+            str(headsign or ""),
+            stop_ids,
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def read_csv(filename):
@@ -191,8 +222,11 @@ def build_data():
             for item in ordered
         ]
 
+        sig = compute_pattern_signature(route_id, direction_id, headsign, stops_list)
+
         patterns[key] = {
             "pattern_id": "",
+            "pattern_signature": sig,
             "route_id": route_id,
             "route_short_name": route_by_id[route_id]["route_short_name"],
             "route_long_name": route_by_id[route_id]["route_long_name"],
@@ -236,9 +270,16 @@ def build_data():
     bus_network_features = parse_network_features(raw_bus_network, ["num_commercial", "num_exploitation"])
     tram_network_features = parse_network_features(raw_tram_network, ["num_exploitation", "num_commercial"])
 
+    dataset_digest = compute_dataset_digest(GTFS_DIR)
+
     return {
         "meta": {
             "source": "GTFS TAM",
+            "generator": "build_simulator_data.py:v2_fingerprints",
+            "generated_at": datetime.now(timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z"),
+            "dataset_digest": dataset_digest,
             "route_count": len(route_by_id),
             "pattern_count": len(numbered_patterns),
             "bus_network_feature_count": len(bus_network_features),
