@@ -566,23 +566,6 @@
             </div>
             <div class="row panel-section panel-ops">
               <div class="grow">
-                <button id="checkPlannedBtn" class="secondary" type="button">
-                  Vérifier si déviation planifiée prévue
-                </button>
-              </div>
-              <div class="grow">
-                <button id="checkRtBtn" class="secondary" type="button">
-                  Vérifier si déviation temps réel prévue
-                </button>
-              </div>
-            </div>
-            <div class="row panel-section panel-ops">
-              <div class="grow">
-                <button id="manualBtn" class="secondary" type="button">
-                  Saisir une déviation en Mode manuel
-                </button>
-              </div>
-              <div class="grow">
                 <button id="nonServedBtn" class="secondary" type="button">
                   Saisir arrêt non desservi
                 </button>
@@ -620,7 +603,7 @@
             <div class="row panel-section panel-ops">
               <div class="grow">
                 <button id="returnInitialBtn" class="secondary" type="button">
-                  Revenir au Mode planifié si actif au départ
+                  Rétablir le mode exploitation du début de mission
                 </button>
               </div>
             </div>
@@ -725,7 +708,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
     <script src="guidage_troncons_arrets.js"></script>
     <script>
       let data = null;
@@ -761,63 +743,18 @@
       const LS_KEY_OPS_LOG = "tam_sim_ops_log";
       const LS_KEY_RECAP = "tam_sim_recap_on";
       const LS_KEY_DRIVE_MODE = "tam_sim_drive_mode";
-      const GTFS_RT_TRIP_URLS = [
-        "https://data.montpellier3m.fr/GTFS/Urbain/TripUpdate.pb",
-        "https://data.montpellier3m.fr/GTFS/Suburbain/TripUpdate.pb",
-      ];
-      const LOCAL_API_PROXY = "./api/tam/proxy?url=";
-      const LOCAL_API_PERTURBATIONS = "./api/tam/perturbations";
-      const TAM_PERTURBATIONS_LOCAL_JSON = "./tam_perturbations.json";
-      const LS_KEY_PLANNED_PERT = "tam_sim_planned_perturbations_v1";
-      const GTFS_RT_PROTO = `
-        syntax = "proto2";
-        package transit_realtime;
-        message FeedMessage { required FeedHeader header = 1; repeated FeedEntity entity = 2; }
-        message FeedHeader { required string gtfs_realtime_version = 1; optional uint64 timestamp = 3; }
-        message FeedEntity { required string id = 1; optional bool is_deleted = 2 [default = false]; optional TripUpdate trip_update = 3; optional Alert alert = 5; }
-        message TripDescriptor {
-          optional string trip_id = 1;
-          optional string route_id = 5;
-          enum ScheduleRelationship { SCHEDULED = 0; ADDED = 1; UNSCHEDULED = 2; CANCELED = 3; DUPLICATED = 5; DELETED = 6; }
-          optional ScheduleRelationship schedule_relationship = 4;
-        }
-        message TripUpdate {
-          message StopTimeEvent { optional int32 delay = 1; optional int64 time = 2; }
-          message StopTimeUpdate {
-            optional uint32 stop_sequence = 1;
-            optional string stop_id = 4;
-            optional StopTimeEvent arrival = 2;
-            optional StopTimeEvent departure = 3;
-            enum ScheduleRelationship { SCHEDULED = 0; SKIPPED = 1; NO_DATA = 2; UNSCHEDULED = 3; }
-            optional ScheduleRelationship schedule_relationship = 5;
-          }
-          required TripDescriptor trip = 1;
-          repeated StopTimeUpdate stop_time_update = 2;
-        }
-        message TimeRange { optional uint64 start = 1; optional uint64 end = 2; }
-        message EntitySelector { optional string agency_id = 1; optional string route_id = 2; optional string stop_id = 3; optional TripDescriptor trip = 4; }
-        message TranslatedString { message Translation { required string text = 1; optional string language = 2; } repeated Translation translation = 1; }
-        message Alert {
-          repeated TimeRange active_period = 1;
-          repeated EntitySelector informed_entity = 5;
-          enum Effect { NO_SERVICE = 1; REDUCED_SERVICE = 2; SIGNIFICANT_DELAYS = 3; DETOUR = 4; ADDITIONAL_SERVICE = 5; MODIFIED_SERVICE = 6; OTHER_EFFECT = 7; UNKNOWN_EFFECT = 8; STOP_MOVED = 9; NO_EFFECT = 10; ACCESSIBILITY_ISSUE = 11; }
-          optional Effect effect = 7;
-          optional TranslatedString header_text = 10;
-          optional TranslatedString description_text = 11;
-        }
-      `;
 
       const OPS_MODE = {
         BASE: "BASE",
-        PLANIFIE: "PLANIFIE_ACTIF",
-        RT: "RT_ACTIF",
         MANUEL: "MANUEL_ACTIF",
       };
 
+      function coerceOpsMode(mode) {
+        return mode === OPS_MODE.MANUEL ? OPS_MODE.MANUEL : OPS_MODE.BASE;
+      }
+
       let opsState = {
         mode: OPS_MODE.BASE,
-        planifieActive: false,
-        rtActive: false,
         manualActive: false,
         nonServedEditActive: false,
         initialMode: OPS_MODE.BASE,
@@ -825,8 +762,6 @@
         targetPatternId: "",
         baseCoordinates: null,
         modeCoordinates: {
-          PLANIFIE_ACTIF: null,
-          RT_ACTIF: null,
           MANUEL_ACTIF: null,
         },
         manualProfile: null,
@@ -835,9 +770,7 @@
         provisionalStops: [],
         provisionalEditActive: false,
       };
-      let localPlannedPerturbations = null;
       let skippedStopIdSet = new Set();
-      let skippedStopNameSet = new Set();
       let activeStopMetersForGuide = [];
       /** Arrêts desservis + provisoires, distances normalisées — annonces, stats, tronçon vert */
       let servedGuideSnapshot = [];
@@ -984,9 +917,6 @@
       const nextStopEl = document.getElementById("nextStop");
       const progressPctEl = document.getElementById("progressPct");
       const segmentGuideInfoEl = document.getElementById("segmentGuideInfo");
-      const checkPlannedBtn = document.getElementById("checkPlannedBtn");
-      const checkRtBtn = document.getElementById("checkRtBtn");
-      const manualBtn = document.getElementById("manualBtn");
       const nonServedBtn = document.getElementById("nonServedBtn");
       const provisionalStopBtn = document.getElementById("provisionalStopBtn");
       const provisionalUndoBtn = document.getElementById("provisionalUndoBtn");
@@ -1280,9 +1210,6 @@
         if (manualDrawSaveBtn) {
           manualDrawSaveBtn.disabled = manualDraftPoints.length < 2;
         }
-        if (manualBtn) {
-          manualBtn.disabled = manualDrawActive;
-        }
         if (nonServedBtn) {
           nonServedBtn.classList.toggle("active", !!opsState.nonServedEditActive);
           nonServedBtn.textContent = opsState.nonServedEditActive
@@ -1564,18 +1491,12 @@
 
       function recomputeOpsMode() {
         if (opsState.manualActive) return OPS_MODE.MANUEL;
-        if (opsState.rtActive) return OPS_MODE.RT;
-        if (opsState.planifieActive) return OPS_MODE.PLANIFIE;
         return OPS_MODE.BASE;
       }
 
       function describeOpsState() {
         if (opsState.mode === OPS_MODE.MANUEL)
           return "Déviation manuelle active.";
-        if (opsState.mode === OPS_MODE.RT)
-          return "Déviation temps réel active.";
-        if (opsState.mode === OPS_MODE.PLANIFIE)
-          return "Déviation planifiée active.";
         return "Aucune déviation active.";
       }
 
@@ -1587,8 +1508,6 @@
       }
 
       function resetOpsStateForMission() {
-        opsState.planifieActive = false;
-        opsState.rtActive = false;
         opsState.manualActive = false;
         opsState.nonServedEditActive = false;
         opsState.mode = OPS_MODE.BASE;
@@ -1597,8 +1516,6 @@
         opsState.targetPatternId = "";
         opsState.baseCoordinates = null;
         opsState.modeCoordinates = {
-          PLANIFIE_ACTIF: null,
-          RT_ACTIF: null,
           MANUEL_ACTIF: null,
         };
         opsState.manualProfile = null;
@@ -1648,39 +1565,8 @@
       }
 
       function applyModeFlags(mode) {
-        opsState.planifieActive = mode === OPS_MODE.PLANIFIE;
-        opsState.rtActive = mode === OPS_MODE.RT;
-        opsState.manualActive = mode === OPS_MODE.MANUEL;
-      }
-
-      let gtfsRtFeedType = null;
-      function getGtfsRtFeedType() {
-        if (gtfsRtFeedType) return gtfsRtFeedType;
-        if (!window.protobuf || !window.protobuf.parse) return null;
-        const root = window.protobuf.parse(GTFS_RT_PROTO).root;
-        gtfsRtFeedType = root.lookupType("transit_realtime.FeedMessage");
-        return gtfsRtFeedType;
-      }
-
-      async function fetchGtfsRtFeed(url) {
-        const FeedMessage = getGtfsRtFeedType();
-        if (!FeedMessage) return null;
-        const targets = [
-          `${LOCAL_API_PROXY}${encodeURIComponent(url)}`,
-          url,
-        ];
-        let lastErr = null;
-        for (const t of targets) {
-          try {
-            const resp = await fetch(t, { cache: "no-store" });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const arr = new Uint8Array(await resp.arrayBuffer());
-            return FeedMessage.decode(arr);
-          } catch (e) {
-            lastErr = e;
-          }
-        }
-        throw lastErr || new Error("GTFS-RT unreachable");
+        const m = coerceOpsMode(mode);
+        opsState.manualActive = m === OPS_MODE.MANUEL;
       }
 
       function normalizeText(s) {
@@ -1698,76 +1584,9 @@
           .trim();
       }
 
-      function checkLocalPlannedForLine(lineCode) {
-        const wanted = String(lineCode || "").toUpperCase().trim();
-        const rows = localPlannedPerturbations?.items || [];
-        if (!wanted || !Array.isArray(rows) || !rows.length) {
-          return { found: false, reason: "" };
-        }
-        for (const row of rows) {
-          const codes = Array.isArray(row?.line_codes)
-            ? row.line_codes.map((x) => String(x).toUpperCase().trim())
-            : [];
-          if (!codes.includes(wanted)) continue;
-          if (row?.is_coming_soon) continue;
-          if (row?.is_active === false) continue;
-          return {
-            found: true,
-            reason: String(row?.title || `Perturbation planifiée détectée (L${wanted})`),
-          };
-        }
-        return { found: false, reason: "" };
-      }
-
-      function extractNonServedStopsFromBody(bodyText) {
-        const raw = String(bodyText || "");
-        const m = raw.match(/arr[êe]ts?\s+(.+?)\s+ne\s+sont\s+pas\s+desservis/i);
-        if (!m || !m[1]) return [];
-        return m[1]
-          .replace(/\./g, " ")
-          .split(/,| et /i)
-          .map((x) => normalizeStopName(x))
-          .filter(Boolean);
-      }
-
-      function getPlannedEntriesForCurrentLine(lineCode) {
-        const wanted = String(lineCode || "").toUpperCase().trim();
-        const rows = localPlannedPerturbations?.items || [];
-        if (!wanted || !Array.isArray(rows) || !rows.length) return [];
-        return rows.filter((row) => {
-          const codes = Array.isArray(row?.line_codes)
-            ? row.line_codes.map((x) => String(x).toUpperCase().trim())
-            : [];
-          if (!codes.includes(wanted)) return false;
-          if (row?.is_coming_soon) return false;
-          if (row?.is_active === false) return false;
-          return true;
-        });
-      }
-
       function recomputeSkippedStopsForCurrentMission() {
         skippedStopIdSet = new Set();
-        skippedStopNameSet = new Set();
         if (!currentPattern?.stops) return;
-
-        if (opsState.planifieActive) {
-          const entries = getPlannedEntriesForCurrentLine(currentPattern.route_short_name);
-          for (const e of entries) {
-            for (const name of extractNonServedStopsFromBody(e?.body || "")) {
-              skippedStopNameSet.add(name);
-            }
-          }
-          for (const st of currentPattern.stops) {
-            const norm = normalizeStopName(st?.stop_name || "");
-            if (!norm) continue;
-            for (const bad of skippedStopNameSet) {
-              if (norm === bad || norm.includes(bad) || bad.includes(norm)) {
-                skippedStopIdSet.add(String(st.stop_id || ""));
-                break;
-              }
-            }
-          }
-        }
 
         if (opsState.manualActive && opsState.manualProfile && opsState.baseCoordinates) {
           const base = opsState.baseCoordinates;
@@ -1801,8 +1620,7 @@
         const stops = currentPattern?.stops || [];
         if (!stops.length) return [];
         const hasSkipped = skippedStopIdSet.size > 0;
-        const skipModeActive =
-          opsState.planifieActive || opsState.manualActive || hasSkipped;
+        const skipModeActive = opsState.manualActive || hasSkipped;
         const arr = [];
         for (let i = 0; i < stops.length; i++) {
           const sid = String(stops[i]?.stop_id || "");
@@ -1858,8 +1676,7 @@
       function mergedEntryIsServedForGuide(e) {
         if (e.kind === "prov") return true;
         const hasSkipped = skippedStopIdSet.size > 0;
-        const skipModeActive =
-          opsState.planifieActive || opsState.manualActive || hasSkipped;
+        const skipModeActive = opsState.manualActive || hasSkipped;
         if (!skipModeActive) return true;
         return !skippedStopIdSet.has(e.stop_id);
       }
@@ -1952,8 +1769,7 @@
       function drawSkippedStopsOverlay() {
         skippedStopsLayer.clearLayers();
         const hasSkipped = skippedStopIdSet.size > 0;
-        const skipModeActive =
-          opsState.planifieActive || opsState.manualActive || hasSkipped;
+        const skipModeActive = opsState.manualActive || hasSkipped;
         if (!currentPattern?.stops || !skipModeActive) return;
         const p = getMapVisualProfile();
         for (const st of currentPattern.stops) {
@@ -2105,136 +1921,17 @@
         }
       }
 
-      /**
-       * A chaque chargement: tenter la page TAM via serve_tam (sans CORS), persister le JSON
-       * dans localStorage ; sinon JSON statique, sinon dernier cache.
-       */
-      async function loadLocalPlannedPerturbations() {
-        const apply = (json) => {
-          if (json && Array.isArray(json.items)) {
-            localPlannedPerturbations = json;
-            return true;
-          }
-          return false;
-        };
-        try {
-          const rApi = await fetch(LOCAL_API_PERTURBATIONS, { cache: "no-store" });
-          if (rApi.ok) {
-            const jsonApi = await rApi.json();
-            if (apply(jsonApi)) {
-              try {
-                localStorage.setItem(LS_KEY_PLANNED_PERT, JSON.stringify(jsonApi));
-              } catch (e) {
-                /* ignore quota */
-              }
-              return;
-            }
-          }
-        } catch (e) {
-          /* serve_tam absent */
-        }
-        try {
-          const r = await fetch(TAM_PERTURBATIONS_LOCAL_JSON, { cache: "no-store" });
-          if (r.ok) {
-            const json = await r.json();
-            if (apply(json)) return;
-          }
-        } catch (e) {
-          /* pas de fichier */
-        }
-        try {
-          const raw = localStorage.getItem(LS_KEY_PLANNED_PERT);
-          if (raw) {
-            const json = JSON.parse(raw);
-            if (apply(json)) return;
-          }
-        } catch (e) {
-          /* ignore */
-        }
-        localPlannedPerturbations = null;
-      }
-
-      /** Planifié = uniquement les données chargées au démarrage (TAM via serve_tam, JSON, cache). */
-      async function checkPlannedDeviationOnline(pattern) {
-        const routeShortName = String(pattern.route_short_name || "").trim();
-        if (!routeShortName) {
-          return {
-            found: false,
-            reason: "",
-            diagnostics: { itemCount: 0, hadDataset: false },
-          };
-        }
-        const local = checkLocalPlannedForLine(routeShortName);
-        const items = localPlannedPerturbations?.items;
-        return {
-          found: local.found,
-          reason: local.reason,
-          diagnostics: {
-            itemCount: Array.isArray(items) ? items.length : 0,
-            hadDataset: Array.isArray(items) && items.length > 0,
-          },
-        };
-      }
-
-      async function checkRealtimeDeviationOnline(pattern) {
-        const routeId = String(pattern.route_id || "");
-        let found = false;
-        let reason = "";
-        for (const url of GTFS_RT_TRIP_URLS) {
-          try {
-            const feed = await fetchGtfsRtFeed(url);
-            const entities = feed?.entity || [];
-            for (const e of entities) {
-              const tu = e?.trip_update;
-              if (!tu?.trip) continue;
-              if (String(tu.trip.route_id || "") !== routeId) continue;
-              const tripRel = Number(tu.trip.schedule_relationship || 0);
-              if ([1, 3, 6].includes(tripRel)) {
-                found = true;
-                reason = "TripUpdate signale une course modifiée";
-                break;
-              }
-              const updates = tu.stop_time_update || [];
-              for (const u of updates) {
-                const rel = Number(u.schedule_relationship || 0);
-                const ad = Number(u?.arrival?.delay || 0);
-                const dd = Number(u?.departure?.delay || 0);
-                if ([1, 2].includes(rel) || Math.abs(ad) >= 120 || Math.abs(dd) >= 120) {
-                  found = true;
-                  reason = "TripUpdate signale un écart temps réel";
-                  break;
-                }
-              }
-              if (found) break;
-            }
-          } catch (e) {
-            // ignore source failures, continue with others
-          }
-          if (found) break;
-        }
-        return { found, reason };
-      }
-
       async function applyTraceForOpsMode(mode, opts) {
         if (!currentPattern) return;
         const o = opts || {};
         const oldTotal = pathTotalMeters || 1;
         const oldD = distanceAlongPathMeters || 0;
         const ratio = Math.max(0, Math.min(1, oldD / oldTotal));
-        let coords = opsState.baseCoordinates;
-        if (mode === OPS_MODE.PLANIFIE || mode === OPS_MODE.RT) {
-          if (!opsState.modeCoordinates[mode]) {
-            const routed = await fetchRoadGeometry(currentPattern);
-            if (routed && routed.length >= 2) {
-              opsState.modeCoordinates[mode] = routed;
-            }
-          }
-          coords = opsState.modeCoordinates[mode] || opsState.baseCoordinates;
-        } else if (mode === OPS_MODE.MANUEL) {
-          coords = opsState.modeCoordinates[OPS_MODE.MANUEL] || opsState.baseCoordinates;
-        } else {
-          coords = opsState.baseCoordinates;
-        }
+        let coords =
+          mode === OPS_MODE.MANUEL
+            ? opsState.modeCoordinates[OPS_MODE.MANUEL] ||
+              opsState.baseCoordinates
+            : opsState.baseCoordinates;
         if (!coords || coords.length < 2) return;
         activeCoordinates = coords;
         rebuildPathMetrics(activeCoordinates);
@@ -3534,8 +3231,6 @@
         }
         opsState.baseCoordinates = [...activeCoordinates];
         if (!keepPrefill) {
-          opsState.modeCoordinates.PLANIFIE_ACTIF = null;
-          opsState.modeCoordinates.RT_ACTIF = null;
           opsState.modeCoordinates.MANUEL_ACTIF = null;
           opsState.manualProfile = null;
           opsState.manualStopOverrides = {};
@@ -3598,7 +3293,6 @@
             if (!slot || !slot.name) return "-";
             const skipped =
               slot.kind === "gtfs" &&
-              (opsState.planifieActive || opsState.manualActive) &&
               skippedStopIdSet.has(String(slot.stop_id || ""));
             const prov =
               slot.kind === "prov" ? " (provisoire)" : "";
@@ -3705,69 +3399,16 @@
         }
       });
 
-      checkPlannedBtn.addEventListener("click", () => {
-        (async () => {
-        const p = ensureOpsTargetPattern();
-        if (!p) return;
-        const rs = await checkPlannedDeviationOnline(p);
-        if (!rs.found) {
-          const d = rs.diagnostics || {};
-          if (!d.hadDataset) {
-            window.alert(
-              "Aucun jeu de perturbations planifiées. Lancez `python serve_tam.py` à la place de http.server, ou fournissez `tam_perturbations.json`.",
-            );
-          } else {
-            window.alert("Aucune perturbation planifiée pour cette ligne dans les données du jour.");
-          }
-          appendOpsLog("check_planifie_none", "Aucun résultat détecté");
-          return;
-        }
-        opsState.planifieActive = true;
-        // Le mode planifie devient le nouvel etat de reference.
-        opsState.returnMode = OPS_MODE.PLANIFIE;
-        applyOpsStateUi();
-        await applyTraceForOpsMode(OPS_MODE.PLANIFIE);
-        recomputeSkippedStopsForCurrentMission();
-        rebuildActiveGuideStops();
-        drawAllStopsOverlay();
-        drawSkippedStopsOverlay();
-        updateStopToStopOverlay();
-        updateStats();
-        window.alert(`Déviation planifiée détectée: ${rs.reason}`);
-        appendOpsLog("activate_planifie", "Activation manuelle V1");
-        })();
-      });
-
-      checkRtBtn.addEventListener("click", () => {
-        (async () => {
-        const p = ensureOpsTargetPattern();
-        if (!p) return;
-        const rs = await checkRealtimeDeviationOnline(p);
-        if (!rs.found) {
-          window.alert("Aucune déviation temps réel détectée en ligne pour cette mission.");
-          appendOpsLog("check_rt_none", "Aucun résultat détecté");
-          return;
-        }
-        // Snapshot du mode stable precedent pour le retour etat initial.
-        opsState.returnMode = opsState.planifieActive
-          ? OPS_MODE.PLANIFIE
-          : OPS_MODE.BASE;
-        opsState.rtActive = true;
-        applyOpsStateUi();
-        await applyTraceForOpsMode(OPS_MODE.RT);
-        window.alert(`Déviation temps réel détectée: ${rs.reason}`);
-        appendOpsLog("activate_rt", "Activation manuelle V1");
-        })();
-      });
-
-      manualBtn.addEventListener("click", () => {
+      /** Logique anciennement reliée au bouton « Saisir une déviation en Mode manuel » (UI retirée). */
+      function activateStoredManualDeviationMode() {
         const p = ensureOpsTargetPattern();
         if (!p) return;
         if (!opsState.modeCoordinates[OPS_MODE.MANUEL]) {
-          window.alert("Aucun tracé manuel enregistré. Utilisez d'abord « Tracer la déviation (carte) ».");
+          window.alert(
+            "Aucun tracé manuel enregistré. Utilisez d'abord « Tracer la déviation (carte) ».",
+          );
           return;
         }
-        // Snapshot du mode stable precedent pour le retour etat initial.
         opsState.returnMode = recomputeOpsMode();
         opsState.manualActive = true;
         applyOpsStateUi();
@@ -3776,8 +3417,8 @@
         drawSkippedStopsOverlay();
         drawProvisionalStopsOverlay();
         applyTraceForOpsMode(OPS_MODE.MANUEL);
-        appendOpsLog("activate_manual", "Activation conducteur");
-      });
+        appendOpsLog("activate_manual", "Réactivation déviation enregistrée");
+      }
 
       nonServedBtn?.addEventListener("click", () => {
         const p = ensureOpsTargetPattern();
@@ -3887,7 +3528,7 @@
       returnInitialBtn.addEventListener("click", () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
-        applyModeFlags(opsState.returnMode || OPS_MODE.BASE);
+        applyModeFlags(coerceOpsMode(opsState.returnMode || OPS_MODE.BASE));
         applyOpsStateUi();
         applyTraceForOpsMode(recomputeOpsMode());
         recomputeSkippedStopsForCurrentMission();
@@ -3903,8 +3544,6 @@
       returnBaseBtn.addEventListener("click", () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
-        opsState.planifieActive = false;
-        opsState.rtActive = false;
         opsState.manualActive = false;
         opsState.returnMode = OPS_MODE.BASE;
         applyOpsStateUi();
@@ -4127,11 +3766,9 @@
       refreshMapLayout();
       applyMapVisualProfile();
 
-      Promise.all([
-        fetch("./simulation_data.json").then((resp) => resp.json()),
-        loadLocalPlannedPerturbations(),
-      ])
-        .then(([json]) => {
+      fetch("./simulation_data.json")
+        .then((resp) => resp.json())
+        .then((json) => {
           data = json;
           updateLines();
           applyMapVisualProfile();

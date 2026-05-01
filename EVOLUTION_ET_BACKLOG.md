@@ -17,17 +17,17 @@ C’est la **liste de ce qu’il reste à faire** (sections **4** et suivantes).
 
 1. **Tracé de déviation manuelle** sur la carte (remplacement de segment entre deux extrémités du tracé mission) — **réalisé / stabilisé** dans le simulateur (parcours conducteur).
 2. **Arrêts non desservis** — saisie au clic sur les pastilles en mode dédié — **réalisé / stabilisé**.
-3. **Arrêts provisoires** (création conducteur d’arrêts supplémentaires sur le tracé, hors GTFS) — **réalisé en V1** : pastilles orange, fusion dans l’ordre du parcours avec les arrêts mission pour **stats**, **tronçon vert**, **annonces** et **précédent / suivant**. Un éventuel besoin **« arrêt reporté »** au sens métier / données TAM reste **hors** cette V1 si un jour il faut le distinguer.
+3. **Arrêts provisoires / « arrêts reportés » conducteur** — **même intention** qu’un arrêt reporté côté métier, mais **saisi manuellement** dans le simulateur (pas de lecture sur le serveur / Infos trafic TAM en V1). **Réalisé en V1** : pastilles orange, fusion dans l’ordre du parcours avec les arrêts mission pour **stats**, **tronçon vert**, **annonces** et **précédent / suivant**. Une **réutilisation des données TAM** pour préremplir ce type d’info reste un sujet **distinct** (réouverture avec besoin métier explicite).
 
-**Stratégie retenue** : ne pas continuer à investir sur une chaîne **automatique Infos trafic → mission** à court terme. En pratique, **tout ce qui compte pour la déviation “opérationnelle” passe par le mode manuel** (tracé + exceptions sur les arrêts). Les parcours **déviation planifiée** et **déviation temps réel** correspondant aux **deux boutons** ci‑dessous sont **abandonnés provisoirement comme priorité** : **on ne les prend plus en compte dans le backlog** jusqu’à disposer de données fiables et exploitables ; une **reprise** sera alors une décision explicite.
+**Stratégie retenue** : ne pas continuer à investir sur une chaîne **automatique Infos trafic → mission** à court terme. En pratique, **tout ce qui compte pour la déviation « opérationnelle » passe par le mode manuel** (tracé + exceptions sur les arrêts). Les flux **planifié** et **temps réel** (anciens boutons du simulateur) sont **retirés du code front** tant qu’aucune réactivation n’est arbitrée ; le **cadrage archive** §1 reste disponible pour une éventuelle reprise technique.
 
 **Périmètre UI (`simulateur_sae.html`)** :
 
 | Élément | Statut |
 |---------|--------|
-| **« Vérifier si déviation planifiée prévue »** | **Gelé / hors périmètre** — code encore présent ; **suppression possible plus tard** ; pas de évolutions fonctionnelles prévues. |
-| **« Vérifier si déviation temps réel prévue »** | Idem. |
-| **« Saisir une déviation en Mode manuel »** | **Hors abandon** — c’est **le flux conservé** ; il ne fait **pas** partie du lot planifié / temps réel. |
+| **« Vérifier si déviation planifiée prévue »** | **Retiré** du `simulateur_sae.html` (mai 2026) — code frontal supprimé ; la piste archives reste en **§1**. |
+| **« Vérifier si déviation temps réel prévue »** | Idem (**GTFS‑RT / protobuf** retirés de la page). |
+| **« Saisir une déviation en Mode manuel »** | **Bouton UI retiré** — le flux métier demeure : **tracé validé**, **arrêts non desservis** et **réactivation** réservée dans le code sous `activateStoredManualDeviationMode()` (console / extension future si besoin). |
 | **« Saisir arrêts provisoires »** / **« Retirer dernier arrêt provisoire »** | **Actifs** (priorité §0) — V1 dans le simulateur ; **exclusif** avec le mode saisie arrêt non desservi au même instant. |
 
 ---
@@ -73,7 +73,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - Parcours mission : ligne → terminus / sens → variante ; carte, progression (gris / reste en bleu), tronçon **vert** stop-to-stop (`guidage_troncons_arrets.js`).
 - **Interface** : menu burger, onglets Mission / Modes / Audio, récap carte, **bandeau** sous le titre (ligne + direction, couleurs, appui long pour faire défiler le texte, relâchement = retour compact).
 - **Couleurs** de ligne (sélecteur, menus mission, pastilles) ; **contraste** texte (listes T3 / bus à fond clair, etc.) ; polyligne carte **restante** en **bleu TAM** (retrait de la coloration par ligne = lisibilité sur fond OSM).
-- **Modes d’exploitation** (onglet Modes) : **V1** avec boutons planifié / temps réel / manuel ; **priorité §0** = flux **manuel** ; boutons planifié et temps réel **gelés** (pas d’alignement produit prévu). Bascule manuel, retour base, arrêts non desservis, **arrêts provisoires**, etc.
+- **Modes d’exploitation** (onglet Modes) : **V1 centrée déviation manuelle** ; les boutons planifié / temps réel ont été **retirés** du simulateur (mai 2026). Restent tracé manuel carte, validation, arrêts non desservis, **arrêts provisoires**, retours **base** et **rétablissement du mode du début de mission**.
 - **Perturbations** : piste `serve_tam` + `update_tam_perturbations.py` / `tam_perturbations.json` (éviter CORS sur chargement “Infos trafic”).
 
 ---
@@ -97,7 +97,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 > Ne **pas** implémenter ni faire évoluer ces points tant que la décision **§0** n’est pas révoquée (pas de hook matinal, pas de bouton planifié « fichier du jour », pas de journal conducteur piloté par Infos trafic). Réactivation uniquement avec **données concrètes** + décision explicite.
 
 - ~~**Hook « première ouverture de la journée »**~~ — gelé.
-- ~~**Bouton** « vérifier déviation planifiée » (logique fichier du jour)~~ — gelé (le bouton peut rester en UI jusqu’à suppression de code).
+- ~~**Bouton** « vérifier déviation planifiée » (logique fichier du jour)~~ — hors simulateur frontal (bouton et code JS associés **retirés** en mai 2026 ; **serve_tam** / parsers peuvent encore servir d’outil offline).
 - ~~**Structure** du journal / extraction HTML enrichie~~ — gelé (référence technique éventuelle : **§1.1**).
 - ~~(Option) **Dernière** heure de sync~~ — gelé.
 
@@ -117,7 +117,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - [x] **Déviation manuelle** : tracé sur carte + application du segment — **en place** ; finesse UX / edge cases au fil de l’eau.
 - [x] **Arrêts non desservis** — **en place** (toggle pastilles + guidage).
 - [x] **Arrêts provisoires** — **en place** (V1 : saisie carte + nom, snap sur tracé, guidage / voix / stats ; reset au changement de mission).
-- [ ] (Option) **Arrêts reportés** au sens **données / process TAM** (si ≠ arrêt provisoire conducteur) — à rouvrir seulement si besoin métier explicite.
+- [ ] (Option) **Préremplissage** conducteur depuis **données TAM / Infos trafic** pour les « arrêts reportés » (sans doublonner la V1 manuelle déjà là) — seulement si besoin métier explicite.
 - [ ] Cohérence purement **manuel** (tracé ↔ arrêts ↔ provisoires ↔ annonces) sans réintroduire de dépendance planifié / TR.
 
 ### 4D. Emballage produit (quand le fond métier est stable)
@@ -146,7 +146,7 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 | Fichier | Rôle |
 |---------|------|
-| `simulateur_sae.html` | UI, carte, **mode manuel** prioritaire (tracé, arrêts non desservis, **arrêts provisoires**) ; boutons planifié / TR encore présents mais **gelés** (§0) |
+| `simulateur_sae.html` | UI, carte, **déviation manuelle** (tracé, arrêts non desservis, **arrêts provisoires**) ; flux planifié / temps réel **absents** du JS (mai 2026) |
 | `serve_tam.py` | Fichiers statiques + API locale (ex. perturbations) |
 | `build_simulator_data.py` | Génère `simulation_data.json` (GTFS + réseau 3M en ZIP/JSON) |
 | `update_tam_perturbations.py` | Télécharge / alimente les perturbations (secours) |
@@ -155,4 +155,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-01 (arrêts provisoires §0 / §4C). Mettre à jour cette date quand on modifie le mémo.*
+*Dernière révision de **ce** fichier markdown : 2026-05-01 (terminologie arrêt reporté = provisoire manuel ; retrait planifié / TR simulateur). Mettre à jour cette date quand on modifie le mémo.*
