@@ -23,4 +23,6 @@ Quand tu crées ou modifies un commit dans ce projet, respecte toujours ce forma
 14. Ligne vide
 15. `Made-with: Cursor`
 
-Ne pas utiliser `Contexte:` avec deux-points. Utiliser le titre seul + ligne de tirets.
+Ne pas utiliser `Contexte:` avec deux-points. Utiliser le titre seul + une ligne du **même nombre de tirets** que la longueur du titre (sans compter deux-points fictifs).
+
+Exemple : « Contexte » (8 lettres) → `--------`, « Contenu principal » (17) → `-----------------`, « Impact fonctionnel » (18) → `------------------`.
