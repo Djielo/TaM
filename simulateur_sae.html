@@ -590,6 +590,18 @@
             </div>
             <div class="row panel-section panel-ops">
               <div class="grow">
+                <button id="provisionalStopBtn" class="secondary" type="button">
+                  Saisir arrêts provisoires
+                </button>
+              </div>
+              <div class="grow">
+                <button id="provisionalUndoBtn" class="secondary" type="button">
+                  Retirer dernier arrêt provisoire
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops">
+              <div class="grow">
                 <button id="manualDrawStartBtn" class="secondary" type="button">
                   Tracer la déviation (carte)
                 </button>
@@ -819,11 +831,16 @@
         },
         manualProfile: null,
         manualStopOverrides: {},
+        /** { id, stop_name, lat, lon } — projetés sur le tracé actif pour guidage / annonces */
+        provisionalStops: [],
+        provisionalEditActive: false,
       };
       let localPlannedPerturbations = null;
       let skippedStopIdSet = new Set();
       let skippedStopNameSet = new Set();
       let activeStopMetersForGuide = [];
+      /** Arrêts desservis + provisoires, distances normalisées — annonces, stats, tronçon vert */
+      let servedGuideSnapshot = [];
       /** En saisie arrêt non desservi : dernière pastille cliquée (une seule infobulle ouverte à la fois). */
       let nonServedEditFocusStopId = null;
       /** Chrome mobile : tap pastille déclenche souvent aussi un click carte ; on ignore ce clear pendant quelques ms. */
@@ -971,6 +988,8 @@
       const checkRtBtn = document.getElementById("checkRtBtn");
       const manualBtn = document.getElementById("manualBtn");
       const nonServedBtn = document.getElementById("nonServedBtn");
+      const provisionalStopBtn = document.getElementById("provisionalStopBtn");
+      const provisionalUndoBtn = document.getElementById("provisionalUndoBtn");
       const manualDrawStartBtn = document.getElementById("manualDrawStartBtn");
       const manualDrawUndoBtn = document.getElementById("manualDrawUndoBtn");
       const manualDrawSaveBtn = document.getElementById("manualDrawSaveBtn");
@@ -1128,6 +1147,7 @@
       const stopToStopLayer = L.layerGroup().addTo(map);
       const allStopsLayer = L.layerGroup().addTo(map);
       const skippedStopsLayer = L.layerGroup().addTo(map);
+      const provisionalStopsLayer = L.layerGroup().addTo(map);
       let marker = L.marker([43.61, 3.88], {
         icon: navIcon,
         zIndexOffset: 800,
@@ -1135,7 +1155,44 @@
       map.on("zoomend", () => {
         applyMapVisualProfile();
       });
-      map.on("click", () => {
+      map.on("click", (ev) => {
+        if (
+          opsState.provisionalEditActive &&
+          !manualDrawActive &&
+          currentPattern &&
+          pathTotalMeters > 0 &&
+          ev?.latlng
+        ) {
+          const defaultName = "Arrêt provisoire";
+          const nameIn = window.prompt(
+            "Nom de l’arrêt provisoire (la position est projetée sur le tracé mission) :",
+            defaultName,
+          );
+          if (nameIn === null) {
+            return;
+          }
+          const trimmed = String(nameIn).trim() || defaultName;
+          const id = `prov_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+          const projM = distanceAlongPathForLatLng(ev.latlng.lat, ev.latlng.lng);
+          const snapped = pointAtDistanceMeters(projM);
+          opsState.provisionalStops.push({
+            id,
+            stop_name: trimmed,
+            lat: snapped[0],
+            lon: snapped[1],
+          });
+          recomputeSkippedStopsForCurrentMission();
+          rebuildActiveGuideStops();
+          drawProvisionalStopsOverlay();
+          drawAllStopsOverlay();
+          drawSkippedStopsOverlay();
+          updateStopToStopOverlay();
+          updateStats();
+          resyncVoixForPosition(distanceAlongPathMeters);
+          refreshProvisionalUi();
+          setGpsStatus(`Arrêt provisoire ajouté : ${trimmed}`);
+          return;
+        }
         if (!opsState.manualActive || !opsState.nonServedEditActive) {
           return;
         }
@@ -1206,6 +1263,7 @@
         }
         drawAllStopsOverlay();
         drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
         stopToStopLayer.__tamSegIdx = -1;
         updateStopToStopOverlay();
       }
@@ -1230,6 +1288,22 @@
           nonServedBtn.textContent = opsState.nonServedEditActive
             ? "Quitter le mode arrêt non desservi"
             : "Saisir arrêt non desservi";
+        }
+        refreshProvisionalUi();
+      }
+
+      function refreshProvisionalUi() {
+        if (provisionalStopBtn) {
+          provisionalStopBtn.classList.toggle(
+            "active",
+            !!opsState.provisionalEditActive,
+          );
+          provisionalStopBtn.textContent = opsState.provisionalEditActive
+            ? "Quitter la saisie arrêts provisoires"
+            : "Saisir arrêts provisoires";
+        }
+        if (provisionalUndoBtn) {
+          provisionalUndoBtn.disabled = !opsState.provisionalStops?.length;
         }
       }
 
@@ -1529,6 +1603,8 @@
         };
         opsState.manualProfile = null;
         opsState.manualStopOverrides = {};
+        opsState.provisionalStops = [];
+        opsState.provisionalEditActive = false;
         nonServedEditFocusStopId = null;
         manualBypassedLine.setLatLngs([]);
         manualDetourLine.setLatLngs([]);
@@ -1736,7 +1812,86 @@
         return arr.length >= 2 ? arr : stops.map((_, i) => i);
       }
 
+      function collectMergedGuideEntriesRaw() {
+        const stops = currentPattern?.stops || [];
+        const list = [];
+        for (let i = 0; i < stops.length; i++) {
+          const lat = Number(stops[i]?.lat);
+          const lon = Number(stops[i]?.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          list.push({
+            kind: "gtfs",
+            patternIdx: i,
+            stop_id: String(stops[i]?.stop_id || ""),
+            name: stops[i]?.stop_name || "-",
+            metersRaw:
+              stopMetersAlong[i] !== undefined
+                ? stopMetersAlong[i]
+                : distanceAlongPathForLatLng(lat, lon),
+            lat,
+            lon,
+          });
+        }
+        for (const ps of opsState.provisionalStops || []) {
+          const lat = Number(ps.lat);
+          const lon = Number(ps.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          list.push({
+            kind: "prov",
+            id: ps.id,
+            name: ps.stop_name || "Arrêt provisoire",
+            metersRaw: distanceAlongPathForLatLng(lat, lon),
+            lat,
+            lon,
+          });
+        }
+        list.sort((a, b) => {
+          if (a.metersRaw !== b.metersRaw) return a.metersRaw - b.metersRaw;
+          if (a.kind !== b.kind) return a.kind === "gtfs" ? -1 : 1;
+          const ai = a.kind === "gtfs" ? a.patternIdx : 999999;
+          const bi = b.kind === "gtfs" ? b.patternIdx : 999999;
+          return ai - bi;
+        });
+        return list;
+      }
+
+      function mergedEntryIsServedForGuide(e) {
+        if (e.kind === "prov") return true;
+        const hasSkipped = skippedStopIdSet.size > 0;
+        const skipModeActive =
+          opsState.planifieActive || opsState.manualActive || hasSkipped;
+        if (!skipModeActive) return true;
+        return !skippedStopIdSet.has(e.stop_id);
+      }
+
+      function getServedMergedEntriesRaw() {
+        return collectMergedGuideEntriesRaw().filter(mergedEntryIsServedForGuide);
+      }
+
+      function buildServedGuideSnapshotNormalized() {
+        const served = getServedMergedEntriesRaw();
+        if (served.length < 2) return [];
+        const raw = served.map((e) => e.metersRaw);
+        const norm = normalizeStopMeters(raw, pathTotalMeters);
+        return served.map((e, i) => ({
+          kind: e.kind,
+          patternIdx: e.patternIdx,
+          stop_id: e.stop_id,
+          id: e.id,
+          name: e.name,
+          lat: e.lat,
+          lon: e.lon,
+          meters: norm[i],
+        }));
+      }
+
       function rebuildActiveGuideStops() {
+        servedGuideSnapshot = buildServedGuideSnapshotNormalized();
+        if (servedGuideSnapshot.length >= 2) {
+          activeStopMetersForGuide = servedGuideSnapshot.map((e) => e.meters);
+          return;
+        }
+        servedGuideSnapshot = [];
         const served = getServedStopIndices();
         activeStopMetersForGuide = served
           .map((i) => stopMetersAlong[i])
@@ -1746,18 +1901,52 @@
         }
       }
 
-      function getCurrentAndNextServedIndex(d) {
+      function mkGtfsGuideSlot(idx) {
         const stops = currentPattern?.stops || [];
-        if (!stops.length || !stopMetersAlong.length) return { curr: 0, next: 0 };
+        const st = stops[idx];
+        if (!st) return null;
+        return {
+          kind: "gtfs",
+          patternIdx: idx,
+          stop_id: String(st.stop_id || ""),
+          name: st.stop_name || "-",
+          meters: stopMetersAlong[idx] || 0,
+          lat: Number(st.lat),
+          lon: Number(st.lon),
+        };
+      }
+
+      /** Courant / suivant dans la liste guidage (GTFS + arrêts provisoires). */
+      function getCurrentAndNextServedGuideSlots(d) {
+        const stops = currentPattern?.stops || [];
+        if (!stops.length || !stopMetersAlong.length) {
+          return { curr: null, next: null };
+        }
+        if (servedGuideSnapshot.length >= 2) {
+          let pos = 0;
+          for (let p = 0; p < servedGuideSnapshot.length; p++) {
+            if ((servedGuideSnapshot[p].meters || 0) <= d + 0.5) pos = p;
+          }
+          const curr = servedGuideSnapshot[pos];
+          const next =
+            servedGuideSnapshot[
+              Math.min(pos + 1, servedGuideSnapshot.length - 1)
+            ];
+          return { curr, next };
+        }
         const served = getServedStopIndices();
         let pos = 0;
         for (let p = 0; p < served.length; p++) {
           const idx = served[p];
           if ((stopMetersAlong[idx] || 0) <= d + 0.5) pos = p;
         }
-        const curr = served[pos] ?? 0;
-        const next = served[Math.min(pos + 1, served.length - 1)] ?? curr;
-        return { curr, next };
+        const currIdx = served[pos] ?? 0;
+        const nextIdx =
+          served[Math.min(pos + 1, served.length - 1)] ?? currIdx;
+        return {
+          curr: mkGtfsGuideSlot(currIdx),
+          next: mkGtfsGuideSlot(nextIdx),
+        };
       }
 
       function drawSkippedStopsOverlay() {
@@ -1787,6 +1976,57 @@
             });
           }
           mk.addTo(skippedStopsLayer);
+        }
+      }
+
+      function drawProvisionalStopsOverlay() {
+        provisionalStopsLayer.clearLayers();
+        if (!opsState.provisionalStops?.length || !currentPattern) {
+          return;
+        }
+        const p = getMapVisualProfile();
+        const r = Math.max(p.stopRadius + 1, (p.stopRadius + p.skippedRadius) / 2);
+        for (const ps of opsState.provisionalStops) {
+          const lat = Number(ps.lat);
+          const lon = Number(ps.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          const mk = L.circleMarker([lat, lon], {
+            radius: r,
+            color: "#e65100",
+            fillColor: "#ffb74d",
+            fillOpacity: 0.92,
+            weight: p.stopStroke + 0.35,
+          });
+          mk.bindTooltip(`Arrêt provisoire : ${ps.stop_name || "-"}`, {
+            direction: "top",
+            opacity: 0.95,
+          });
+          mk.on("click", (ev) => {
+            if (!opsState.provisionalEditActive) return;
+            if (typeof L !== "undefined" && L.DomEvent?.stopPropagation) {
+              L.DomEvent.stopPropagation(ev);
+            } else if (ev?.originalEvent?.stopPropagation) {
+              ev.originalEvent.stopPropagation();
+            }
+            if (
+              !window.confirm(
+                `Retirer l’arrêt provisoire « ${ps.stop_name || "-"} » ?`,
+              )
+            ) {
+              return;
+            }
+            opsState.provisionalStops = opsState.provisionalStops.filter(
+              (x) => x.id !== ps.id,
+            );
+            rebuildActiveGuideStops();
+            drawProvisionalStopsOverlay();
+            updateStopToStopOverlay();
+            updateStats();
+            resyncVoixForPosition(distanceAlongPathMeters);
+            refreshProvisionalUi();
+            setGpsStatus("Arrêt provisoire retiré.");
+          });
+          mk.addTo(provisionalStopsLayer);
         }
       }
 
@@ -1853,6 +2093,7 @@
             rebuildActiveGuideStops();
             drawAllStopsOverlay();
             drawSkippedStopsOverlay();
+            drawProvisionalStopsOverlay();
             updateStopToStopOverlay();
             updateStats();
             setGpsStatus(
@@ -2009,6 +2250,7 @@
           zoom: map.getZoom(),
         });
         updateStopToStopOverlay();
+        drawProvisionalStopsOverlay();
         updateManualDeviationVisual(mode);
         updateStats();
       }
@@ -2908,6 +3150,21 @@
         // Important pour "Arrêt précédent": on doit pouvoir réentendre les annonces
         // après un retour en arrière, au lieu de garder les anciennes clés en mémoire.
         voixAnnounced = new Set();
+        const g = servedGuideSnapshot;
+        if (g.length >= 2) {
+          for (let p = 0; p < g.length - 1; p++) {
+            const mi = g[p].meters || 0;
+            const mj = g[p + 1].meters || 0;
+            if (d > mi + 0.5) {
+              voixAnnounced.add(`dgp_${p}`);
+            }
+            const mid = (mi + mj) / 2;
+            if (d > mid + 0.5) {
+              voixAnnounced.add(`mgp_${p}`);
+            }
+          }
+          return;
+        }
         const served = getServedStopIndices();
         for (let p = 0; p < served.length - 1; p++) {
           const i = served[p];
@@ -2935,6 +3192,37 @@
           return;
         }
         if (prev == null || curr == null || prev > curr) {
+          return;
+        }
+        const g = servedGuideSnapshot;
+        if (g.length >= 2) {
+          for (let p = 0; p < g.length - 1; p++) {
+            const i = g[p];
+            const j = g[p + 1];
+            const nextName = j.name || "";
+            const tDep = i.meters || 0;
+            const tMid = ((i.meters || 0) + (j.meters || 0)) / 2;
+            if (mode === "depart" || mode === "both") {
+              if (
+                prev < tDep &&
+                curr >= tDep &&
+                !voixAnnounced.has(`dgp_${p}`)
+              ) {
+                voixAnnounced.add(`dgp_${p}`);
+                speakProchainArret(nextName);
+              }
+            }
+            if (mode === "mid" || mode === "both") {
+              if (
+                prev < tMid &&
+                curr >= tMid &&
+                !voixAnnounced.has(`mgp_${p}`)
+              ) {
+                voixAnnounced.add(`mgp_${p}`);
+                speakProchainArret(nextName);
+              }
+            }
+          }
           return;
         }
         const served = getServedStopIndices();
@@ -2968,6 +3256,15 @@
         ) {
           return;
         }
+        const g = servedGuideSnapshot;
+        if (g.length >= 2) {
+          if (voixAnnounced.has(`dgp_0`)) {
+            return;
+          }
+          voixAnnounced.add(`dgp_0`);
+          speakProchainArret(g[1].name || "");
+          return;
+        }
         const served = getServedStopIndices();
         if (served.length < 2) {
           return;
@@ -2991,6 +3288,42 @@
         if (!currentPattern || pathTotalMeters <= 0) return false;
         const stops = currentPattern.stops;
         if (!stops?.length || !stopMetersAlong.length) return false;
+
+        const g = servedGuideSnapshot;
+        if (g.length >= 2) {
+          let pos = 0;
+          for (let p = 0; p < g.length; p++) {
+            if ((g[p].meters || 0) <= distanceAlongPathMeters + 0.5) {
+              pos = p;
+            }
+          }
+          const nextPos =
+            delta < 0
+              ? Math.max(pos - 1, 0)
+              : Math.min(pos + 1, g.length - 1);
+          distanceAlongPathMeters = g[nextPos].meters || 0;
+          lastRafTime = 0;
+          resyncVoixForPosition(distanceAlongPathMeters);
+          lastVoiceDistance = distanceAlongPathMeters;
+          updateMapNavigation();
+          redrawDoneLineAtDistance(distanceAlongPathMeters);
+          updateStopToStopOverlay();
+          updateStats();
+          if (voiceEnabledEl.checked) {
+            const slots = getCurrentAndNextServedGuideSlots(
+              distanceAlongPathMeters,
+            );
+            if (
+              slots.next &&
+              slots.curr &&
+              (slots.next.meters || 0) > (slots.curr.meters || 0) + 0.25
+            ) {
+              speakProchainArret(slots.next.name || "");
+            }
+          }
+          return true;
+        }
+
         const served = getServedStopIndices();
         if (!served.length) return false;
 
@@ -3016,17 +3349,16 @@
         updateStopToStopOverlay();
         updateStats();
 
-        if (
-          voiceEnabledEl.checked &&
-          currentPattern?.stops &&
-          currentPattern.stops.length >= 2
-        ) {
-          const pair = getCurrentAndNextServedIndex(distanceAlongPathMeters);
-          const curr = Number(pair?.curr ?? 0);
-          const next = Number(pair?.next ?? curr);
-          const nextName = currentPattern.stops?.[next]?.stop_name || "";
-          if (nextName && next !== curr) {
-            speakProchainArret(nextName);
+        if (voiceEnabledEl.checked) {
+          const slots = getCurrentAndNextServedGuideSlots(
+            distanceAlongPathMeters,
+          );
+          if (
+            slots.next &&
+            slots.curr &&
+            (slots.next.meters || 0) > (slots.curr.meters || 0) + 0.25
+          ) {
+            speakProchainArret(slots.next.name || "");
           }
         }
 
@@ -3208,6 +3540,8 @@
           opsState.manualProfile = null;
           opsState.manualStopOverrides = {};
           opsState.nonServedEditActive = false;
+          opsState.provisionalStops = [];
+          opsState.provisionalEditActive = false;
           nonServedEditFocusStopId = null;
           manualBypassedLine.setLatLngs([]);
           manualDetourLine.setLatLngs([]);
@@ -3220,6 +3554,7 @@
         rebuildActiveGuideStops();
         drawAllStopsOverlay();
         drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
 
         fullLine.setLatLngs(activeCoordinates);
         doneLine.setLatLngs([activeCoordinates[0]]);
@@ -3244,6 +3579,7 @@
           await applyTraceForOpsMode(startMode, { centerCamera: false });
         }
         refreshMapLayout();
+        refreshProvisionalUi();
         updateStats();
       }
 
@@ -3257,21 +3593,19 @@
           currentStopEl.textContent = "-";
           nextStopEl.textContent = "-";
         } else {
-          const pair = getCurrentAndNextServedIndex(d);
-          const stopIdx = pair.curr;
-          const nextIdx = pair.next;
-          const currSkipped =
-            (opsState.planifieActive || opsState.manualActive) &&
-            skippedStopIdSet.has(String(stops[stopIdx]?.stop_id || ""));
-          const nextSkipped =
-            (opsState.planifieActive || opsState.manualActive) &&
-            skippedStopIdSet.has(String(stops[nextIdx]?.stop_id || ""));
-          currentStopEl.textContent = stops[stopIdx]
-            ? `${stops[stopIdx].stop_name}${currSkipped ? " (non desservi)" : ""}`
-            : "-";
-          nextStopEl.textContent = stops[nextIdx]
-            ? `${stops[nextIdx].stop_name}${nextSkipped ? " (non desservi)" : ""}`
-            : "-";
+          const pair = getCurrentAndNextServedGuideSlots(d);
+          function fmtSlot(slot) {
+            if (!slot || !slot.name) return "-";
+            const skipped =
+              slot.kind === "gtfs" &&
+              (opsState.planifieActive || opsState.manualActive) &&
+              skippedStopIdSet.has(String(slot.stop_id || ""));
+            const prov =
+              slot.kind === "prov" ? " (provisoire)" : "";
+            return `${slot.name}${skipped ? " (non desservi)" : ""}${prov}`;
+          }
+          currentStopEl.textContent = fmtSlot(pair.curr);
+          nextStopEl.textContent = fmtSlot(pair.next);
         }
 
         const pct =
@@ -3440,6 +3774,7 @@
         recomputeSkippedStopsForCurrentMission();
         rebuildActiveGuideStops();
         drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
         applyTraceForOpsMode(OPS_MODE.MANUEL);
         appendOpsLog("activate_manual", "Activation conducteur");
       });
@@ -3449,12 +3784,16 @@
         if (!p) return;
         opsState.manualActive = true;
         opsState.nonServedEditActive = !opsState.nonServedEditActive;
+        if (opsState.nonServedEditActive) {
+          opsState.provisionalEditActive = false;
+        }
         nonServedEditFocusStopId = null;
         applyOpsStateUi();
         recomputeSkippedStopsForCurrentMission();
         rebuildActiveGuideStops();
         drawAllStopsOverlay();
         drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
         setGpsStatus(
@@ -3462,6 +3801,37 @@
             ? "Mode arrêt non desservi actif: cliquez une pastille pour activer/désactiver."
             : "Mode arrêt non desservi désactivé.",
         );
+      });
+
+      provisionalStopBtn?.addEventListener("click", () => {
+        const p = ensureOpsTargetPattern();
+        if (!p) return;
+        opsState.provisionalEditActive = !opsState.provisionalEditActive;
+        if (opsState.provisionalEditActive) {
+          opsState.nonServedEditActive = false;
+          nonServedEditFocusStopId = null;
+        }
+        applyOpsStateUi();
+        drawAllStopsOverlay();
+        drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
+        setGpsStatus(
+          opsState.provisionalEditActive
+            ? "Arrêts provisoires : touchez la carte pour placer un arrêt (nom demandé). Pastille orange : touchez pour supprimer en mode actif."
+            : "Saisie arrêts provisoires désactivée.",
+        );
+      });
+
+      provisionalUndoBtn?.addEventListener("click", () => {
+        if (!opsState.provisionalStops?.length) return;
+        opsState.provisionalStops.pop();
+        rebuildActiveGuideStops();
+        drawProvisionalStopsOverlay();
+        updateStopToStopOverlay();
+        updateStats();
+        resyncVoixForPosition(distanceAlongPathMeters);
+        refreshProvisionalUi();
+        setGpsStatus("Dernier arrêt provisoire retiré.");
       });
 
       manualDrawStartBtn?.addEventListener("click", () => {
@@ -3524,6 +3894,7 @@
         rebuildActiveGuideStops();
         drawAllStopsOverlay();
         drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
         appendOpsLog("return_initial", "Retour état initial mission");
@@ -3542,6 +3913,7 @@
         rebuildActiveGuideStops();
         drawAllStopsOverlay();
         drawSkippedStopsOverlay();
+        drawProvisionalStopsOverlay();
         updateStopToStopOverlay();
         updateStats();
         appendOpsLog("return_base", "Forçage mode BASE");
