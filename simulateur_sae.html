@@ -104,6 +104,14 @@
         line-height: 1.45;
         margin: 4px 0 0 0;
       }
+      /* Mode saisie arrêt non desservi : tooltips toujours visibles (Chrome tactile sans survol). */
+      .leaflet-tooltip.tam-stop-edit-tooltip {
+        font-size: 11px;
+        padding: 4px 8px;
+        max-width: 240px;
+        white-space: normal;
+        line-height: 1.25;
+      }
       .row-voice {
         align-items: flex-end;
       }
@@ -816,6 +824,10 @@
       let skippedStopIdSet = new Set();
       let skippedStopNameSet = new Set();
       let activeStopMetersForGuide = [];
+      /** En saisie arrêt non desservi : dernière pastille cliquée (une seule infobulle ouverte à la fois). */
+      let nonServedEditFocusStopId = null;
+      /** Chrome mobile : tap pastille déclenche souvent aussi un click carte ; on ignore ce clear pendant quelques ms. */
+      let nonServedEditSuppressMapClearUntil = 0;
 
       const lineSelect = document.getElementById("lineSelect");
       const lineSelectDual = document.getElementById("lineSelectDual");
@@ -1122,6 +1134,23 @@
       }).addTo(map);
       map.on("zoomend", () => {
         applyMapVisualProfile();
+      });
+      map.on("click", () => {
+        if (!opsState.manualActive || !opsState.nonServedEditActive) {
+          return;
+        }
+        if (
+          typeof performance !== "undefined" &&
+          performance.now() < nonServedEditSuppressMapClearUntil
+        ) {
+          return;
+        }
+        if (nonServedEditFocusStopId == null) {
+          return;
+        }
+        nonServedEditFocusStopId = null;
+        drawAllStopsOverlay();
+        drawSkippedStopsOverlay();
       });
 
       function uniqueValues(arr, getter) {
@@ -1500,6 +1529,7 @@
         };
         opsState.manualProfile = null;
         opsState.manualStopOverrides = {};
+        nonServedEditFocusStopId = null;
         manualBypassedLine.setLatLngs([]);
         manualDetourLine.setLatLngs([]);
         applyOpsStateUi();
@@ -1740,7 +1770,7 @@
         for (const st of currentPattern.stops) {
           const sid = String(st?.stop_id || "");
           if (!skippedStopIdSet.has(sid)) continue;
-          L.circleMarker([st.lat, st.lon], {
+          const mk = L.circleMarker([st.lat, st.lon], {
             radius: p.skippedRadius,
             color: "#c62828",
             fillColor: "#ef5350",
@@ -1748,12 +1778,15 @@
             weight: p.skippedStroke,
             interactive: false,
             bubblingMouseEvents: false,
-          })
-            .bindTooltip(`Arrêt non desservi: ${st.stop_name}`, {
+          });
+          /* En saisie arrêt non desservi, une seule infobulle ouverte sur la pastille focalisée (#allStopsLayer). */
+          if (!opsState.nonServedEditActive) {
+            mk.bindTooltip(`Arrêt non desservi: ${st.stop_name}`, {
               direction: "top",
               opacity: 0.95,
-            })
-            .addTo(skippedStopsLayer);
+            });
+          }
+          mk.addTo(skippedStopsLayer);
         }
       }
 
@@ -1774,19 +1807,45 @@
             fillOpacity: 0.9,
             weight: p.stopStroke,
           });
+          const nonServedPickMode =
+            opsState.manualActive && opsState.nonServedEditActive;
+          const focusThisStop =
+            nonServedPickMode && nonServedEditFocusStopId === sid;
           marker
             .bindTooltip(
               isSkipped
-                ? `Arrêt non desservi: ${st.stop_name || "-"}`
-                : `Arrêt: ${st.stop_name || "-"}`,
+                ? `Arrêt non desservi : ${st.stop_name || "-"}`
+                : `Arrêt : ${st.stop_name || "-"}`,
               {
-              direction: "top",
-              opacity: 0.95,
+                direction: "top",
+                opacity: 0.95,
+                permanent: !!focusThisStop,
+                sticky: !focusThisStop,
+                interactive: !!focusThisStop,
+                className: focusThisStop ? "tam-stop-edit-tooltip" : "",
               },
             )
             .addTo(allStopsLayer);
-          marker.on("click", () => {
+          if (focusThisStop && typeof marker.openTooltip === "function") {
+            requestAnimationFrame(() => {
+              try {
+                marker.openTooltip();
+              } catch (e) {
+                /* ignore */
+              }
+            });
+          }
+          marker.on("click", (ev) => {
             if (!(opsState.manualActive && opsState.nonServedEditActive)) return;
+            if (typeof L !== "undefined" && L.DomEvent?.stopPropagation) {
+              L.DomEvent.stopPropagation(ev);
+            } else if (ev?.originalEvent?.stopPropagation) {
+              ev.originalEvent.stopPropagation();
+            }
+            if (typeof performance !== "undefined") {
+              nonServedEditSuppressMapClearUntil = performance.now() + 650;
+            }
+            nonServedEditFocusStopId = sid;
             const current = skippedStopIdSet.has(sid);
             const next = !current;
             opsState.manualStopOverrides[sid] = next;
@@ -3149,6 +3208,7 @@
           opsState.manualProfile = null;
           opsState.manualStopOverrides = {};
           opsState.nonServedEditActive = false;
+          nonServedEditFocusStopId = null;
           manualBypassedLine.setLatLngs([]);
           manualDetourLine.setLatLngs([]);
         }
@@ -3389,6 +3449,7 @@
         if (!p) return;
         opsState.manualActive = true;
         opsState.nonServedEditActive = !opsState.nonServedEditActive;
+        nonServedEditFocusStopId = null;
         applyOpsStateUi();
         recomputeSkippedStopsForCurrentMission();
         rebuildActiveGuideStops();
