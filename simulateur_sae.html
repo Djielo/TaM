@@ -6,6 +6,11 @@
     <title>Simulateur SAE TAM</title>
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
     <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
       body {
         font-family: Arial, sans-serif;
         margin: 0;
@@ -83,6 +88,16 @@
       #duplicateFromDeviationSelect option,
       #duplicateTargetVariantSelect option {
         font-size: 10px !important;
+      }
+      /* Évite le débordement à droite des champs vs boutons/listes (flex + dates natives). */
+      .panel-section.panel-ops .row > .grow {
+        min-width: 0;
+      }
+      #savedDeviationNote,
+      #savedDeviationValidFrom,
+      #savedDeviationValidTo {
+        max-width: 100%;
+        min-width: 0;
       }
       button:disabled {
         opacity: 0.6;
