@@ -865,7 +865,7 @@
                 <span id="recapDeviationLabel">—</span>
               </div>
               <div>
-                <b>Validité enregistrée:</b>
+                <b>Déviation en cours :</b>
                 <span id="recapDeviationPeriod">—</span>
               </div>
               <div><b>Arrêt courant:</b> <span id="currentStop">-</span></div>
@@ -2003,43 +2003,20 @@
           segOnBase,
         ]);
 
-        const linkSeg = {
-          detourCoords: detourCoords.map((pt) => [Number(pt[0]), Number(pt[1])]),
-          bypassedCoords: bypassedCoords.map((pt) => [
-            Number(pt[0]),
-            Number(pt[1]),
-          ]),
+        const linkSeg = normalizeDeviationChainSegmentFromStored({
+          detourCoords,
+          bypassedCoords,
           startDistanceOnBase: segOnBase[0],
           endDistanceOnBase: segOnBase[1],
-        };
+        });
         const detourVisualChain =
           previousProfile &&
           Array.isArray(previousProfile.detourVisualChain) &&
           previousProfile.detourVisualChain.length
             ? [
-                ...previousProfile.detourVisualChain.map((s) => {
-                  const o = {
-                    detourCoords: (s.detourCoords || []).map((pt) => [
-                      Number(pt[0]),
-                      Number(pt[1]),
-                    ]),
-                    bypassedCoords: (s.bypassedCoords || []).map((pt) => [
-                      Number(pt[0]),
-                      Number(pt[1]),
-                    ]),
-                  };
-                  const sb = Number(s.startDistanceOnBase);
-                  const se = Number(s.endDistanceOnBase);
-                  if (
-                    Number.isFinite(sb) &&
-                    Number.isFinite(se) &&
-                    Math.abs(se - sb) > 0.5
-                  ) {
-                    o.startDistanceOnBase = sb;
-                    o.endDistanceOnBase = se;
-                  }
-                  return o;
-                }),
+                ...previousProfile.detourVisualChain.map(
+                  normalizeDeviationChainSegmentFromStored,
+                ),
                 linkSeg,
               ]
             : [linkSeg];
@@ -2055,36 +2032,54 @@
         };
       }
 
+      /** Copie profonde d’un JSON sérialisable (état payload / overrides). */
+      function tamCloneSerializable(fallback, src) {
+        try {
+          return JSON.parse(
+            JSON.stringify(src !== undefined ? src : fallback),
+          );
+        } catch {
+          return fallback;
+        }
+      }
+
+      /** Liste de paires [lat,lng] numériques. */
+      function tamMapLatLngPairs(arr) {
+        if (!Array.isArray(arr)) return [];
+        return arr.map((xy) => [Number(xy[0]), Number(xy[1])]);
+      }
+
+      /**
+       * Segment de chaîne déviation depuis stockage ou payload (coords + ancres base si présentes).
+       * Unique source utilisée pour manualProfileToVisualChain, sauvegarde et restauration.
+       */
+      function normalizeDeviationChainSegmentFromStored(seg) {
+        const o = {
+          detourCoords: tamMapLatLngPairs(seg.detourCoords),
+          bypassedCoords: tamMapLatLngPairs(seg.bypassedCoords),
+        };
+        const sb = Number(seg.startDistanceOnBase);
+        const se = Number(seg.endDistanceOnBase);
+        if (
+          Number.isFinite(sb) &&
+          Number.isFinite(se) &&
+          Math.abs(se - sb) > 0.5
+        ) {
+          o.startDistanceOnBase = sb;
+          o.endDistanceOnBase = se;
+        }
+        return o;
+      }
+
       /** Segments successifs issus du stockage (chaîne ou ancien format une seule portion). */
       function manualProfileToVisualChainArray(mp) {
         if (!mp || typeof mp !== "object") return [];
-        const chainSeg = (s) => {
-          const o = {
-            detourCoords: Array.isArray(s.detourCoords)
-              ? s.detourCoords.map((pt) => [Number(pt[0]), Number(pt[1])])
-              : [],
-            bypassedCoords: Array.isArray(s.bypassedCoords)
-              ? s.bypassedCoords.map((pt) => [Number(pt[0]), Number(pt[1])])
-              : [],
-          };
-          const sb = Number(s.startDistanceOnBase);
-          const se = Number(s.endDistanceOnBase);
-          if (
-            Number.isFinite(sb) &&
-            Number.isFinite(se) &&
-            Math.abs(se - sb) > 0.5
-          ) {
-            o.startDistanceOnBase = sb;
-            o.endDistanceOnBase = se;
-          }
-          return o;
-        };
         if (Array.isArray(mp.detourVisualChain) && mp.detourVisualChain.length) {
-          return mp.detourVisualChain.map(chainSeg);
+          return mp.detourVisualChain.map(normalizeDeviationChainSegmentFromStored);
         }
         if (Array.isArray(mp.detourCoords) && mp.detourCoords.length >= 2) {
           return [
-            chainSeg({
+            normalizeDeviationChainSegmentFromStored({
               detourCoords: mp.detourCoords,
               bypassedCoords: mp.bypassedCoords,
             }),
@@ -2117,18 +2112,12 @@
           );
           if (!mergedResult) return null;
 
-          const linkSeg = {
-            detourCoords: mergedResult.detourCoords.map((pt) => [
-              Number(pt[0]),
-              Number(pt[1]),
-            ]),
-            bypassedCoords: mergedResult.bypassedCoords.map((pt) => [
-              Number(pt[0]),
-              Number(pt[1]),
-            ]),
+          const linkSeg = normalizeDeviationChainSegmentFromStored({
+            detourCoords: mergedResult.detourCoords,
+            bypassedCoords: mergedResult.bypassedCoords,
             startDistanceOnBase: mergedResult.segOnBase[0],
             endDistanceOnBase: mergedResult.segOnBase[1],
-          };
+          });
           mergedChainOut.push(linkSeg);
 
           const prevRanges = previousProfile
@@ -2146,12 +2135,9 @@
             bypassedCoords: mergedResult.bypassedCoords,
             mergedCoords: mergedResult.mergedCoords,
             baseBypassRanges,
-            detourVisualChain: mergedChainOut.map((x) => ({
-              detourCoords: x.detourCoords.map((pt) => [...pt]),
-              bypassedCoords: x.bypassedCoords.map((pt) => [...pt]),
-              startDistanceOnBase: x.startDistanceOnBase,
-              endDistanceOnBase: x.endDistanceOnBase,
-            })),
+            detourVisualChain: mergedChainOut.map(
+              normalizeDeviationChainSegmentFromStored,
+            ),
           };
         }
 
@@ -2477,6 +2463,15 @@
         return s || "legacy_missing";
       }
 
+      /** Horodatage et empreintes communes aux entrées « Déviations enregistrées » (localStorage). */
+      function stampDeviationItemPayloadMeta(cur, p, nowIso) {
+        cur.pattern_id = p.pattern_id;
+        cur.origin_deviation_id = String(cur.origin_deviation_id || cur.id || "");
+        cur.pattern_signature_snapshot = getPatternDigest(p);
+        cur.dataset_digest_snapshot = datasetDigestLoaded || "";
+        cur.updated_at = nowIso;
+      }
+
       function formatLineLabelForDeviation(pat) {
         const code = String(pat?.route_short_name || "").trim();
         if (String(pat?.route_type || "") === "0" && /^\d+$/.test(code)) {
@@ -2592,55 +2587,21 @@
           mpCopy = {
             startDistance: mp.startDistance,
             endDistance: mp.endDistance,
-            detourCoords: Array.isArray(mp.detourCoords)
-              ? mp.detourCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
-              : [],
-            bypassedCoords: Array.isArray(mp.bypassedCoords)
-              ? mp.bypassedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
-              : [],
-            mergedCoords: Array.isArray(mp.mergedCoords)
-              ? mp.mergedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
-              : [],
+            detourCoords: tamMapLatLngPairs(mp.detourCoords),
+            bypassedCoords: tamMapLatLngPairs(mp.bypassedCoords),
+            mergedCoords: tamMapLatLngPairs(mp.mergedCoords),
             baseBypassRanges: ranges.map((pair) => [
               Number(pair[0]),
               Number(pair[1]),
             ]),
             detourVisualChain: Array.isArray(mp.detourVisualChain)
-              ? mp.detourVisualChain.map((seg) => {
-                  const sb = Number(seg.startDistanceOnBase);
-                  const se = Number(seg.endDistanceOnBase);
-                  const o = {
-                    detourCoords: (seg.detourCoords || []).map((xy) => [
-                      Number(xy[0]),
-                      Number(xy[1]),
-                    ]),
-                    bypassedCoords: (seg.bypassedCoords || []).map((xy) => [
-                      Number(xy[0]),
-                      Number(xy[1]),
-                    ]),
-                  };
-                  if (
-                    Number.isFinite(sb) &&
-                    Number.isFinite(se) &&
-                    Math.abs(se - sb) > 0.5
-                  ) {
-                    o.startDistanceOnBase = sb;
-                    o.endDistanceOnBase = se;
-                  }
-                  return o;
-                })
+              ? mp.detourVisualChain.map(normalizeDeviationChainSegmentFromStored)
               : ((mp.detourCoords || []).length >= 2
                   ? [
-                      {
-                        detourCoords: mp.detourCoords.map((xy) => [
-                          Number(xy[0]),
-                          Number(xy[1]),
-                        ]),
-                        bypassedCoords: (mp.bypassedCoords || []).map((xy) => [
-                          Number(xy[0]),
-                          Number(xy[1]),
-                        ]),
-                      },
+                      normalizeDeviationChainSegmentFromStored({
+                        detourCoords: mp.detourCoords,
+                        bypassedCoords: mp.bypassedCoords,
+                      }),
                     ]
                   : []),
           };
@@ -2650,11 +2611,13 @@
           mergedCoordsManual: Array.isArray(merged)
             ? merged.map((xy) => [Number(xy[0]), Number(xy[1])])
             : null,
-          manualStopOverrides: JSON.parse(
-            JSON.stringify(opsState.manualStopOverrides || {}),
+          manualStopOverrides: tamCloneSerializable(
+            {},
+            opsState.manualStopOverrides,
           ),
-          provisionalStops: JSON.parse(
-            JSON.stringify(opsState.provisionalStops || []),
+          provisionalStops: tamCloneSerializable(
+            [],
+            opsState.provisionalStops,
           ),
         };
       }
@@ -2835,6 +2798,20 @@
         if (duplicateDeviationBtn) duplicateDeviationBtn.disabled = !remaining.length;
       }
 
+      /** Affiche une date `YYYY-MM-DD` en libellé français (ex. 26 avril 2026). */
+      function formatIsoDateFrench(iso) {
+        const s = String(iso || "").trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || "";
+        const parts = s.split("-").map((x) => parseInt(x, 10));
+        const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+        if (Number.isNaN(dt.getTime())) return s;
+        return dt.toLocaleDateString("fr-FR", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+      }
+
       function refreshRecapDeviationMeta() {
         const labelEl = document.getElementById("recapDeviationLabel");
         const periodEl = document.getElementById("recapDeviationPeriod");
@@ -2843,7 +2820,8 @@
         const pidCur = String(currentPattern?.pattern_id || "");
         if (!it) {
           labelEl.textContent = "—";
-          periodEl.textContent = "Aucune entrée sélectionnée dans « Déviations enregistrées ».";
+          periodEl.textContent =
+            "Aucune entrée sélectionnée dans « Déviations enregistrées ».";
           return;
         }
         if (String(it.pattern_id || "") !== pidCur) {
@@ -2862,12 +2840,19 @@
         const vf = String(it.valid_from || "").trim();
         const vt = String(it.valid_to || "").trim();
         if (!vf && !vt) {
-          periodEl.textContent = "Pas de dates sur cette fiche.";
+          periodEl.textContent =
+            "Période non renseignée sur cette fiche (dates optionnelles).";
           return;
         }
-        if (vf && vt) periodEl.textContent = `Du ${vf} au ${vt}`;
-        else if (vf) periodEl.textContent = `À partir du ${vf}`;
-        else periodEl.textContent = `Jusqu’au ${vt}`;
+        const df = formatIsoDateFrench(vf);
+        const dt = formatIsoDateFrench(vt);
+        if (vf && vt) {
+          periodEl.textContent = `Du ${df} au ${dt}`;
+        } else if (vf) {
+          periodEl.textContent = `À partir du ${df}`;
+        } else {
+          periodEl.textContent = `Jusqu’au ${dt}`;
+        }
       }
 
       function refreshSavedDeviationBannerAndDup(item) {
@@ -3021,7 +3006,7 @@
 
       /**
        * Réécrit le payload de l'entrée sélectionnée si elle correspond à la mission courante (sans second clic « Mettre à jour »).
-       * @returns {boolean} true si écriture locale effectuée
+       * Retourne true si une écriture locale a été effectuée.
        */
       function autoUpdateSelectedDeviationPayloadIfPossible(reasonShort) {
         const p = selectedPattern();
@@ -3035,11 +3020,7 @@
           return false;
         }
         const nowIso = new Date().toISOString();
-        cur.pattern_id = p.pattern_id;
-        cur.origin_deviation_id = String(cur.origin_deviation_id || cur.id || "");
-        cur.pattern_signature_snapshot = getPatternDigest(p);
-        cur.dataset_digest_snapshot = datasetDigestLoaded || "";
-        cur.updated_at = nowIso;
+        stampDeviationItemPayloadMeta(cur, p, nowIso);
         cur.payload = pl;
         writeDeviationStore(st);
         refreshSavedDeviationSelectOptions();
@@ -3053,11 +3034,13 @@
       }
 
       async function restoreDeviationPayloadIntoLiveState(pl) {
-        opsState.manualStopOverrides = JSON.parse(
-          JSON.stringify(pl.manualStopOverrides || {}),
+        opsState.manualStopOverrides = tamCloneSerializable(
+          {},
+          pl.manualStopOverrides,
         );
-        opsState.provisionalStops = JSON.parse(
-          JSON.stringify(pl.provisionalStops || []),
+        opsState.provisionalStops = tamCloneSerializable(
+          [],
+          pl.provisionalStops,
         );
         const mpIn = pl.manualProfile;
         opsState.manualProfile = null;
@@ -3065,15 +3048,9 @@
           const mp = {
             startDistance: mpIn.startDistance,
             endDistance: mpIn.endDistance,
-            detourCoords: Array.isArray(mpIn.detourCoords)
-              ? mpIn.detourCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
-              : [],
-            bypassedCoords: Array.isArray(mpIn.bypassedCoords)
-              ? mpIn.bypassedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
-              : [],
-            mergedCoords: Array.isArray(mpIn.mergedCoords)
-              ? mpIn.mergedCoords.map((xy) => [Number(xy[0]), Number(xy[1])])
-              : [],
+            detourCoords: tamMapLatLngPairs(mpIn.detourCoords),
+            bypassedCoords: tamMapLatLngPairs(mpIn.bypassedCoords),
+            mergedCoords: tamMapLatLngPairs(mpIn.mergedCoords),
           };
           if (
             Array.isArray(mpIn.baseBypassRanges) &&
@@ -3090,38 +3067,18 @@
             Array.isArray(mpIn.detourVisualChain) &&
             mpIn.detourVisualChain.length
           ) {
-            mp.detourVisualChain = mpIn.detourVisualChain.map((seg) => {
-              const sb = Number(seg.startDistanceOnBase);
-              const se = Number(seg.endDistanceOnBase);
-              const o = {
-                detourCoords: (seg.detourCoords || []).map((xy) => [
-                  Number(xy[0]),
-                  Number(xy[1]),
-                ]),
-                bypassedCoords: (seg.bypassedCoords || []).map((xy) => [
-                  Number(xy[0]),
-                  Number(xy[1]),
-                ]),
-              };
-              if (
-                Number.isFinite(sb) &&
-                Number.isFinite(se) &&
-                Math.abs(se - sb) > 0.5
-              ) {
-                o.startDistanceOnBase = sb;
-                o.endDistanceOnBase = se;
-              }
-              return o;
-            });
+            mp.detourVisualChain = mpIn.detourVisualChain.map(
+              normalizeDeviationChainSegmentFromStored,
+            );
           } else if (
             Array.isArray(mp.detourCoords) &&
             mp.detourCoords.length >= 2
           ) {
             mp.detourVisualChain = [
-              {
+              normalizeDeviationChainSegmentFromStored({
                 detourCoords: mp.detourCoords,
-                bypassedCoords: mp.bypassedCoords || [],
-              },
+                bypassedCoords: mp.bypassedCoords,
+              }),
             ];
           }
           opsState.manualProfile = mp;
@@ -3337,11 +3294,7 @@
             window.alert("Sélectionnez une entrée à mettre à jour.");
             return null;
           }
-          cur.pattern_id = p.pattern_id;
-          cur.origin_deviation_id = String(cur.origin_deviation_id || cur.id || "");
-          cur.pattern_signature_snapshot = getPatternDigest(p);
-          cur.dataset_digest_snapshot = datasetDigestLoaded || "";
-          cur.updated_at = nowIso;
+          stampDeviationItemPayloadMeta(cur, p, nowIso);
           if (labelTrim) cur.label = labelTrim;
           cur.valid_from = vf || "";
           cur.valid_to = vt || "";
@@ -3367,19 +3320,17 @@
           typeof crypto !== "undefined" && crypto.randomUUID
             ? crypto.randomUUID()
             : `d_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
-        st.items.push({
+        const rowNew = {
           id: idNew,
           created_at: nowIso,
-          updated_at: nowIso,
           label: labelTrim || buildAutoDeviationLabel(p),
           origin_deviation_id: idNew,
-          pattern_id: p.pattern_id,
-          pattern_signature_snapshot: getPatternDigest(p),
-          dataset_digest_snapshot: datasetDigestLoaded || "",
           valid_from: vf || "",
           valid_to: vt || "",
           payload: pl,
-        });
+        };
+        stampDeviationItemPayloadMeta(rowNew, p, nowIso);
+        st.items.push(rowNew);
         writeDeviationStore(st);
         refreshSavedDeviationSelectOptions();
         if (savedDeviationSelectEl) {
@@ -3440,19 +3391,17 @@
           typeof crypto !== "undefined" && crypto.randomUUID
             ? crypto.randomUUID()
             : `d_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
-        st.items.push({
+        const rowDup = {
           id: idDup,
           created_at: nowIso,
-          updated_at: nowIso,
           label: duplicateDeviationLabelForVariant(cur, targetPat),
           origin_deviation_id: String(cur.origin_deviation_id || cur.id || ""),
-          pattern_id: targetPat.pattern_id,
-          pattern_signature_snapshot: getPatternDigest(targetPat),
-          dataset_digest_snapshot: datasetDigestLoaded || "",
           valid_from: cur.valid_from || "",
           valid_to: cur.valid_to || "",
-          payload: JSON.parse(JSON.stringify(cur.payload)),
-        });
+          payload: tamCloneSerializable({}, cur.payload),
+        };
+        stampDeviationItemPayloadMeta(rowDup, targetPat, nowIso);
+        st.items.push(rowDup);
         writeDeviationStore(st);
         refreshSavedDeviationSelectOptions();
         if (savedDeviationSelectEl) {

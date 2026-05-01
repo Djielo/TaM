@@ -129,3 +129,15 @@ Section de suivi technique pour controler rapidement la coherence des donnees ch
 - Le GTFS local peut ne pas inclure `shapes.txt`; le trace officiel est alors reconstruit via Open Data reseau (bus/tram) puis OSRM si necessaire.
 - Le guidage stop-to-stop est implemente dans `guidage_troncons_arrets.js`.
 - Si vous mettez a jour `gtfs_data`, regenez `simulation_data.json`.
+
+## Deviations enregistrees (stockage local navigateur)
+
+L’onglet **Modes** permet un scenario **manuel** : trace sur la carte (une ou plusieurs portions validees), arrets non desservis, arrets provisoires. Les fiches peuvent etre **enregistrees localement** (liste deroulante sous la mission), puis **rechargees**, **dupliquees vers une autre variante**, ou **mises a jour**.
+
+Comportement utile a connaitre (mai 2026) :
+
+- Plusieurs validations successives conservent une **chaine de portions** ; on peut **supprimer une portion precise** sans tout effacer.
+- La liste **« Portion a supprimer »** est synchronisee avec la carte (surbrillance ; clic sur un trace jaune pour identifier la portion).
+- Si une **entree est selectionnee** dans « Deviations enregistrees » et que la **variante chargee** correspond au `pattern_id` de cette entree, une suppression de portion ou un effacement du trace valide **met a jour automatiquement** le payload de la fiche (plus besoin de recliquer « Mettre a jour l’entree selectionnee » dans ce cas). Sinon, utiliser explicitement **Mettre a jour l’entree selectionnee** ou **Enregistrer (nouvelle entree)**.
+
+Detail produit et backlog : [EVOLUTION_ET_BACKLOG.md](EVOLUTION_ET_BACKLOG.md).

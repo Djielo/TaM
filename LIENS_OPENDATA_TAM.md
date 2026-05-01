@@ -58,3 +58,7 @@ Ces URL completent les **fiches dataset** ci-dessous (GTFS, GTFS-RT, reseau vect
 
 - PCRS vecteur Montpellier 3M  
   https://data.montpellier3m.fr/dataset/pcrs-vecteur-de-montpellier-mediterranee-metropole
+
+---
+
+*Revue documentaire 2026-05-02 : aucun lien modifié. Rappel — le simulateur web actuel ne consomme pas les flux GTFS-RT depuis la page (priorité mode manuel, voir [EVOLUTION_ET_BACKLOG.md](EVOLUTION_ET_BACKLOG.md) §0).*

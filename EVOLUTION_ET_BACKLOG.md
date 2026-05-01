@@ -28,6 +28,7 @@ C’est la **liste de ce qu’il reste à faire** (sections **4** et suivantes).
 | **« Vérifier si déviation planifiée prévue »** | **Retiré** du `simulateur_sae.html` (mai 2026) — code frontal supprimé ; la piste archives reste en **§1**. |
 | **« Vérifier si déviation temps réel prévue »** | Idem (**GTFS‑RT / protobuf** retirés de la page). |
 | **« Saisir une déviation en Mode manuel »** | **Bouton UI retiré** — le flux métier demeure : **tracé validé**, **arrêts non desservis** et **réactivation** réservée dans le code sous `activateStoredManualDeviationMode()` (console / extension future si besoin). |
+| **Tracé manuel — plusieurs portions** | Plusieurs validations successives conservées en chaîne (`detourVisualChain`) avec **ancrage sur la ligne de base** ; **suppression d’une portion précise** ; liste déroulante « Portion à supprimer » ; **mise en évidence carte ↔ liste** (portion sélectionnée / clic sur tracé jaune). |
 | **« Saisir arrêts provisoires »** / **« Retirer dernier arrêt provisoire »** | **Actifs** (priorité §0) — V1 dans le simulateur ; **exclusif** avec le mode saisie arrêt non desservi au même instant. |
 
 ---
@@ -42,7 +43,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 |--------|----------|
 | **Hors-ligne** | **Non** — pas de cible "app totalement autonome sans réseau" pour ces flux. |
 | **Déviations planifiées (à l’avance)** | **Une fois par jour** : à la **première ouverture** de l’appli **dans la journée**, un **seul** contrôle auto va chercher l’**info en ligne** et met à jour le **fichier local** (le **journal** : nouvelles déviations prévues, périodes, etc.). **Pas** quinze mille contrôles par jour. |
-| **Bouton « vérifier déviation planifiée »** | Quand le conducteur clique, on s’appuie sur le **fichier déjà rempli** pour **ce jour** (oui / non / quelle logique) — c’est-à-dire le résultat du **check matinal** ; le clic ne sert **pas** à relancer 15k allers-retours réseau. *(L’**implémentation** actuelle du simulateur peut encore appeler le réseau à chaque clic : **à aligner** sur ce comportement.)* |
+| **Bouton « vérifier déviation planifiée »** | Côté **simulateur web**, le bouton et le flux associés sont **absents** depuis mai 2026 (voir §0). Ce qui suit décrit une **cible produit historique** si un jour le chantier est rouvert : le clic devrait s’appuyer sur un **fichier déjà rempli** pour la journée (pas un appel réseau répété à chaque clic). |
 | **Temps réel** | **C’est le conducteur** qui clique le bouton ; là on va **en direct** sur **les sources en ligne** (pas le même scénario que le journal “une fois le matin”). |
 | **Sources** | Les **sources en ligne** déjà identifiées dans le projet (Infos trafic, API / flux selon [LIENS_OPENDATA_TAM.md](LIENS_OPENDATA_TAM.md), champs côté `serve_tam` si besoin CORS, etc.) — le détail technique reste dans le code et la doc d’exploitation, pas ici. |
 
@@ -73,7 +74,8 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - Parcours mission : ligne → terminus / sens → variante ; carte, progression (gris / reste en bleu), tronçon **vert** stop-to-stop (`guidage_troncons_arrets.js`).
 - **Interface** : menu burger, onglets Mission / Modes / Audio, récap carte, **bandeau** sous le titre (ligne + direction, couleurs, appui long pour faire défiler le texte, relâchement = retour compact).
 - **Couleurs** de ligne (sélecteur, menus mission, pastilles) ; **contraste** texte (listes T3 / bus à fond clair, etc.) ; polyligne carte **restante** en **bleu TAM** (retrait de la coloration par ligne = lisibilité sur fond OSM).
-- **Modes d’exploitation** (onglet Modes) : **V1 centrée déviation manuelle** ; les boutons planifié / temps réel ont été **retirés** du simulateur (mai 2026). Restent tracé manuel carte, validation, arrêts non desservis, **arrêts provisoires**, retours **base** et **rétablissement du mode du début de mission**.
+- **Modes d’exploitation** (onglet Modes) : **V1 centrée déviation manuelle** ; les boutons planifié / temps réel ont été **retirés** du simulateur (mai 2026). Restent tracé manuel carte, validation, **chaîne de portions** avec suppression ciblée, arrêts non desservis, **arrêts provisoires**, retours **base** et **rétablissement du mode du début de mission**.
+- **Déviations enregistrées** : stockage **local** (`localStorage`), charger / nouvelle entrée / mise à jour / duplication vers autre variante ; correction mai 2026 du **double `readDeviationStore`** lors du « Mettre à jour » ; **synchronisation automatique** du payload de l’entrée sélectionnée après suppression d’une portion ou effacement du tracé validé (si la mission courante correspond au `pattern_id` de la fiche).
 - **Perturbations** : piste `serve_tam` + `update_tam_perturbations.py` / `tam_perturbations.json` (éviter CORS sur chargement “Infos trafic”).
 
 ---
@@ -115,11 +117,12 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 ### 4C. Déviations — **mode manuel** (priorité §0)
 
 - [x] **Déviation manuelle** : tracé sur carte + application du segment — **en place** ; finesse UX / edge cases au fil de l’eau.
+- [x] **Plusieurs portions validées** + **suppression d’une portion au choix** (recalcul via ancres sur la ligne de base) — **en place** (mai 2026).
 - [x] **Arrêts non desservis** — **en place** (toggle pastilles + guidage).
 - [x] **Arrêts provisoires** — **en place** (V1 : saisie carte + nom, snap sur tracé, guidage / voix / stats ; reset au changement de mission).
 - [ ] (Option) **Préremplissage** conducteur depuis **données TAM / Infos trafic** pour les « arrêts reportés » (sans doublonner la V1 manuelle déjà là) — seulement si besoin métier explicite.
 - [ ] Cohérence purement **manuel** (tracé ↔ arrêts ↔ provisoires ↔ annonces) sans réintroduire de dépendance planifié / TR.
-- [ ] **Persistance** des déviations (tracé manuel, overrides **arrêts non desservis**, liste **arrêts provisoires**, plages de dates métier quand décidées) avec **réédition** : rouvrir une fiche déjà enregistrée, modifier sans tout resaisir depuis zéro ; même exigence pour les trois volets (tracé + non desservis + provisoires sur la même entrée métier si le produit les regroupe).
+- [x] **Persistance locale** du trio **tracé + overrides arrêts non desservis + arrêts provisoires** dans une même entrée « Déviations enregistrées », avec **chargement** et **mise à jour** ; **réédition** sans tout resaisir — **V1 en place**. Restent ouverts : plages de dates métier plus riches si besoin, export hors navigateur, garde-fou GTFS (case suivante).
 - [ ] **Garde-fou données** : comparer au chargement **empreinte jeu GTFS / JSON** (`dataset_digest`) et **signature du pattern** (`pattern_signature`) à celles mémorisées avec l’enregistrement → **alerte** si le réseau de référence a changé (voir conception build `simulation_data.json`).
 - [ ] (Après garde-fou / modèle stable) **Dupliquer** une déviation enregistrée vers **d’autres variantes** du même sens (gain de temps ; révision possible par variante).
 
@@ -149,7 +152,7 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 | Fichier | Rôle |
 |---------|------|
-| `simulateur_sae.html` | UI, carte, **déviation manuelle** (tracé, arrêts non desservis, **arrêts provisoires**) ; flux planifié / temps réel **absents** du JS (mai 2026) |
+| `simulateur_sae.html` | UI, carte, **déviation manuelle** (tracé chaîné, portions, arrêts non desservis, **arrêts provisoires**, stockage local des fiches) ; flux planifié / temps réel **absents** du JS (mai 2026) |
 | `serve_tam.py` | Fichiers statiques + API locale (ex. perturbations) |
 | `build_simulator_data.py` | Génère `simulation_data.json` (GTFS + réseau 3M en ZIP/JSON) |
 | `update_tam_perturbations.py` | Télécharge / alimente les perturbations (secours) |
@@ -158,4 +161,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-01 (persistance + réédition déviation / non desservis / provisoires ; garde-fou GTFS ; duplication variantes). Mettre à jour cette date quand on modifie le mémo.*
+*Dernière révision de **ce** fichier markdown : 2026-05-02 (portions multiples, ancres base, synchro carte ↔ liste, persistance auto après suppression de portion, refactor helpers payload ; refactorisation code documentée dans `RAPPORT_REFACTORISATION_2026-05-02.md`). Mettre à jour cette date quand on modifie le mémo.*
