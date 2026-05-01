@@ -2855,16 +2855,44 @@
         }
       }
 
+      /** Libellé + dates du formulaire alignés sur l’entrée sélectionnée (pas de dates résiduelles en changeant de variante). */
+      function syncDeviationEditorFieldsFromSelectedItem(item) {
+        if (!savedDeviationNoteEl || !savedDeviationValidFromEl || !savedDeviationValidToEl) {
+          return;
+        }
+        if (!item) {
+          savedDeviationNoteEl.value = "";
+          savedDeviationValidFromEl.value = "";
+          savedDeviationValidToEl.value = "";
+          return;
+        }
+        savedDeviationNoteEl.value =
+          normalizeDeviationLabel(item.label || "") || "";
+        const vf = String(item.valid_from || "").trim();
+        const vt = String(item.valid_to || "").trim();
+        savedDeviationValidFromEl.value = /^\d{4}-\d{2}-\d{2}$/.test(vf)
+          ? vf
+          : "";
+        savedDeviationValidToEl.value = /^\d{4}-\d{2}-\d{2}$/.test(vt)
+          ? vt
+          : "";
+      }
+
       function refreshSavedDeviationBannerAndDup(item) {
+        syncDeviationEditorFieldsFromSelectedItem(item);
         if (savedDeviationStaleNoteEl) {
           savedDeviationStaleNoteEl.hidden = true;
           savedDeviationStaleNoteEl.textContent = "";
         }
-        if (!item || !savedDeviationStaleNoteEl) {
+        if (!item) {
           if (duplicateTargetVariantSelectEl) {
             duplicateTargetVariantSelectEl.innerHTML = "";
           }
           duplicateVariantChoices = [];
+          refreshRecapDeviationMeta();
+          return;
+        }
+        if (!savedDeviationStaleNoteEl) {
           refreshRecapDeviationMeta();
           return;
         }
