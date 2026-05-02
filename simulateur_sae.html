@@ -279,6 +279,42 @@
       .panel-head button.active {
         background: #005ca9;
       }
+      details.help-item {
+        margin-bottom: 8px;
+        border: 1px solid #ccd3db;
+        border-radius: 8px;
+        padding: 0 10px;
+        background: rgba(255, 255, 255, 0.92);
+      }
+      details.help-item summary {
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        padding: 10px 4px;
+        color: #1b1f24;
+      }
+      details.help-item .help-item-body {
+        padding: 0 4px 12px;
+        font-size: 13px;
+        line-height: 1.48;
+        color: #2d3748;
+      }
+      details.help-item .help-item-body ul {
+        margin: 6px 0 0 1.1em;
+        padding: 0;
+      }
+      details.help-item .help-item-body li {
+        margin-bottom: 6px;
+      }
+      details.help-item .help-item-body strong {
+        color: #1b1f24;
+      }
+      .help-intro {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #4a5563;
+        margin: 0 0 10px;
+      }
       .panel-ops-subtabs {
         gap: 6px;
       }
@@ -520,6 +556,7 @@
               <button id="missionTabBtn" type="button">Ligne</button>
               <button id="opsTabBtn" type="button">Déviation</button>
               <button id="voiceTabBtn" type="button">Audio</button>
+              <button id="helpTabBtn" type="button">Aide</button>
               <button
                 id="closeMenuBtn"
                 type="button"
@@ -638,12 +675,46 @@
             </div>
             <div class="row panel-section panel-ops" data-ops-sub="dev">
               <div class="grow">
+                <button id="manualDrawStartBtn" class="secondary" type="button">
+                  Tracer la déviation planifiée
+                </button>
+              </div>
+              <div class="grow">
+                <button id="manualDrawUndoBtn" class="secondary" type="button">
+                  Retirer le dernier point
+                </button>
+              </div>
+              <div class="grow">
+                <button id="manualDrawSaveBtn" class="secondary" type="button">
+                  Valider le tracé de la déviation planifiée
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="devtemp">
+              <div class="grow">
+                <button id="tempManualDrawStartBtn" class="secondary" type="button">
+                  Tracer la déviation temporaire
+                </button>
+              </div>
+              <div class="grow">
+                <button id="tempManualDrawUndoBtn" class="secondary" type="button">
+                  Retirer le dernier point
+                </button>
+              </div>
+              <div class="grow">
+                <button id="tempManualDrawSaveBtn" class="secondary" type="button">
+                  Valider le tracé de la déviation temporaire
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
+              <div class="grow">
                 <button id="nonServedBtn" class="secondary" type="button">
                   Saisir arrêt non desservi
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops" data-ops-sub="dev">
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
               <div class="grow">
                 <button id="provisionalStopBtn" class="secondary" type="button">
                   Saisir arrêts provisoires
@@ -655,34 +726,28 @@
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops" data-ops-sub="dev">
+            <div class="row panel-section panel-ops" data-ops-sub="devtemp">
               <div class="grow">
-                <button id="manualDrawStartBtn" class="secondary" type="button">
-                  Tracer la déviation (carte)
-                </button>
-              </div>
-              <div class="grow">
-                <button id="manualDrawUndoBtn" class="secondary" type="button">
-                  Retirer le dernier point
-                </button>
-              </div>
-              <div class="grow">
-                <button id="manualDrawSaveBtn" type="button">
-                  Valider le tracé manuel
+                <button
+                  id="temporarySaveDeviationBtn"
+                  class="secondary"
+                  type="button"
+                >
+                  Enregistrer la déviation temporaire
                 </button>
               </div>
             </div>
             <div class="row panel-section panel-ops" data-ops-sub="dev">
               <div class="grow">
-                <button id="saveDeviationBtn" type="button">
-                  Enregistrer la nouvelle entrée
+                <button id="saveDeviationBtn" class="secondary" type="button">
+                  Enregistrer la déviation planifiée
                 </button>
                 <p
                   class="note"
                   style="margin: 6px 0 0; color: #c62828; font-weight: 400"
                 >
                   Après avoir cliqué sur
-                  <strong>«&nbsp;Enregistrer la nouvelle entrée&nbsp;»</strong
+                  <strong>«&nbsp;Enregistrer la déviation planifiée&nbsp;»</strong
                   >,<br />
                   allez sur
                   <strong>«&nbsp;Enregistrée / Dupliquée&nbsp;»</strong> pour
@@ -690,7 +755,7 @@
                 </p>
               </div>
             </div>
-            <div class="row panel-section panel-ops" data-ops-sub="dev">
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
               <div class="grow">
                 <label for="manualTraceSegmentSelect"
                   >Déviation à supprimer</label
@@ -723,7 +788,7 @@
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops" data-ops-sub="dev">
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
               <div class="grow">
                 <button
                   id="manualTraceClearBtn"
@@ -736,31 +801,6 @@
               </div>
             </div>
             <div class="row panel-section panel-ops" data-ops-sub="devtemp">
-              <div class="grow">
-                <button id="temporaryDeviationBtn" type="button">
-                  Créer la déviation temporaire
-                </button>
-              </div>
-              <div class="grow">
-                <button
-                  id="temporaryDeviationCommitBtn"
-                  class="secondary"
-                  type="button"
-                >
-                  Valider la déviation temporaire
-                </button>
-              </div>
-              <div class="grow">
-                <button
-                  id="temporarySaveDeviationBtn"
-                  class="secondary"
-                  type="button"
-                >
-                  Enregistrer la déviation temporaire
-                </button>
-              </div>
-            </div>
-            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
               <div class="grow">
                 <button id="returnInitialBtn" class="secondary" type="button">
                   Rétablir le mode exploitation du début de mission
@@ -917,6 +957,206 @@
               convient pas, laissez l'option désactivée. Aucun service cloud :
               tout reste en local.
             </p>
+            <div class="row panel-section panel-help">
+              <div class="grow">
+                <p class="help-intro">
+                  Ouverture rapide&nbsp;: cliquez (ou touchez) un intitulé pour afficher ou
+                  masquer l’explication. Les boutons cités correspondent au menu
+                  du simulateur (onglets <strong>Ligne</strong>,
+                  <strong>Déviation</strong>,
+                  <strong>Audio</strong>).
+                </p>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez suivre une ligne sans créer de déviation&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Ouvrez l’onglet <strong>Ligne</strong>, choisissez
+                        <strong>1)&nbsp;Ligne</strong>, puis
+                        <strong>2)&nbsp;Terminus / sens</strong>, puis
+                        <strong>3)&nbsp;Variante</strong>.
+                      </li>
+                      <li>
+                        Sélectionnez <strong>Simulation (avance auto)</strong> ou
+                        <strong>Réel GPS (position téléphone)</strong>.
+                      </li>
+                      <li>
+                        Appuyez sur <strong>Démarrer simulation</strong> (le libellé
+                        peut indiquer le mode réel lorsque celui‑ci est choisi).
+                      </li>
+                      <li>
+                        En simulation, la liste <strong>Vitesse</strong> permet
+                        d’accélérer le parcours (×1, ×2, ×4 ou ×10). Utilisez
+                        <strong>Pause / Reprendre</strong> et les boutons d’arrêts si
+                        besoin.
+                      </li>
+                      <li>
+                        L’option <strong>Cap en haut</strong> se trouve toujours sous
+                        <strong>Ligne</strong> dans ce menu (carte orientée comme un
+                        GPS ou nord fixe selon votre choix).
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>Vous souhaitez créer une déviation planifiée&nbsp;?</summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Dans <strong>Ligne</strong>, vérifiez que la ligne, le sens et
+                        la variante désirés sont bien sélectionnés.
+                      </li>
+                      <li>
+                        Passez à <strong>Déviation</strong> puis au sous‑onglet
+                        <strong>Planifiée</strong>&nbsp;: il s’affiche actif (surbrillance
+                        verte), comme pour <strong>Saisir arrêt non desservi</strong> ou
+                        <strong>Saisir arrêts provisoires</strong>.
+                      </li>
+                      <li>
+                        <strong>Commencer par le tracé</strong>&nbsp;: cliquez sur
+                        <strong>Tracer la déviation planifiée</strong>&nbsp;; vous ajoutez les
+                        points sur la carte et, si besoin, vous retirez le dernier point avec
+                        le bouton <strong>Retirer le dernier point</strong> dans le
+                        sous‑onglet <strong>Planifiée</strong> (répétable autant que
+                        nécessaire, tant qu’il subsiste un point et tant qu’on n’a pas cliqué
+                        sur <strong>Enregistrer la déviation planifiée</strong>). Puis
+                        <strong>Valider le tracé de la déviation planifiée</strong> pour enregistrer le tronçon
+                        sur la carte. Sans validation, <strong>Quitter le tracé (carte)</strong> supprime tout le
+                        brouillon de points.
+                      </li>
+                      <li>
+                        Si la <strong>déviation</strong> l’exige, utilisez ensuite
+                        <strong>Saisir arrêt non desservi</strong> et/ou
+                        <strong>Saisir arrêts provisoires</strong> (et
+                        <strong>Retirer dernier arrêt provisoire</strong> si nécessaire).
+                      </li>
+                      <li>
+                        Une fois votre déviation prête, sous <strong>Planifiée</strong>,
+                        utilisez <strong>Enregistrer la déviation planifiée</strong> pour
+                        créer une <strong>déviation enregistrée</strong>, que vous retrouvez
+                        dans le sous‑onglet <strong>Enregistrée / Dupliquée</strong>.
+                      </li>
+                      <li>
+                        Les parties de tracé à retirer se gèrent via
+                        <strong>Déviation à supprimer</strong> et les boutons
+                        <strong>Supprimer la déviation sélectionnée</strong> ou
+                        <strong>Supprimer toutes les déviations</strong>.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez utiliser une déviation temporaire&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Depuis l’onglet <strong>Déviation</strong>, cliquez sur
+                        <strong>Temporaire</strong>.
+                      </li>
+                      <li>
+                        Vous retrouvez <strong>les mêmes types d’actions</strong> que
+                        sous <strong>Planifiée</strong>, avec les intitulés adaptés :
+                        <strong>Tracer la déviation temporaire</strong>,
+                        <strong>Retirer le dernier point</strong>,
+                        <strong>Valider le tracé de la déviation temporaire</strong>,
+                        <strong>Saisir arrêt non desservi</strong>,
+                        <strong>Saisir arrêts provisoires</strong>,
+                        <strong>Retirer dernier arrêt provisoire</strong>, ainsi que la
+                        gestion du tracé via <strong>Déviation à supprimer</strong> /
+                        suppression de tronçons.
+                      </li>
+                      <li>
+                        Sous <strong>Temporaire</strong>, aucun clic préalable de « création »
+                        n’est requis : au <strong>premier</strong> usage du tracé, des arrêts
+                        (non desservis ou provisoires) ou des suppressions de tronçon sur cette
+                        page, une <strong>session de déviation temporaire</strong> s’ouvre tout
+                        seule&nbsp;; les libellés diffèrent de la déviation
+                        <strong>planifiée</strong> pour lever toute confusion.
+                      </li>
+                      <li>
+                        <strong>Enregistrer la déviation temporaire</strong> sauvegarde une
+                        fiche locale <em>et</em> referme la session (sélecteurs de ligne de
+                        nouveau libres) tout en conservant l’état sur la carte comme mode
+                        d’exploitation courant&nbsp;; les dates se gèrent ensuite sous
+                        <strong>Enregistrée / Dupliquée</strong>, distinct de la chaîne
+                        <strong>planifiée</strong>.
+                      </li>
+                      <li>
+                        Tant que vous n’avez pas <strong>validé le tracé</strong>,
+                        <strong>Quitter le tracé (carte)</strong> sous Temporaire ou Planifiée
+                        supprime uniquement les <strong>points en brouillon</strong>, sans garder ni
+                        valider une déviation.
+                      </li>
+                      <li>
+                        <strong>Rétablir le mode exploitation du début de mission</strong>
+                        (sous-onglet <strong>Temporaire</strong> seulement) ramène à l’état au
+                        moment où la session Temporaire a démarré ou la fiche chargée servait de
+                        référence — y compris tracés déjà <strong>fusionnés</strong> sur la carte,
+                        marquages d’arrêts non desservis et arrêts provisoires depuis cette base.
+                        Pour un retour ligne pure, voir <strong>Revenir au Mode base</strong> sous
+                        Planifiée / Temporaire.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez enregistrer des dates ou dupliquer entre
+                    variantes&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Sous <strong>Déviation</strong>, ouvrez
+                        <strong>Enregistrée / Dupliquée</strong> pour voir les fiches du
+                        <strong>stockage navigateur</strong>.
+                      </li>
+                      <li>
+                        Une fois une déviation créée depuis <strong>Planifiée</strong>,
+                        le texte d’aide sous
+                        <strong>Enregistrer la déviation planifiée</strong> vous rappelle
+                        où saisir les <strong>périodes de validité</strong>.
+                      </li>
+                      <li>
+                        Renseignez <strong>Valide du</strong> / <strong>au</strong> puis,
+                        après avoir choisi une entrée dans la liste,
+                        <strong>MàJ des dates de l’entrée sélectionnée</strong>.
+                      </li>
+                      <li>
+                        <strong>Charger la sélection</strong> rapporte une fiche sur la
+                        carte&nbsp;; <strong>Supprimer la sélection</strong> efface une
+                        fiche locale.
+                      </li>
+                      <li>
+                        En bas de cet onglet, la duplication entre variantes passe par
+                        <strong>Fiche source</strong>, <strong>Variante cible</strong> et
+                        <strong>Confirmer la duplication</strong>.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>Vous souhaitez activer les annonces ou la voix&nbsp;?</summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Utilisez l’onglet <strong>Audio</strong> pour activer les
+                        annonces « prochain arrêt », le moment où elles sont lues et la
+                        voix utilisée par le navigateur.
+                      </li>
+                      <li>
+                        Pour vérifier le rendu, servez‑vous du bouton
+                        <strong>Tester la voix</strong>.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1016,7 +1256,7 @@
         nonServedEditActive: false,
         initialMode: OPS_MODE.BASE,
         returnMode: OPS_MODE.BASE,
-        /** true après « Créer la déviation temporaire » jusqu’à validation, rétablissement ou mode base. */
+        /** true dès l’ouverture d’une session temporaire (premier geste utile) jusqu’à enregistrement en local, rétablissement ou mode base. */
         temporaryDeviationActive: false,
         targetPatternId: "",
         baseCoordinates: null,
@@ -1031,10 +1271,15 @@
       };
       /** État explo à restaurer par « Rétablir… » (capturé au moment de l’activation). */
       let snapshotBeforeTemporary = null;
+      /** État carte / surcharge avant un tracé « Planifiée » (hors session Temporaire), pour fermer sans effet résiduel au « Quitter ». */
+      let plannedDeviationEditSnapshot = null;
       /** Fiches créées via « Enregistrer la déviation temporaire » pendant la session courante (purger au rétablissement / mode base). */
       let deviationIdsSavedDuringTemporarySession = [];
-      /** Après « Valider la déviation temporaire », le bouton d’enregistrement reste proposé jusqu’à sauvegarde ou réinitialisation. */
-      let pendingTemporaryDeviationStoreSave = false;
+      /**
+       * Après un enregistrement « Temporaire », évite que « Enregistrer la déviation planifiée »
+       * s’allume tant que rien ne vient explicitement du parcours Planifiée / des actions carte partagées.
+       */
+      let deferPlannedSaveUntilEditedAfterTempRecorded = false;
       let revertingMissionSelectors = false;
       let restoringTemporarySnapshot = false;
       let skippedStopIdSet = new Set();
@@ -1062,7 +1307,8 @@
       const missionTabBtn = document.getElementById("missionTabBtn");
       const opsTabBtn = document.getElementById("opsTabBtn");
       const voiceTabBtn = document.getElementById("voiceTabBtn");
-      /** Dernier onglet du menu pour rouvrir au même endroit (Ligne / Déviation / Voix). */
+      const helpTabBtn = document.getElementById("helpTabBtn");
+      /** Dernier onglet du menu pour rouvrir au même endroit (Ligne / Déviation / Audio / Aide). */
       let controlPanelRememberTab = "mission";
       /** Sous-onglet dans « Déviation » : dev | devtemp | rec */
       let controlPanelRememberOpsSubtab = "dev";
@@ -1070,6 +1316,16 @@
       function normalizeOpsSubtab(sub) {
         const s = String(sub || "").trim();
         return OPS_SUBTAB_IDS.includes(s) ? s : "dev";
+      }
+      function isTempDeviationSubtabActive() {
+        return normalizeOpsSubtab(controlPanelRememberOpsSubtab) === "devtemp";
+      }
+      /** Sous-onglet Temporaire : démarre la session si besoin avant d’éditer tracé ou arrêts. */
+      function ensureTemporaryDeviationSessionIfOnSubtab() {
+        if (!isTempDeviationSubtabActive()) return true;
+        if (opsState.temporaryDeviationActive) return true;
+        activateTemporaryDeviationMode();
+        return !!opsState.temporaryDeviationActive;
       }
       function applyOpsPanelsVisibility() {
         if (!controlPanelEl) return;
@@ -1088,6 +1344,8 @@
             const id = btn.getAttribute("data-ops-subtab");
             btn.classList.toggle("active", id === sub);
           });
+        refreshManualDrawUi();
+        refreshTemporaryDeviationUi();
       }
       function setOpsSubtab(sub) {
         controlPanelRememberOpsSubtab = normalizeOpsSubtab(sub);
@@ -1231,6 +1489,15 @@
       const manualDrawStartBtn = document.getElementById("manualDrawStartBtn");
       const manualDrawUndoBtn = document.getElementById("manualDrawUndoBtn");
       const manualDrawSaveBtn = document.getElementById("manualDrawSaveBtn");
+      const tempManualDrawStartBtn = document.getElementById(
+        "tempManualDrawStartBtn",
+      );
+      const tempManualDrawUndoBtn = document.getElementById(
+        "tempManualDrawUndoBtn",
+      );
+      const tempManualDrawSaveBtn = document.getElementById(
+        "tempManualDrawSaveBtn",
+      );
       const manualTraceClearBtn = document.getElementById(
         "manualTraceClearBtn",
       );
@@ -1239,12 +1506,6 @@
       );
       const manualTraceRemoveSegmentBtn = document.getElementById(
         "manualTraceRemoveSegmentBtn",
-      );
-      const temporaryDeviationBtn = document.getElementById(
-        "temporaryDeviationBtn",
-      );
-      const temporaryDeviationCommitBtn = document.getElementById(
-        "temporaryDeviationCommitBtn",
       );
       const temporarySaveDeviationBtn = document.getElementById(
         "temporarySaveDeviationBtn",
@@ -1711,18 +1972,89 @@
         applyManualDeviationOverlayStyles(getMapVisualProfile());
       }
 
+      /** Le brouillon de tracé en cours fait partie de la session temporaire. */
+      function temporarySessionOwnsDraft() {
+        return !!manualDrawActive && !!opsState.temporaryDeviationActive;
+      }
+      /** Brouillon lancé depuis la barre planifiée (pas de session temp encore). */
+      function plannedSubtabOwnsDraft() {
+        return !!manualDrawActive && !opsState.temporaryDeviationActive;
+      }
       function refreshManualDrawUi() {
+        const planDraft = plannedSubtabOwnsDraft();
+        const tempDraft = temporarySessionOwnsDraft();
+        const tempSess = !!opsState.temporaryDeviationActive;
+
         if (manualDrawStartBtn) {
-          manualDrawStartBtn.textContent = manualDrawActive
-            ? "Quitter le tracé (carte)"
-            : "Tracer la déviation (carte)";
+          let dis = false;
+          let txt = "Tracer la déviation planifiée";
+          if (tempDraft) {
+            txt = "Tracé en cours depuis Temporaire";
+            dis = true;
+          } else if (planDraft) {
+            txt = "Quitter le tracé (carte)";
+          } else if (tempSess) {
+            /** Pas de crayon « actif » : Planifiée redevient cliquable. */
+            txt = "Tracer la déviation planifiée";
+            dis = false;
+          }
+          manualDrawStartBtn.textContent = txt;
+          manualDrawStartBtn.disabled = dis;
+          manualDrawStartBtn.title =
+            tempSess && !tempDraft && !planDraft
+              ? "Session Temporaire ouverte. « Quitter le tracé » (sans valider) retire toujours les points. « Rétablir… » ramène tracé validé, arrêts non desservis et provisoires comme au début de la session."
+              : "";
         }
+
         if (manualDrawUndoBtn) {
           manualDrawUndoBtn.disabled =
-            !manualDrawActive || manualDraftPoints.length === 0;
+            !planDraft || manualDraftPoints.length === 0;
+          manualDrawUndoBtn.title =
+            tempDraft && manualDraftPoints.length > 0
+              ? "Utilisez le même contrôle sous Déviation > Temporaire."
+              : "";
         }
+
         if (manualDrawSaveBtn) {
-          manualDrawSaveBtn.disabled = manualDraftPoints.length < 2;
+          manualDrawSaveBtn.disabled =
+            !planDraft || manualDraftPoints.length < 2;
+          manualDrawSaveBtn.textContent =
+            "Valider le tracé de la déviation planifiée";
+          manualDrawSaveBtn.title =
+            tempDraft && manualDraftPoints.length >= 2
+              ? "Validez le tracé depuis Déviation > Temporaire."
+              : "";
+        }
+
+        if (tempManualDrawStartBtn) {
+          let dis = false;
+          let txt = "Tracer la déviation temporaire";
+          if (planDraft) {
+            txt = "Tracer la déviation temporaire";
+            dis = true;
+          } else if (tempDraft) {
+            txt = "Quitter le tracé (carte)";
+          }
+          tempManualDrawStartBtn.textContent = txt;
+          tempManualDrawStartBtn.disabled = dis;
+          tempManualDrawStartBtn.title =
+            planDraft &&
+            manualDraftPoints.length > 0
+              ? "Un tracé est en cours depuis Planifiée : quittez ou validez le tracé là-bas d’abord."
+              : "";
+        }
+
+        if (tempManualDrawUndoBtn) {
+          tempManualDrawUndoBtn.disabled =
+            !tempDraft || manualDraftPoints.length === 0;
+        }
+
+        if (tempManualDrawSaveBtn) {
+          tempManualDrawSaveBtn.disabled =
+            !tempDraft || manualDraftPoints.length < 2;
+          tempManualDrawSaveBtn.textContent =
+            "Valider le tracé de la déviation temporaire";
+          tempManualDrawSaveBtn.title = "";
         }
         if (manualTraceClearBtn) {
           const hasValidatedTrace =
@@ -1816,7 +2148,9 @@
         clearManualDraftVisuals();
         refreshManualDrawUi();
         setGpsStatus(
-          "Tracé manuel actif : touchez la carte pour poser des points.",
+          opsState.temporaryDeviationActive
+            ? "Tracé de la déviation temporaire actif : touchez la carte pour poser des points."
+            : "Tracé de la déviation planifiée actif : touchez la carte pour poser des points.",
         );
       }
 
@@ -2355,7 +2689,7 @@
         if (!controlPanelEl) return;
         const sections = controlPanelEl.querySelectorAll(".panel-section");
         sections.forEach((s) => s.classList.remove("show"));
-        [missionTabBtn, opsTabBtn, voiceTabBtn].forEach(
+        [missionTabBtn, opsTabBtn, voiceTabBtn, helpTabBtn].forEach(
           (b) => b && b.classList.remove("active"),
         );
         if (panelName === "mission") {
@@ -2378,6 +2712,11 @@
             .querySelectorAll(".panel-audio")
             .forEach((s) => s.classList.add("show"));
           voiceTabBtn?.classList.add("active");
+        } else if (panelName === "help") {
+          controlPanelEl
+            .querySelectorAll(".panel-help")
+            .forEach((s) => s.classList.add("show"));
+          helpTabBtn?.classList.add("active");
         }
         controlPanelRememberTab = panelName;
       }
@@ -2456,33 +2795,69 @@
 
       function refreshTemporaryDeviationUi() {
         const on = !!opsState.temporaryDeviationActive;
-        if (temporaryDeviationBtn) {
-          temporaryDeviationBtn.disabled = on;
-          temporaryDeviationBtn.textContent = on
-            ? "Création en cours…"
-            : "Créer la déviation temporaire";
-          temporaryDeviationBtn.setAttribute(
-            "aria-pressed",
-            on ? "true" : "false",
-          );
-          temporaryDeviationBtn.classList.toggle("primary", on);
-        }
-        if (temporaryDeviationCommitBtn) {
-          temporaryDeviationCommitBtn.disabled = !on;
+        const pat = selectedPattern();
+        const hasMission = !!pat;
+        const hasContent = !deviationPayloadIsEmpty(
+          deviationPayloadFromLiveState(),
+        );
+        /** Même formulation Planifiée / Temporaire lorsque le seul blocage est l’absence de contenu carte. */
+        const tipSaveDeviationActivate =
+          "Ce bouton s’active si vous validez un tracé sur la carte ou si vous saisissez au moins un arrêt non desservi ou provisoire.";
+
+        if (saveDeviationBtn) {
+          /* Planifiée : actif (bleu) seulement hors session temp + mission + au moins tracé validé ou saisies arrêts. */
+          const deferPlanned =
+            deferPlannedSaveUntilEditedAfterTempRecorded && hasContent;
+          const canSavePlanned =
+            !on && hasMission && hasContent && !deferPlanned;
+          saveDeviationBtn.disabled = !canSavePlanned;
+          if (on) {
+            saveDeviationBtn.title =
+              "Une session Temporaire est ouverte — enregistrez-la ou rétablissez avant une fiche planifiée.";
+          } else if (!hasMission) {
+            saveDeviationBtn.title =
+              "Choisissez une mission pour enregistrer une déviation planifiée.";
+          } else if (deferPlanned) {
+            saveDeviationBtn.title =
+              "Pour activer « Enregistrer la déviation planifiée », utilisez d’abord un bouton du sous-onglet Planifiée (tracé, retirer le dernier point, valider ce tracé côté planifiée…). Cela évite d’associer à la Planifiée un retour simplement « depuis Temporaire / Rétablir » sans intention explicite.";
+          } else if (!hasContent) {
+            saveDeviationBtn.title = tipSaveDeviationActivate;
+          } else {
+            saveDeviationBtn.title = "";
+          }
+          saveDeviationBtn.classList.toggle("secondary", !canSavePlanned);
         }
         if (temporarySaveDeviationBtn) {
-          const peutEncoreEnregistrerDepuisSessionTemp =
-            on || pendingTemporaryDeviationStoreSave;
-          const canSave =
-            !!peutEncoreEnregistrerDepuisSessionTemp &&
-            !!selectedPattern() &&
-            !deviationPayloadIsEmpty(deviationPayloadFromLiveState());
-          temporarySaveDeviationBtn.disabled = !canSave;
+          const canSaveTemp = on && hasMission && hasContent;
+          temporarySaveDeviationBtn.disabled = !canSaveTemp;
+          /* Même texte aide que pour le planifiée : même condition « contenu » (tracé ou arrêts). */
+          if (!hasMission) {
+            temporarySaveDeviationBtn.title =
+              "Choisissez une mission pour enregistrer la déviation temporaire.";
+          } else if (!canSaveTemp) {
+            temporarySaveDeviationBtn.title = tipSaveDeviationActivate;
+          } else {
+            temporarySaveDeviationBtn.title = "";
+          }
+          temporarySaveDeviationBtn.classList.toggle("secondary", !canSaveTemp);
         }
         if (lineSelect) lineSelect.disabled = on;
         if (headsignSelect) headsignSelect.disabled = on;
         if (variantSelect) variantSelect.disabled = on;
         if (lineSelectTrigger) lineSelectTrigger.disabled = on;
+      }
+
+      /** Lève la barrière planifiée après un « Enregistrer la déviation temporaire » (gestes distincts utilisateur). */
+      function unlockPlannedSaveAfterRecordedTemporaryDeviation() {
+        if (!deferPlannedSaveUntilEditedAfterTempRecorded) return;
+        deferPlannedSaveUntilEditedAfterTempRecorded = false;
+        refreshTemporaryDeviationUi();
+      }
+
+      /** Juste après enregistrer en Temporaire : ne pas faire hériter le bouton Planifiée du même tracé carte. */
+      function deferPlannedSaveGateAfterRecordedTemporaryDeviation() {
+        deferPlannedSaveUntilEditedAfterTempRecorded = true;
+        refreshTemporaryDeviationUi();
       }
 
       function resetOpsStateForMission(ropts) {
@@ -2505,11 +2880,12 @@
         opsState.provisionalEditActive = false;
         nonServedEditFocusStopId = null;
         clearManualRouteOverlayLayers();
-        pendingTemporaryDeviationStoreSave = false;
         if (!preserveTemporarySnapshot) {
           opsState.temporaryDeviationActive = false;
           snapshotBeforeTemporary = null;
         }
+        plannedDeviationEditSnapshot = null;
+        deferPlannedSaveUntilEditedAfterTempRecorded = false;
         applyOpsStateUi();
       }
 
@@ -2525,7 +2901,7 @@
             String(snapshotBeforeTemporary.pattern_id || "")
         ) {
           window.alert(
-            "Une déviation temporaire est en cours. Validez-la ou rétablissez l'état de début de mission avant de changer de mission.",
+            "Une déviation temporaire est en cours. Enregistrez-la (Temporaire) ou rétablissez l'état de début de mission avant de changer de mission.",
           );
           const pat = data?.patterns?.find(
             (x) =>
@@ -2579,7 +2955,6 @@
       }
 
       function purgeDeviationsSavedDuringTemporarySession() {
-        pendingTemporaryDeviationStoreSave = false;
         if (!deviationIdsSavedDuringTemporarySession.length) return;
         const idSet = new Set(deviationIdsSavedDuringTemporarySession);
         deviationIdsSavedDuringTemporarySession = [];
@@ -2593,6 +2968,40 @@
         rebuildDuplicateFromOptions();
         refreshDuplicateTargetsForSelectedSource();
         appendOpsLog("temporary_saved_deviations_purged", [...idSet].join(","));
+      }
+
+      /** Ex. T3 pour retrouver toutes les entrées « Déviation temporaire » à la Rétablissement. */
+      function routeShortNameForPatternId(patternId) {
+        const pat = data?.patterns?.find(
+          (x) => String(x.pattern_id || "") === String(patternId || ""),
+        );
+        return String(pat?.route_short_name || "").trim();
+      }
+
+      /**
+       * Supprime du stockage local toutes les fiches dont le libellé est une « déviation temporaire »
+       * pour la ligne (route_short_name), ex. les duplicatas V1/V2/V3.
+       */
+      function purgeTemporaryLabeledSavedDeviationsForRouteShortName(
+        routeShortName,
+      ) {
+        const want = String(routeShortName || "").trim();
+        if (!want) return;
+        const st = readDeviationStore();
+        const nBefore = st.items.length;
+        st.items = st.items.filter((it) => {
+          if (!isDeviationTemporaireStoredLabel(it?.label)) return true;
+          return (
+            String(routeShortNameForSavedDeviation(it) || "").trim() !== want
+          );
+        });
+        if (st.items.length === nBefore) return;
+        writeDeviationStore(st);
+        refreshSavedDeviationSelectOptions();
+        refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
+        rebuildDuplicateFromOptions();
+        refreshDuplicateTargetsForSelectedSource();
+        appendOpsLog("temporary_labelled_deviations_purged", want);
       }
 
       function getPatternDigest(pat) {
@@ -2656,12 +3065,9 @@
       }
 
       async function saveTemporaryDeviationToLocalStore() {
-        if (
-          !opsState.temporaryDeviationActive &&
-          !pendingTemporaryDeviationStoreSave
-        ) {
+        if (!opsState.temporaryDeviationActive) {
           window.alert(
-            "Créez d’abord une déviation temporaire, ou validez-la : vous pourrez encore enregistrer avec ce bouton tant que vous n’avez pas réinitialisé la mission.",
+            "Commencez par utiliser le tracé ou la saisie d’arrêts sous Temporaire — la session temporaire s’ouvre au premier geste utile.",
           );
           return;
         }
@@ -2674,17 +3080,20 @@
         const pl = deviationPayloadFromLiveState();
         if (deviationPayloadIsEmpty(pl)) {
           window.alert(
-            "Rien à enregistrer : aucun tracé manuel, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
+            "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
           );
           return;
         }
-        const id = await deviationSaveOrUpdate("new");
+        const id = await deviationSaveOrUpdate("new", {
+          allowDuringTemporaryDevSession: true,
+        });
         if (!id) return;
-        pendingTemporaryDeviationStoreSave = false;
-        if (opsState.temporaryDeviationActive) {
-          deviationIdsSavedDuringTemporarySession.push(id);
-        }
-        refreshTemporaryDeviationUi();
+        deviationIdsSavedDuringTemporarySession.push(String(id));
+        commitTemporaryDeviationMode({
+          statusMessage:
+            "Déviation temporaire enregistrée (stockage navigateur). « Rétablir le mode exploitation du début de mission » efface aussi sur la carte l’exploration en cours ; l’entrée tout juste créée sera retirée de la liste en même temps.",
+        });
+        deferPlannedSaveGateAfterRecordedTemporaryDeviation();
       }
 
       function normalizeDeviationLabel(raw) {
@@ -3297,10 +3706,13 @@
         refreshManualDrawUi();
         refreshProvisionalUi();
         applyOpsStateUi();
+        plannedDeviationEditSnapshot = null;
       }
 
       async function loadDeviationItemIntoApp(item, opts) {
         const o = opts || {};
+        tryDismissTemporaryDeviationIfUnchanged("pre_load_deviation");
+        tryDismissPlannedDeviationIfUnchanged("pre_load_deviation");
         if (opsState.temporaryDeviationActive && snapshotBeforeTemporary) {
           window.alert(
             "Quittez la déviation temporaire (bouton « Rétablir le mode exploitation du début de mission ») avant de charger une déviation enregistrée.",
@@ -3322,6 +3734,8 @@
           window.alert("Impossible de positionner automatiquement la mission.");
           return;
         }
+        deviationIdsSavedDuringTemporarySession = [];
+        deferPlannedSaveUntilEditedAfterTempRecorded = false;
         savedDeviationEnsureOptionSelectedForItemId(item.id);
         running = false;
         lastRafTime = 0;
@@ -3332,6 +3746,13 @@
           forceOpsReset: !!o.forceOpsReset,
         });
         await restoreDeviationPayloadIntoLiveState(item.payload || {});
+        /* Point de rétablissement Temporaire = cette fiche (planifiée ou ancienne temp) désormais sur la carte. */
+        snapshotBeforeTemporary = {
+          pattern_id: String(pat.pattern_id || ""),
+          payload: tamCloneSerializable({}, deviationPayloadFromLiveState()),
+          returnMode: coerceOpsMode(opsState.returnMode || OPS_MODE.BASE),
+          initialMode: coerceOpsMode(opsState.initialMode || OPS_MODE.BASE),
+        };
         refreshSavedDeviationBannerAndDup(item);
         appendOpsLog("deviation_loaded", item.pattern_id || "");
         if (driveMode === DRIVE_MODE.SIMULATION) {
@@ -3344,11 +3765,84 @@
         }
       }
 
+      /** JSON stable pour comparer deux payloads (sessions temporaire / planifiée). */
+      function deviationPayloadJsonForCompare(pl) {
+        try {
+          return JSON.stringify(tamCloneSerializable({}, pl || {}));
+        } catch {
+          return "";
+        }
+      }
+      /**
+       * Si l’état carte / surcharge est encore identique au snapshot de début de session temporaire,
+       * fermer la session (évite « Rétablir… » alors que l’utilisateur n’a fait qu’annuler un brouillon).
+       */
+      function tryDismissTemporaryDeviationIfUnchanged(tag) {
+        if (!opsState.temporaryDeviationActive || !snapshotBeforeTemporary) {
+          return false;
+        }
+        const cur = deviationPayloadFromLiveState();
+        const base = snapshotBeforeTemporary.payload || {};
+        if (deviationPayloadJsonForCompare(cur) !== deviationPayloadJsonForCompare(base)) {
+          return false;
+        }
+        opsState.temporaryDeviationActive = false;
+        /* Conserver snapshotBeforeTemporary : c’est encore le bon point de rétablissement carte. */
+        deviationIdsSavedDuringTemporarySession = [];
+        refreshTemporaryDeviationUi();
+        applyOpsStateUi();
+        appendOpsLog(
+          "temporary_session_dismissed_untouched",
+          String(tag || ""),
+        );
+        return true;
+      }
+
+      /**
+       * Si l’état est encore identique au snapshot avant « Tracer » (onglet Planifiée, sans session Temporaire),
+       * libère le snapshot (même intention que fermer une session sans changement réel).
+       */
+      function tryDismissPlannedDeviationIfUnchanged(tag) {
+        if (!plannedDeviationEditSnapshot) {
+          return false;
+        }
+        if (opsState.temporaryDeviationActive) {
+          return false;
+        }
+        const p = selectedPattern() || currentPattern;
+        if (
+          !p ||
+          String(p.pattern_id || "") !==
+            String(plannedDeviationEditSnapshot.pattern_id || "")
+        ) {
+          plannedDeviationEditSnapshot = null;
+          appendOpsLog(
+            "planned_trace_snapshot_cleared_mismatch_pattern",
+            String(tag || ""),
+          );
+          return false;
+        }
+        const cur = deviationPayloadFromLiveState();
+        const base = plannedDeviationEditSnapshot.payload || {};
+        if (
+          deviationPayloadJsonForCompare(cur) !==
+          deviationPayloadJsonForCompare(base)
+        ) {
+          return false;
+        }
+        plannedDeviationEditSnapshot = null;
+        appendOpsLog(
+          "planned_trace_snapshot_dismissed_untouched",
+          String(tag || ""),
+        );
+        return true;
+      }
+
       function activateTemporaryDeviationMode() {
         if (opsState.temporaryDeviationActive) return;
         if (manualDrawActive && manualDraftPoints.length > 0) {
           window.alert(
-            "Terminez ou annulez la saisie du tracé manuel avant de créer une déviation temporaire.",
+            "Terminez ou annulez la saisie du tracé de la déviation planifiée avant d’ouvrir une session de déviation temporaire.",
           );
           return;
         }
@@ -3358,8 +3852,7 @@
           return;
         }
         ensureOpsTargetPattern();
-        deviationIdsSavedDuringTemporarySession = [];
-        pendingTemporaryDeviationStoreSave = false;
+        plannedDeviationEditSnapshot = null;
         snapshotBeforeTemporary = {
           pattern_id: String(p.pattern_id || ""),
           payload: deviationPayloadFromLiveState(),
@@ -3373,23 +3866,25 @@
           `pattern=${snapshotBeforeTemporary.pattern_id}`,
         );
         setGpsStatus(
-          "Déviation temporaire créée : modifiez le tracé sur la carte, les arrêts non desservis et les arrêts provisoires, puis utilisez « Valider la déviation temporaire » ou « Rétablir le mode exploitation du début de mission ».",
+          "Session déviation temporaire : adaptez tracé et arrêts, puis utilisez « Enregistrer la déviation temporaire » pour garder une fiche en local ou « Rétablir le mode exploitation du début de mission » pour annuler avant enregistrement.",
         );
       }
 
-      function commitTemporaryDeviationMode() {
+      function commitTemporaryDeviationMode(opts) {
+        const o = opts || {};
         if (!opsState.temporaryDeviationActive) return;
-        deviationIdsSavedDuringTemporarySession = [];
+        /* conserve snapshotBeforeTemporary : « Rétablir » peut ramener carte + éviter les faux enregistrements locaux encore listés après sauvegarde */
         opsState.temporaryDeviationActive = false;
-        snapshotBeforeTemporary = null;
-        pendingTemporaryDeviationStoreSave = true;
+        plannedDeviationEditSnapshot = null;
         opsState.mode = recomputeOpsMode();
         opsState.initialMode = opsState.mode;
         opsState.returnMode = opsState.mode;
         applyOpsStateUi();
         appendOpsLog("temporary_deviation_commit", `mode=${opsState.mode}`);
         setGpsStatus(
-          "Déviation temporaire validée : cet état reste sur la carte (mode d’exploitation courant). Vous pouvez encore l’enregistrer dans « Déviations enregistrées » via le bouton dédié.",
+          typeof o.statusMessage === "string" && o.statusMessage
+            ? o.statusMessage
+            : "Session déviation temporaire fermée : état conservé sur la carte.",
         );
       }
 
@@ -3428,8 +3923,16 @@
             snap.initialMode || OPS_MODE.BASE,
           );
           opsState.temporaryDeviationActive = false;
-          snapshotBeforeTemporary = null;
+          plannedDeviationEditSnapshot = null;
+          /* Pas de bouton Planifiée bleu tant qu’aucun geste prévu sous Planifiée après ce retour carte. */
+          deferPlannedSaveUntilEditedAfterTempRecorded = true;
           applyOpsStateUi();
+          snapshotBeforeTemporary = {
+            pattern_id: String(pat.pattern_id || ""),
+            payload: tamCloneSerializable({}, deviationPayloadFromLiveState()),
+            returnMode: coerceOpsMode(opsState.returnMode || OPS_MODE.BASE),
+            initialMode: coerceOpsMode(opsState.initialMode || OPS_MODE.BASE),
+          };
           recomputeSkippedStopsForCurrentMission();
           rebuildActiveGuideStops();
           drawAllStopsOverlay();
@@ -3450,11 +3953,21 @@
         }
       }
 
-      async function deviationSaveOrUpdate(kind) {
+      async function deviationSaveOrUpdate(kind, opts) {
+        const o = opts || {};
         const p = selectedPattern();
         if (!p) {
           window.alert(
             "Choisissez une ligne (terminus et variante) puis la déviation avant d'enregistrer.",
+          );
+          return null;
+        }
+        if (
+          opsState.temporaryDeviationActive &&
+          !(o.allowDuringTemporaryDevSession && kind === "new")
+        ) {
+          window.alert(
+            "Une déviation temporaire est en cours : utilisez « Enregistrer la déviation temporaire » ou « Rétablir » depuis le sous-onglet Temporaire avant d’enregistrer une déviation planifiée.",
           );
           return null;
         }
@@ -3499,7 +4012,7 @@
               );
             } else {
               window.alert(
-                "Rien à enregistrer : aucun tracé manuel, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
+                "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
               );
               return null;
             }
@@ -3544,7 +4057,7 @@
         }
         if (deviationPayloadIsEmpty(plLive)) {
           window.alert(
-            "Rien à enregistrer : aucun tracé manuel, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
+            "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
           );
           return null;
         }
@@ -5623,8 +6136,8 @@
         setGpsStatus(
           hadValidatedTrace
             ? persistedAuto
-              ? "Tracé manuel supprimé ; entrée locale mise à jour (arrêts conservés)."
-              : "Tracé manuel supprimé : les arrêts sont conservés. Sélectionnez une entrée puis « MàJ des dates de l’entrée sélectionnée » pour persister."
+              ? "Tracé de la déviation planifiée supprimé ; entrée locale mise à jour (arrêts conservés)."
+              : "Tracé de la déviation planifiée supprimé : les arrêts sont conservés. Sélectionnez une entrée puis « MàJ des dates de l’entrée sélectionnée » pour persister."
             : "Brouillon de tracé effacé.",
         );
       }
@@ -5703,7 +6216,7 @@
         if (!p) return;
         if (!opsState.modeCoordinates[OPS_MODE.MANUEL]) {
           window.alert(
-            "Aucun tracé manuel enregistré. Utilisez d'abord « Tracer la déviation (carte) ».",
+            "Aucun tracé de déviation planifiée enregistré. Utilisez d'abord « Tracer la déviation planifiée ».",
           );
           return;
         }
@@ -5721,6 +6234,7 @@
       nonServedBtn?.addEventListener("click", () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
+        if (!ensureTemporaryDeviationSessionIfOnSubtab()) return;
         opsState.manualActive = true;
         opsState.nonServedEditActive = !opsState.nonServedEditActive;
         if (opsState.nonServedEditActive) {
@@ -5748,6 +6262,7 @@
       provisionalStopBtn?.addEventListener("click", () => {
         const p = ensureOpsTargetPattern();
         if (!p) return;
+        if (!ensureTemporaryDeviationSessionIfOnSubtab()) return;
         opsState.provisionalEditActive = !opsState.provisionalEditActive;
         if (opsState.provisionalEditActive) {
           opsState.nonServedEditActive = false;
@@ -5779,27 +6294,66 @@
         setGpsStatus("Dernier arrêt provisoire retiré.");
       });
 
-      manualDrawStartBtn?.addEventListener("click", () => {
+      function onManualDrawStartClick(ev) {
+        const fromTempToolbar = ev?.currentTarget === tempManualDrawStartBtn;
         const p = ensureOpsTargetPattern();
         if (!p) return;
         if (manualDrawActive) {
-          stopManualDrawMode({ keepPoints: true });
-          setGpsStatus("Tracé manuel mis en pause.");
+          /** Même logique Temporaire / Planifiée : sans « Valider le tracé », quitter efface le brouillon (comme si le tracé n’avait pas été commencé). */
+          stopManualDrawMode();
+          const endedTemp = tryDismissTemporaryDeviationIfUnchanged(
+            "quit_trace_draft",
+          );
+          const endedPlan = tryDismissPlannedDeviationIfUnchanged(
+            "quit_trace_draft",
+          );
+          let msg =
+            "Brouillon de tracé annulé : les points sur la carte ont été retirés sans validation.";
+          if (endedTemp && endedPlan) {
+            msg =
+              "Brouillon annulé. Session temporaire refermée et état carte inchangé par rapport au début de la saisie (planifiée) — vous pouvez charger une autre déviation enregistrée.";
+          } else if (endedTemp) {
+            msg =
+              "Brouillon annulé. Aucune modification depuis l’état avant session Temporaire : la session est refermée (vous pouvez charger une autre déviation enregistrée).";
+          } else if (endedPlan) {
+            msg =
+              "Brouillon annulé. Aucune modification sur la carte depuis le début de cette saisie (planifiée) — vous pouvez charger une autre déviation enregistrée.";
+          }
+          setGpsStatus(msg);
           return;
+        }
+        if (fromTempToolbar) {
+          plannedDeviationEditSnapshot = null;
+          if (!ensureTemporaryDeviationSessionIfOnSubtab()) return;
+        } else if (!opsState.temporaryDeviationActive) {
+          plannedDeviationEditSnapshot = {
+            pattern_id: String(p.pattern_id || ""),
+            payload: deviationPayloadFromLiveState(),
+          };
         }
         startManualDrawMode();
         closeControlPanel();
-      });
+      }
+      manualDrawStartBtn?.addEventListener("click", onManualDrawStartClick);
+      tempManualDrawStartBtn?.addEventListener(
+        "click",
+        onManualDrawStartClick,
+      );
 
-      manualDrawUndoBtn?.addEventListener("click", () => {
+      function onManualDrawUndoClick() {
         if (!manualDrawActive || !manualDraftPoints.length) {
           return;
         }
         manualDraftPoints.pop();
         redrawManualDraftVisuals();
-      });
+      }
+      manualDrawUndoBtn?.addEventListener("click", onManualDrawUndoClick);
+      tempManualDrawUndoBtn?.addEventListener("click", onManualDrawUndoClick);
 
       manualTraceClearBtn?.addEventListener("click", () => {
+        if (isTempDeviationSubtabActive() && !ensureTemporaryDeviationSessionIfOnSubtab()) {
+          return;
+        }
         void clearManualDeviationTraceKeepingStops(false).catch((e) =>
           console.warn("clearManualDeviationTraceKeepingStops:", e),
         );
@@ -5810,17 +6364,22 @@
       });
 
       manualTraceRemoveSegmentBtn?.addEventListener("click", () => {
+        if (isTempDeviationSubtabActive() && !ensureTemporaryDeviationSessionIfOnSubtab()) {
+          return;
+        }
         void removeManualDeviationSegmentsFromSelectedIndex().catch((e) =>
           console.warn("removeManualDeviationSegmentsFromSelectedIndex:", e),
         );
       });
 
-      manualDrawSaveBtn?.addEventListener("click", async () => {
+      async function onManualDrawSaveClick(validatedFromToolbar) {
         const p = ensureOpsTargetPattern();
         if (!p) return;
         if (manualDraftPoints.length < 2) {
           window.alert(
-            "Ajoutez au moins 2 points sur la carte pour valider le tracé manuel.",
+            temporarySessionOwnsDraft()
+              ? "Ajoutez au moins 2 points sur la carte pour valider le tracé de la déviation temporaire."
+              : "Ajoutez au moins 2 points sur la carte pour valider le tracé de la déviation planifiée.",
           );
           return;
         }
@@ -5855,12 +6414,26 @@
             ? "Déviation manuelle mise à jour : tracé supplémentaire fusionné (vous pouvez en ajouter d’autres avant les arrêts non desservis ou provisoires)."
             : "Déviation manuelle validée : segment de ligne remplacé entre A et B.",
         );
-      });
+        plannedDeviationEditSnapshot = null;
+        if (validatedFromToolbar === "plan") {
+          unlockPlannedSaveAfterRecordedTemporaryDeviation();
+        }
+      }
+      manualDrawSaveBtn?.addEventListener("click", () =>
+        void onManualDrawSaveClick("plan"),
+      );
+      tempManualDrawSaveBtn?.addEventListener("click", () =>
+        void onManualDrawSaveClick("temp"),
+      );
 
       returnInitialBtn.addEventListener("click", () => {
+        const linePurged = snapshotBeforeTemporary
+          ? routeShortNameForPatternId(snapshotBeforeTemporary.pattern_id)
+          : currentMissionRouteShortName();
         purgeDeviationsSavedDuringTemporarySession();
+        purgeTemporaryLabeledSavedDeviationsForRouteShortName(linePurged);
         void (async () => {
-          if (opsState.temporaryDeviationActive && snapshotBeforeTemporary) {
+          if (snapshotBeforeTemporary) {
             await restoreTemporaryMissionSnapshot();
             return;
           }
@@ -5880,12 +6453,6 @@
         })().catch((e) => console.warn("return_initial:", e));
       });
 
-      temporaryDeviationBtn?.addEventListener("click", () => {
-        activateTemporaryDeviationMode();
-      });
-      temporaryDeviationCommitBtn?.addEventListener("click", () => {
-        commitTemporaryDeviationMode();
-      });
       temporarySaveDeviationBtn?.addEventListener("click", () => {
         void saveTemporaryDeviationToLocalStore().catch((e) =>
           console.warn("saveTemporaryDeviation:", e),
@@ -5898,6 +6465,8 @@
         if (!p) return;
         opsState.temporaryDeviationActive = false;
         snapshotBeforeTemporary = null;
+        plannedDeviationEditSnapshot = null;
+        deferPlannedSaveUntilEditedAfterTempRecorded = false;
         refreshTemporaryDeviationUi();
         stopManualDrawMode();
         opsState.manualActive = false;
@@ -6152,6 +6721,7 @@
       missionTabBtn?.addEventListener("click", () => setPanelTab("mission"));
       opsTabBtn?.addEventListener("click", () => setPanelTab("ops"));
       voiceTabBtn?.addEventListener("click", () => setPanelTab("voice"));
+      helpTabBtn?.addEventListener("click", () => setPanelTab("help"));
       controlPanelEl
         ?.querySelectorAll(".panel-ops-subtabs [data-ops-subtab]")
         .forEach((btn) => {
