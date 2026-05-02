@@ -1250,6 +1250,17 @@
         return mode === OPS_MODE.MANUEL ? OPS_MODE.MANUEL : OPS_MODE.BASE;
       }
 
+      /*
+       * ─── Déviation : Planifiée / Temporaire / stockage local ───────────────
+       * Planifiée   : fiche « durable » ; dates / duplication sous Enregistrée-Dupliquée.
+       * Temporaire  : session (1er geste utile sous sous-onglet Temporaire). Le bouton
+       *               « Rétablir le mode exploitation… » n’existe que sous Temporaire.
+       * Rétablir    : restaure snapshotBeforeTemporary (état au chargement d’une fiche ou
+       *               à l’ouverture de session), pas la ligne brute sans déviation.
+       * deferPlannedSave… : après enreg. temp ou Rétablir, « Enregistrer déviation planifiée »
+       *               reste grisé jusqu’à validation explicite du tracé (bouton Valider côté Planifiée).
+       * Doc projet  : EVOLUTION_ET_BACKLOG.md (section simulateur / déviations).
+       */
       let opsState = {
         mode: OPS_MODE.BASE,
         manualActive: false,
@@ -1276,8 +1287,8 @@
       /** Fiches créées via « Enregistrer la déviation temporaire » pendant la session courante (purger au rétablissement / mode base). */
       let deviationIdsSavedDuringTemporarySession = [];
       /**
-       * Après un enregistrement « Temporaire », évite que « Enregistrer la déviation planifiée »
-       * s’allume tant que rien ne vient explicitement du parcours Planifiée / des actions carte partagées.
+       * Après « Enregistrer la déviation temporaire » ou après « Rétablir… » : le bouton
+       * Planifiée ne repasse disponible qu’après validation du tracé via le bouton Planifiée.
        */
       let deferPlannedSaveUntilEditedAfterTempRecorded = false;
       let revertingMissionSelectors = false;
@@ -2794,57 +2805,42 @@
       }
 
       function refreshTemporaryDeviationUi() {
-        const on = !!opsState.temporaryDeviationActive;
+        const temporarySessionOn = !!opsState.temporaryDeviationActive;
         const pat = selectedPattern();
         const hasMission = !!pat;
         const hasContent = !deviationPayloadIsEmpty(
           deviationPayloadFromLiveState(),
         );
-        /** Même formulation Planifiée / Temporaire lorsque le seul blocage est l’absence de contenu carte. */
-        const tipSaveDeviationActivate =
+        const tipWhenSavingNeedsContent =
           "Ce bouton s’active si vous validez un tracé sur la carte ou si vous saisissez au moins un arrêt non desservi ou provisoire.";
 
         if (saveDeviationBtn) {
-          /* Planifiée : actif (bleu) seulement hors session temp + mission + au moins tracé validé ou saisies arrêts. */
-          const deferPlanned =
-            deferPlannedSaveUntilEditedAfterTempRecorded && hasContent;
-          const canSavePlanned =
-            !on && hasMission && hasContent && !deferPlanned;
-          saveDeviationBtn.disabled = !canSavePlanned;
-          if (on) {
-            saveDeviationBtn.title =
-              "Une session Temporaire est ouverte — enregistrez-la ou rétablissez avant une fiche planifiée.";
-          } else if (!hasMission) {
-            saveDeviationBtn.title =
-              "Choisissez une mission pour enregistrer une déviation planifiée.";
-          } else if (deferPlanned) {
-            saveDeviationBtn.title =
-              "Pour activer « Enregistrer la déviation planifiée », utilisez d’abord un bouton du sous-onglet Planifiée (tracé, retirer le dernier point, valider ce tracé côté planifiée…). Cela évite d’associer à la Planifiée un retour simplement « depuis Temporaire / Rétablir » sans intention explicite.";
-          } else if (!hasContent) {
-            saveDeviationBtn.title = tipSaveDeviationActivate;
-          } else {
-            saveDeviationBtn.title = "";
-          }
-          saveDeviationBtn.classList.toggle("secondary", !canSavePlanned);
+          const { disabled, title } = computePlannedSaveDeviationToolbarState({
+            temporarySessionOn,
+            hasMission,
+            hasContent,
+            deferPlannedGate: deferPlannedSaveUntilEditedAfterTempRecorded,
+            tipWhenSavingNeedsContent,
+          });
+          saveDeviationBtn.disabled = disabled;
+          saveDeviationBtn.title = title;
+          saveDeviationBtn.classList.toggle("secondary", disabled);
         }
         if (temporarySaveDeviationBtn) {
-          const canSaveTemp = on && hasMission && hasContent;
-          temporarySaveDeviationBtn.disabled = !canSaveTemp;
-          /* Même texte aide que pour le planifiée : même condition « contenu » (tracé ou arrêts). */
-          if (!hasMission) {
-            temporarySaveDeviationBtn.title =
-              "Choisissez une mission pour enregistrer la déviation temporaire.";
-          } else if (!canSaveTemp) {
-            temporarySaveDeviationBtn.title = tipSaveDeviationActivate;
-          } else {
-            temporarySaveDeviationBtn.title = "";
-          }
-          temporarySaveDeviationBtn.classList.toggle("secondary", !canSaveTemp);
+          const { disabled, title } = computeTemporarySaveDeviationToolbarState({
+            temporarySessionOn,
+            hasMission,
+            hasContent,
+            tipWhenSavingNeedsContent,
+          });
+          temporarySaveDeviationBtn.disabled = disabled;
+          temporarySaveDeviationBtn.title = title;
+          temporarySaveDeviationBtn.classList.toggle("secondary", disabled);
         }
-        if (lineSelect) lineSelect.disabled = on;
-        if (headsignSelect) headsignSelect.disabled = on;
-        if (variantSelect) variantSelect.disabled = on;
-        if (lineSelectTrigger) lineSelectTrigger.disabled = on;
+        if (lineSelect) lineSelect.disabled = temporarySessionOn;
+        if (headsignSelect) headsignSelect.disabled = temporarySessionOn;
+        if (variantSelect) variantSelect.disabled = temporarySessionOn;
+        if (lineSelectTrigger) lineSelectTrigger.disabled = temporarySessionOn;
       }
 
       /** Lève la barrière planifiée après un « Enregistrer la déviation temporaire » (gestes distincts utilisateur). */
@@ -2954,6 +2950,14 @@
         }
       }
 
+      /** Listes déroulantes + duplication après lecture/écriture du stockage local fiches. */
+      function refreshDeviationStoreSelectorsAfterMutation() {
+        refreshSavedDeviationSelectOptions();
+        refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
+        rebuildDuplicateFromOptions();
+        refreshDuplicateTargetsForSelectedSource();
+      }
+
       function purgeDeviationsSavedDuringTemporarySession() {
         if (!deviationIdsSavedDuringTemporarySession.length) return;
         const idSet = new Set(deviationIdsSavedDuringTemporarySession);
@@ -2963,10 +2967,7 @@
         st.items = st.items.filter((x) => !idSet.has(x.id));
         if (st.items.length === nBefore) return;
         writeDeviationStore(st);
-        refreshSavedDeviationSelectOptions();
-        refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
-        rebuildDuplicateFromOptions();
-        refreshDuplicateTargetsForSelectedSource();
+        refreshDeviationStoreSelectorsAfterMutation();
         appendOpsLog("temporary_saved_deviations_purged", [...idSet].join(","));
       }
 
@@ -2997,10 +2998,7 @@
         });
         if (st.items.length === nBefore) return;
         writeDeviationStore(st);
-        refreshSavedDeviationSelectOptions();
-        refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
-        rebuildDuplicateFromOptions();
-        refreshDuplicateTargetsForSelectedSource();
+        refreshDeviationStoreSelectorsAfterMutation();
         appendOpsLog("temporary_labelled_deviations_purged", want);
       }
 
@@ -3181,6 +3179,64 @@
           Array.isArray(pl.mergedCoordsManual) &&
           pl.mergedCoordsManual.length >= 2;
         return !hasOv && !hasProv && !hasTrace;
+      }
+
+      /**
+       * Snapshot JSON pour « Rétablir… » : après chargement fiche, ouverture session temp,
+       * ou fin de restore (évite références partagées au liveState).
+       */
+      function buildTemporaryRevertSnapshotFromMissionPattern(pat) {
+        if (!pat) return null;
+        return {
+          pattern_id: String(pat.pattern_id || ""),
+          payload: tamCloneSerializable({}, deviationPayloadFromLiveState()),
+          returnMode: coerceOpsMode(opsState.returnMode || OPS_MODE.BASE),
+          initialMode: coerceOpsMode(opsState.initialMode || OPS_MODE.BASE),
+        };
+      }
+
+      /**
+       * État bouton « Enregistrer la déviation planifiée » : session temp, contenu carte, verrou defer.
+       * @returns {{ disabled: boolean, title: string }}
+       */
+      function computePlannedSaveDeviationToolbarState(o) {
+        const deferEffective = o.deferPlannedGate && o.hasContent;
+        const canSave =
+          !o.temporarySessionOn &&
+          o.hasMission &&
+          o.hasContent &&
+          !deferEffective;
+        let title = "";
+        if (o.temporarySessionOn) {
+          title =
+            "Une session Temporaire est ouverte — enregistrez-la ou rétablissez avant une fiche planifiée.";
+        } else if (!o.hasMission) {
+          title =
+            "Choisissez une mission pour enregistrer une déviation planifiée.";
+        } else if (deferEffective) {
+          title =
+            "Pour activer « Enregistrer la déviation planifiée », utilisez d’abord un bouton du sous-onglet Planifiée (tracé, retirer le dernier point, valider ce tracé côté planifiée…). Cela évite d’associer à la Planifiée un retour simplement « depuis Temporaire / Rétablir » sans intention explicite.";
+        } else if (!o.hasContent) {
+          title = o.tipWhenSavingNeedsContent;
+        }
+        return { disabled: !canSave, title };
+      }
+
+      /**
+       * État bouton « Enregistrer la déviation temporaire » (session + contenu carte).
+       * @returns {{ disabled: boolean, title: string }}
+       */
+      function computeTemporarySaveDeviationToolbarState(o) {
+        const canSave =
+          o.temporarySessionOn && o.hasMission && o.hasContent;
+        let title = "";
+        if (!o.hasMission) {
+          title =
+            "Choisissez une mission pour enregistrer la déviation temporaire.";
+        } else if (!canSave) {
+          title = o.tipWhenSavingNeedsContent;
+        }
+        return { disabled: !canSave, title };
       }
 
       /** Repositionner les trois sélecteurs mission sur un pattern exact. */
@@ -3746,13 +3802,9 @@
           forceOpsReset: !!o.forceOpsReset,
         });
         await restoreDeviationPayloadIntoLiveState(item.payload || {});
-        /* Point de rétablissement Temporaire = cette fiche (planifiée ou ancienne temp) désormais sur la carte. */
-        snapshotBeforeTemporary = {
-          pattern_id: String(pat.pattern_id || ""),
-          payload: tamCloneSerializable({}, deviationPayloadFromLiveState()),
-          returnMode: coerceOpsMode(opsState.returnMode || OPS_MODE.BASE),
-          initialMode: coerceOpsMode(opsState.initialMode || OPS_MODE.BASE),
-        };
+        /* Point de rétablissement (= cette fiche sur la carte, pour Rétablir sous Temporaire). */
+        snapshotBeforeTemporary =
+          buildTemporaryRevertSnapshotFromMissionPattern(pat);
         refreshSavedDeviationBannerAndDup(item);
         appendOpsLog("deviation_loaded", item.pattern_id || "");
         if (driveMode === DRIVE_MODE.SIMULATION) {
@@ -3853,12 +3905,8 @@
         }
         ensureOpsTargetPattern();
         plannedDeviationEditSnapshot = null;
-        snapshotBeforeTemporary = {
-          pattern_id: String(p.pattern_id || ""),
-          payload: deviationPayloadFromLiveState(),
-          returnMode: coerceOpsMode(opsState.returnMode || OPS_MODE.BASE),
-          initialMode: coerceOpsMode(opsState.initialMode || OPS_MODE.BASE),
-        };
+        snapshotBeforeTemporary =
+          buildTemporaryRevertSnapshotFromMissionPattern(p);
         opsState.temporaryDeviationActive = true;
         refreshTemporaryDeviationUi();
         appendOpsLog(
@@ -3927,12 +3975,8 @@
           /* Pas de bouton Planifiée bleu tant qu’aucun geste prévu sous Planifiée après ce retour carte. */
           deferPlannedSaveUntilEditedAfterTempRecorded = true;
           applyOpsStateUi();
-          snapshotBeforeTemporary = {
-            pattern_id: String(pat.pattern_id || ""),
-            payload: tamCloneSerializable({}, deviationPayloadFromLiveState()),
-            returnMode: coerceOpsMode(opsState.returnMode || OPS_MODE.BASE),
-            initialMode: coerceOpsMode(opsState.initialMode || OPS_MODE.BASE),
-          };
+          snapshotBeforeTemporary =
+            buildTemporaryRevertSnapshotFromMissionPattern(pat);
           recomputeSkippedStopsForCurrentMission();
           rebuildActiveGuideStops();
           drawAllStopsOverlay();

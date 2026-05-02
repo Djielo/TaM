@@ -42,6 +42,8 @@ python serve_tam.py
 
 - [http://localhost:8000/simulateur_sae.html](http://localhost:8000/simulateur_sae.html)
 
+Dans l’onglet **Déviation** du simulateur, les sous-onglets **Planifiée** et **Temporaire** sont des parcours distincts (session temporaire, Rétablir, enregistrements locaux) — voir **[EVOLUTION_ET_BACKLOG.md](EVOLUTION_ET_BACKLOG.md)** §2.1 pour le comportement acté et les noms des helpers dans le code.
+
 Optionnel (secours hors ligne pour le mode planifie):
 
 ```bash

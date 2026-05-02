@@ -30,6 +30,7 @@ C’est la **liste de ce qu’il reste à faire** (sections **4** et suivantes).
 | **« Saisir une déviation en Mode manuel »** | **Bouton UI retiré** — le flux métier demeure : **tracé validé**, **arrêts non desservis** et **réactivation** réservée dans le code sous `activateStoredManualDeviationMode()` (console / extension future si besoin). |
 | **Tracé manuel — plusieurs portions** | Plusieurs validations successives conservées en chaîne (`detourVisualChain`) avec **ancrage sur la ligne de base** ; **suppression d’une portion précise** ; liste déroulante « Portion à supprimer » ; **mise en évidence carte ↔ liste** (portion sélectionnée / clic sur tracé jaune). |
 | **« Saisir arrêts provisoires »** / **« Retirer dernier arrêt provisoire »** | **Actifs** (priorité §0) — V1 dans le simulateur ; **exclusif** avec le mode saisie arrêt non desservi au même instant. |
+| **Sous-onglets Planifiée / Temporaire** | **Distincts** (mai 2026+) : sessions temporaires, snapshot Rétablir, verrou bouton planifiée après temp/Rétablir, purge fiches temporaires par ligne — détail **§2.1** (sous la section 2 du présent document). |
 
 ---
 
@@ -74,9 +75,22 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - Parcours mission : ligne → terminus / sens → variante ; carte, progression (gris / reste en bleu), tronçon **vert** stop-to-stop (`guidage_troncons_arrets.js`).
 - **Interface** : menu burger, onglets Mission / Modes / Audio, récap carte, **bandeau** sous le titre (ligne + direction, couleurs, appui long pour faire défiler le texte, relâchement = retour compact).
 - **Couleurs** de ligne (sélecteur, menus mission, pastilles) ; **contraste** texte (listes T3 / bus à fond clair, etc.) ; polyligne carte **restante** en **bleu TAM** (retrait de la coloration par ligne = lisibilité sur fond OSM).
-- **Modes d’exploitation** (onglet Modes) : **V1 centrée déviation manuelle** ; les boutons planifié / temps réel ont été **retirés** du simulateur (mai 2026). Restent tracé manuel carte, validation, **chaîne de portions** avec suppression ciblée, arrêts non desservis, **arrêts provisoires**, retours **base** et **rétablissement du mode du début de mission**.
+- **Modes d’exploitation** (onglet Déviation) : **V1 centrée déviation manuelle** ; les boutons planifié auto / temps réel ont été **retirés** du simulateur (mai 2026). **Planifiée** vs **Temporaire** (sous-onglets) ; tracés validés chaînés ; **Rétablir le mode exploitation…** sous **Temporaire** uniquement ; **base** commune avec « Revenir au Mode base ».
 - **Déviations enregistrées** : stockage **local** (`localStorage`), charger / nouvelle entrée / mise à jour / duplication vers autre variante ; correction mai 2026 du **double `readDeviationStore`** lors du « Mettre à jour » ; **synchronisation automatique** du payload de l’entrée sélectionnée après suppression d’une portion ou effacement du tracé validé (si la mission courante correspond au `pattern_id` de la fiche).
 - **Perturbations** : piste `serve_tam` + `update_tam_perturbations.py` / `tam_perturbations.json` (éviter CORS sur chargement “Infos trafic”).
+
+### 2.1 Déviation — Planifiée / Temporaire (`simulateur_sae.html`, mai 2026)
+
+À viser pour toute reprise code : un **bloc commentaire** au-dessus de `opsState` dans `simulateur_sae.html` résume le modèle ; les **helpers** regroupent snapshot / barres d’outils / rafraîchissement des listes après mutation `localStorage`.
+
+| Sujet | Comportement retenu |
+|--------|----------------------|
+| **Planifiée** | Tracer / valider / enregistrer **planifiée** ; dates et duplication sous **Enregistrée / Dupliquée** ; « Revenir au Mode base » visible Planifiée + Temporaire. |
+| **Temporaire** | Session au **premier geste utile** sous Temporaire ; **Rétablir le mode exploitation du début de mission** **uniquement** sous cet onglet ; fiches locales au libellé « Déviation temporaire — … ». |
+| **Snapshot Rétablir** | Mémorisé au **chargement** d’une fiche enregistrée et à l’**ouverture** de session temporaire (clone du payload carte). Rétablir restaure cet état (ex. planifiée chargée), pas la ligne brute sans déviation. |
+| **Verrou « Enregistrer planifiée »** | Après **Enregistrer la déviation temporaire** ou après **Rétablir…**, le bouton reste inactif tant qu’aucune **validation du tracé** n’est faite via le bouton **Planifiée** (« Valider le tracé de la déviation planifiée »). Quitter un brouillon sans rien tracer ne doit pas rouvrir l’enregistrement planifiée par erreur. |
+| **Purge locale au Rétablir** | Retrait du stockage navigateur des fiches dont le libellé est une déviation **temporaire** pour la **même ligne** (`route_short_name`), y compris duplicatas de variante. |
+| **Refactor lisibilité** | `buildTemporaryRevertSnapshotFromMissionPattern`, `computePlannedSaveDeviationToolbarState`, `computeTemporarySaveDeviationToolbarState`, `refreshDeviationStoreSelectorsAfterMutation`. |
 
 ---
 
@@ -124,7 +138,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - [ ] Cohérence purement **manuel** (tracé ↔ arrêts ↔ provisoires ↔ annonces) sans réintroduire de dépendance planifié / TR.
 - [x] **Persistance locale** du trio **tracé + overrides arrêts non desservis + arrêts provisoires** dans une même entrée « Déviations enregistrées », avec **chargement** et **mise à jour** ; **réédition** sans tout resaisir — **V1 en place**. Restent ouverts : plages de dates métier plus riches si besoin, export hors navigateur, garde-fou GTFS (case suivante).
 - [ ] **Garde-fou données** : comparer au chargement **empreinte jeu GTFS / JSON** (`dataset_digest`) et **signature du pattern** (`pattern_signature`) à celles mémorisées avec l’enregistrement → **alerte** si le réseau de référence a changé (voir conception build `simulation_data.json`).
-- [ ] (Après garde-fou / modèle stable) **Dupliquer** une déviation enregistrée vers **d’autres variantes** du même sens (gain de temps ; révision possible par variante).
+- [x] **Dupliquer** une déviation enregistrée vers **d’autres variantes** du même sens — **V1 en place** dans le simulateur (UI Enregistrée / Dupliquée) ; révision par variante et garde-fou données restent ouverts ailleurs dans **4C**.
 
 ### 4D. Emballage produit (quand le fond métier est stable)
 
@@ -152,7 +166,7 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 | Fichier | Rôle |
 |---------|------|
-| `simulateur_sae.html` | UI, carte, **déviation manuelle** (tracé chaîné, portions, arrêts non desservis, **arrêts provisoires**, stockage local des fiches) ; flux planifié / temps réel **absents** du JS (mai 2026) |
+| `simulateur_sae.html` | UI, carte, **déviation manuelle** (tracé chaîné, portions, arrêts non desservis, **arrêts provisoires**, stockage local) ; sous-onglets **Planifiée / Temporaire / Enregistrée-Dupliquée** (mai 2026) ; flux planifié auto / temps réel **absents** du JS |
 | `serve_tam.py` | Fichiers statiques + API locale (ex. perturbations) |
 | `build_simulator_data.py` | Génère `simulation_data.json` (GTFS + réseau 3M en ZIP/JSON) |
 | `update_tam_perturbations.py` | Télécharge / alimente les perturbations (secours) |
@@ -161,4 +175,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-02 (portions multiples, ancres base, synchro carte ↔ liste, persistance auto après suppression de portion, refactor helpers payload ; refactorisation code documentée dans `RAPPORT_REFACTORISATION_2026-05-02.md`). Mettre à jour cette date quand on modifie le mémo.*
+*Dernière révision de **ce** fichier markdown : 2026-05-02 — ajout **§2.1** (Planifiée / Temporaire, Rétablir, verrou enregistrement planifiée, purge fiches temporaires, noms des helpers JS) ; case **Dupliquer** 4C passée en réalisé V1. Voir aussi `RAPPORT_REFACTORISATION_2026-05-02.md` pour un autre volet refactor. Mettre à jour cette date quand on modifie le mémo.*
