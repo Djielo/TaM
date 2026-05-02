@@ -279,6 +279,21 @@
       .panel-head button.active {
         background: #005ca9;
       }
+      .panel-ops-subtabs {
+        gap: 6px;
+      }
+      .panel-ops-subtabs button {
+        flex: 1 1 0;
+        min-width: 0;
+        background: #4a5563;
+        width: auto;
+        padding: 8px 6px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .panel-ops-subtabs button.active {
+        background: #005ca9;
+      }
       .panel-section {
         display: none;
       }
@@ -492,15 +507,18 @@
           >
             <div class="mission-context-row-inner">
               <span id="missionContextPill" class="mission-context-pill"></span
-              ><span id="missionContextDest" class="mission-context-dest"></span>
+              ><span
+                id="missionContextDest"
+                class="mission-context-dest"
+              ></span>
             </div>
           </div>
         </div>
         <div id="controlPanel" class="control-panel">
           <div class="panel-sheet">
             <div class="panel-head">
-              <button id="missionTabBtn" type="button">Mission</button>
-              <button id="opsTabBtn" type="button">Modes</button>
+              <button id="missionTabBtn" type="button">Ligne</button>
+              <button id="opsTabBtn" type="button">Déviation</button>
               <button id="voiceTabBtn" type="button">Audio</button>
               <button
                 id="closeMenuBtn"
@@ -525,10 +543,14 @@
                       aria-expanded="false"
                       aria-controls="lineSelectListbox"
                     >
-                      <span id="lineSelectTriggerLabel" class="line-select-trigger-txt"
+                      <span
+                        id="lineSelectTriggerLabel"
+                        class="line-select-trigger-txt"
                         >—</span
                       >
-                      <span class="line-select-caret" aria-hidden="true">▾</span>
+                      <span class="line-select-caret" aria-hidden="true"
+                        >▾</span
+                      >
                     </button>
                     <div
                       class="line-select-listbox"
@@ -550,7 +572,9 @@
             </div>
             <div class="row panel-section panel-mission">
               <div class="grow">
-                <label for="driveModeSelect">Choisir le mode de conduite (Réel ou Simu)</label>
+                <label for="driveModeSelect"
+                  >Choisir le mode de conduite (Réel ou Simu)</label
+                >
                 <select id="driveModeSelect">
                   <option value="simulation">Simulation (avance auto)</option>
                   <option value="real">Réel GPS (position téléphone)</option>
@@ -589,14 +613,37 @@
                 </select>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops panel-ops-subtabs">
+              <button
+                type="button"
+                class="secondary ops-subtab-btn"
+                data-ops-subtab="dev"
+              >
+                Planifiée
+              </button>
+              <button
+                type="button"
+                class="secondary ops-subtab-btn"
+                data-ops-subtab="devtemp"
+              >
+                Temporaire
+              </button>
+              <button
+                type="button"
+                class="secondary ops-subtab-btn"
+                data-ops-subtab="rec"
+              >
+                Enregistrée / Dupliquée
+              </button>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
               <div class="grow">
                 <button id="nonServedBtn" class="secondary" type="button">
                   Saisir arrêt non desservi
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
               <div class="grow">
                 <button id="provisionalStopBtn" class="secondary" type="button">
                   Saisir arrêts provisoires
@@ -608,7 +655,7 @@
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
               <div class="grow">
                 <button id="manualDrawStartBtn" class="secondary" type="button">
                   Tracer la déviation (carte)
@@ -625,14 +672,44 @@
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
               <div class="grow">
-                <label for="manualTraceSegmentSelect">Portion à supprimer</label>
+                <button id="saveDeviationBtn" type="button">
+                  Enregistrer la nouvelle entrée
+                </button>
+                <p
+                  class="note"
+                  style="margin: 6px 0 0; color: #c62828; font-weight: 400"
+                >
+                  Après avoir cliqué sur
+                  <strong>«&nbsp;Enregistrer la nouvelle entrée&nbsp;»</strong
+                  >,<br />
+                  allez sur
+                  <strong>«&nbsp;Enregistrée / Dupliquée&nbsp;»</strong> pour
+                  changer les dates.
+                </p>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
+              <div class="grow">
+                <label for="manualTraceSegmentSelect"
+                  >Déviation à supprimer</label
+                >
                 <select id="manualTraceSegmentSelect" disabled></select>
-                <p class="note" style="margin: 6px 0 0">
-                  Chaque portion est enregistrée avec une zone de remplacement sur la
-                  <strong>ligne théorique (base)</strong> : vous pouvez retirer une portion précise ; les autres sont recalculées dans le même ordre. Anciennes fiches sans ces ancres : ouverture ou première action les complète automatiquement.
-                  La portion choisie dans la liste est mise en évidence sur la carte (jaune plus clair, tirets) ; en sens inverse, un clic sur un tracé jaune ouvre une bulle « Portion n°… » et aligne la liste.
+                <p
+                  class="note"
+                  style="margin: 6px 0 0; color: #c62828; font-weight: 400"
+                >
+                  <strong>Conseil :</strong> Allez sur la carte et sélectionnez
+                  la déviation à supprimer. Revenez ici, votre déviation sera
+                  sélectionnée. Vous n’aurez plus qu’à cliquer sur le bouton
+                  <strong
+                    >«&nbsp;Supprimer la déviation sélectionnée&nbsp;»</strong
+                  >.<br />
+                  <strong>Attention :</strong> Utilisez le bouton
+                  <strong>«&nbsp;Supprimer toutes les déviations&nbsp;»</strong>
+                  avec prudence car il supprimera toutes déviations de cette
+                  variante.
                 </p>
               </div>
               <div class="grow">
@@ -640,25 +717,25 @@
                   id="manualTraceRemoveSegmentBtn"
                   class="secondary"
                   type="button"
-                  title="Retire uniquement la portion sélectionnée ; les arrêts non desservis et provisoires sont conservés."
+                  title="Supprime la déviation sélectionnée ; les arrêts non desservis et provisoires sont conservés."
                 >
-                  Supprimer uniquement cette portion
+                  Supprimer la déviation sélectionnée
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
               <div class="grow">
                 <button
                   id="manualTraceClearBtn"
                   class="secondary"
                   type="button"
-                  title="Supprime tout le tracé (y compris toutes les portions chaînées après validations multiples)."
+                  title="Supprime toutes les déviations tracées (y compris après plusieurs validations)."
                 >
-                  Supprimer tout le tracé manuel
+                  Supprimer toutes les déviations
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="devtemp">
               <div class="grow">
                 <button id="temporaryDeviationBtn" type="button">
                   Créer la déviation temporaire
@@ -679,25 +756,25 @@
                   class="secondary"
                   type="button"
                 >
-                  Enregistrer (déviation temporaire)
+                  Enregistrer la déviation temporaire
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
               <div class="grow">
                 <button id="returnInitialBtn" class="secondary" type="button">
                   Rétablir le mode exploitation du début de mission
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
               <div class="grow">
                 <button id="returnBaseBtn" class="secondary" type="button">
                   Revenir au Mode base
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
                 <p
                   id="savedDeviationStaleNote"
@@ -707,7 +784,7 @@
                 ></p>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
                 <label for="savedDeviationSelect"
                   >Déviations enregistrées (stockage navigateur)</label
@@ -715,9 +792,11 @@
                 <select id="savedDeviationSelect"></select>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
-                <label for="savedDeviationValidFrom">Valide du (optionnel)</label>
+                <label for="savedDeviationValidFrom"
+                  >Valide du (optionnel)</label
+                >
                 <input type="date" id="savedDeviationValidFrom" />
               </div>
               <div class="grow">
@@ -725,19 +804,14 @@
                 <input type="date" id="savedDeviationValidTo" />
               </div>
             </div>
-            <div class="row panel-section panel-ops">
-              <div class="grow">
-                <button id="saveDeviationBtn" type="button">
-                  Enregistrer (nouvelle entrée)
-                </button>
-              </div>
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
                 <button id="updateDeviationBtn" class="secondary" type="button">
-                  Mettre à jour l’entrée sélectionnée
+                  MàJ des dates de l’entrée sélectionnée
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
                 <button id="loadDeviationBtn" class="secondary" type="button">
                   Charger la sélection
@@ -749,14 +823,21 @@
                 </button>
               </div>
             </div>
-            <div class="row panel-section panel-ops">
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
                 <p class="note" style="margin: 0">
-                  <strong>Duplication de variantes</strong> — pour dupliquer vers une autre variante (même ligne et sens), choisissez une <strong>fiche source</strong> et la <strong>variante cible</strong>, puis confirmez.
+                  <strong>Duplication de variantes</strong> — pour dupliquer
+                  vers une autre variante (même ligne et sens), choisissez une
+                  <strong>fiche source</strong> et la
+                  <strong>variante cible</strong>, puis confirmez.
                 </p>
               </div>
             </div>
-            <div class="row panel-section panel-ops" id="duplicatePanelRow">
+            <div
+              class="row panel-section panel-ops"
+              id="duplicatePanelRow"
+              data-ops-sub="rec"
+            >
               <div class="grow">
                 <label for="duplicateFromDeviationSelect">Fiche source</label>
                 <select id="duplicateFromDeviationSelect"></select>
@@ -768,7 +849,11 @@
                 <select id="duplicateTargetVariantSelect"></select>
               </div>
               <div class="grow">
-                <button id="duplicateDeviationBtn" class="secondary" type="button">
+                <button
+                  id="duplicateDeviationBtn"
+                  class="secondary"
+                  type="button"
+                >
                   Confirmer la duplication
                 </button>
               </div>
@@ -873,8 +958,8 @@
       </div>
     </div>
 
-  <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="vendor/leaflet/leaflet-rotate.js"></script>
+    <script src="vendor/leaflet/leaflet.js"></script>
+    <script src="vendor/leaflet/leaflet-rotate.js"></script>
     <script src="guidage_troncons_arrets.js"></script>
     <script>
       let data = null;
@@ -946,7 +1031,7 @@
       };
       /** État explo à restaurer par « Rétablir… » (capturé au moment de l’activation). */
       let snapshotBeforeTemporary = null;
-      /** Fiches créées via « Enregistrer (déviation temporaire) » pendant la session courante (purger au rétablissement / mode base). */
+      /** Fiches créées via « Enregistrer la déviation temporaire » pendant la session courante (purger au rétablissement / mode base). */
       let deviationIdsSavedDuringTemporarySession = [];
       /** Après « Valider la déviation temporaire », le bouton d’enregistrement reste proposé jusqu’à sauvegarde ou réinitialisation. */
       let pendingTemporaryDeviationStoreSave = false;
@@ -964,7 +1049,9 @@
       const lineSelect = document.getElementById("lineSelect");
       const lineSelectDual = document.getElementById("lineSelectDual");
       const lineSelectTrigger = document.getElementById("lineSelectTrigger");
-      const lineSelectTriggerLabel = document.getElementById("lineSelectTriggerLabel");
+      const lineSelectTriggerLabel = document.getElementById(
+        "lineSelectTriggerLabel",
+      );
       const lineSelectListbox = document.getElementById("lineSelectListbox");
       let lineListboxOpen = false;
       const controlPanelEl = document.getElementById("controlPanel");
@@ -975,8 +1062,37 @@
       const missionTabBtn = document.getElementById("missionTabBtn");
       const opsTabBtn = document.getElementById("opsTabBtn");
       const voiceTabBtn = document.getElementById("voiceTabBtn");
-      /** Dernier onglet du menu pour rouvrir au même endroit (Mission / Modes / Voix). */
+      /** Dernier onglet du menu pour rouvrir au même endroit (Ligne / Déviation / Voix). */
       let controlPanelRememberTab = "mission";
+      /** Sous-onglet dans « Déviation » : dev | devtemp | rec */
+      let controlPanelRememberOpsSubtab = "dev";
+      const OPS_SUBTAB_IDS = ["dev", "devtemp", "rec"];
+      function normalizeOpsSubtab(sub) {
+        const s = String(sub || "").trim();
+        return OPS_SUBTAB_IDS.includes(s) ? s : "dev";
+      }
+      function applyOpsPanelsVisibility() {
+        if (!controlPanelEl) return;
+        const sub = normalizeOpsSubtab(controlPanelRememberOpsSubtab);
+        controlPanelRememberOpsSubtab = sub;
+        controlPanelEl
+          .querySelectorAll(".panel-ops[data-ops-sub]")
+          .forEach((el) => {
+            const raw = el.getAttribute("data-ops-sub") || "";
+            const tokens = raw.trim().split(/\s+/).filter(Boolean);
+            el.classList.toggle("show", tokens.includes(sub));
+          });
+        controlPanelEl
+          .querySelectorAll(".panel-ops-subtabs [data-ops-subtab]")
+          .forEach((btn) => {
+            const id = btn.getAttribute("data-ops-subtab");
+            btn.classList.toggle("active", id === sub);
+          });
+      }
+      function setOpsSubtab(sub) {
+        controlPanelRememberOpsSubtab = normalizeOpsSubtab(sub);
+        if (controlPanelRememberTab === "ops") applyOpsPanelsVisibility();
+      }
       const headsignSelect = document.getElementById("headsignSelect");
       const variantSelect = document.getElementById("variantSelect");
       const speedSelect = document.getElementById("speedSelect");
@@ -991,7 +1107,9 @@
 
       const missionName = document.getElementById("missionName");
       const missionContextBar = document.getElementById("missionContextBar");
-      const missionContextScroll = document.getElementById("missionContextScroll");
+      const missionContextScroll = document.getElementById(
+        "missionContextScroll",
+      );
       const missionContextPill = document.getElementById("missionContextPill");
       const missionContextDest = document.getElementById("missionContextDest");
       const MISSION_PAN_LONG_MS = 700;
@@ -1035,7 +1153,10 @@
             touchArmStartX = t0.clientX;
             touchArmStartY = t0.clientY;
             clearMissionContextPanTimer();
-            missionContextPanTimer = setTimeout(armPanMode, MISSION_PAN_LONG_MS);
+            missionContextPanTimer = setTimeout(
+              armPanMode,
+              MISSION_PAN_LONG_MS,
+            );
           },
           { passive: true },
         );
@@ -1088,7 +1209,10 @@
           clearMissionContextPanTimer();
         });
         el.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && el.classList.contains("mission-context-scroll--pan")) {
+          if (
+            e.key === "Escape" &&
+            el.classList.contains("mission-context-scroll--pan")
+          ) {
             el.classList.remove("mission-context-scroll--pan");
             el.scrollLeft = 0;
           }
@@ -1107,7 +1231,9 @@
       const manualDrawStartBtn = document.getElementById("manualDrawStartBtn");
       const manualDrawUndoBtn = document.getElementById("manualDrawUndoBtn");
       const manualDrawSaveBtn = document.getElementById("manualDrawSaveBtn");
-      const manualTraceClearBtn = document.getElementById("manualTraceClearBtn");
+      const manualTraceClearBtn = document.getElementById(
+        "manualTraceClearBtn",
+      );
       const manualTraceSegmentSelectEl = document.getElementById(
         "manualTraceSegmentSelect",
       );
@@ -1209,7 +1335,8 @@
           Number.isFinite(speedKmh) && speedKmh >= 0
             ? ` | ~${Math.round(speedKmh * 3.6)} km/h`
             : "";
-        const qualif = acc && acc > 80 ? "GPS actif (précision faible)" : "GPS actif";
+        const qualif =
+          acc && acc > 80 ? "GPS actif (précision faible)" : "GPS actif";
         setGpsStatus(
           `${qualif} (~${Math.max(1, Math.round(acc || 0))} m${speedInfo}).`,
         );
@@ -1248,7 +1375,9 @@
       function refreshDriveModeUi() {
         if (!startBtn) return;
         startBtn.textContent =
-          driveMode === DRIVE_MODE.REAL ? "Démarrer mode réel GPS" : "Démarrer simulation";
+          driveMode === DRIVE_MODE.REAL
+            ? "Démarrer mode réel GPS"
+            : "Démarrer simulation";
         if (driveMode === DRIVE_MODE.SIMULATION) {
           setGpsStatus("GPS inactif.");
         } else if (gpsWatchId == null) {
@@ -1320,7 +1449,10 @@
           }
           const trimmed = String(nameIn).trim() || defaultName;
           const id = `prov_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-          const projM = distanceAlongPathForLatLng(ev.latlng.lat, ev.latlng.lng);
+          const projM = distanceAlongPathForLatLng(
+            ev.latlng.lat,
+            ev.latlng.lng,
+          );
           const snapped = pointAtDistanceMeters(projM);
           opsState.provisionalStops.push({
             id,
@@ -1357,15 +1489,18 @@
           ) {
             manualTraceSegmentSelectEl.value = String(hit);
             applyManualDeviationOverlayStyles(getMapVisualProfile());
-            const n =
-              manualProfileToVisualChainArray(opsState.manualProfile).length;
+            const n = manualProfileToVisualChainArray(
+              opsState.manualProfile,
+            ).length;
             L.popup({ maxWidth: 300, className: "tam-portion-popup-wrap" })
               .setLatLng(ev.latlng)
               .setContent(
-                `<div style="line-height:1.35"><strong>Portion ${hit + 1}</strong> sur ${n}<br/><span style="font-size:12px;opacity:.88">Liste « Portion à supprimer » mise sur cette portion.</span></div>`,
+                `<div style="line-height:1.35"><strong>Déviation ${hit + 1}</strong> sur ${n}<br/><span style="font-size:12px;opacity:.88">Liste « Déviation à supprimer » alignée sur cette déviation.</span></div>`,
               )
               .openOn(map);
-            setGpsStatus(`Portion ${hit + 1} sur ${n} — identifiée sur la carte.`);
+            setGpsStatus(
+              `Déviation ${hit + 1} sur ${n} — identifiée sur la carte.`,
+            );
             return;
           }
         }
@@ -1534,7 +1669,8 @@
           manualDraftMarkers.forEach((m, idx) => {
             const r = idx === 0 ? p.draftPointRadiusMain : p.draftPointRadius;
             if (typeof m.setRadius === "function") m.setRadius(r);
-            if (typeof m.setStyle === "function") m.setStyle({ weight: p.stopStroke });
+            if (typeof m.setStyle === "function")
+              m.setStyle({ weight: p.stopStroke });
           });
         }
         drawAllStopsOverlay();
@@ -1563,7 +1699,7 @@
         chain.forEach((_, i) => {
           const opt = document.createElement("option");
           opt.value = String(i);
-          opt.textContent = `Portion ${i + 1} (${chain.length} au total)`;
+          opt.textContent = `Déviation ${i + 1} (${chain.length} au total)`;
           sel.appendChild(opt);
         });
         let pick = chain.length - 1;
@@ -1582,7 +1718,8 @@
             : "Tracer la déviation (carte)";
         }
         if (manualDrawUndoBtn) {
-          manualDrawUndoBtn.disabled = !manualDrawActive || manualDraftPoints.length === 0;
+          manualDrawUndoBtn.disabled =
+            !manualDrawActive || manualDraftPoints.length === 0;
         }
         if (manualDrawSaveBtn) {
           manualDrawSaveBtn.disabled = manualDraftPoints.length < 2;
@@ -1592,8 +1729,7 @@
             opsState.manualProfile &&
             Array.isArray(opsState.manualProfile.mergedCoords) &&
             opsState.manualProfile.mergedCoords.length >= 2;
-          const hasDraft =
-            !!manualDrawActive && manualDraftPoints.length > 0;
+          const hasDraft = !!manualDrawActive && manualDraftPoints.length > 0;
           manualTraceClearBtn.disabled = !hasValidatedTrace && !hasDraft;
         }
         refreshManualTraceSegmentSelectUi();
@@ -1607,7 +1743,10 @@
             chainSegs === 0 || blockedDraft;
         }
         if (nonServedBtn) {
-          nonServedBtn.classList.toggle("active", !!opsState.nonServedEditActive);
+          nonServedBtn.classList.toggle(
+            "active",
+            !!opsState.nonServedEditActive,
+          );
           nonServedBtn.textContent = opsState.nonServedEditActive
             ? "Quitter le mode arrêt non desservi"
             : "Saisir arrêt non desservi";
@@ -1767,9 +1906,7 @@
           ])
           .filter(
             ([lo, hi]) =>
-              Number.isFinite(lo) &&
-              Number.isFinite(hi) &&
-              hi - lo > 0.5,
+              Number.isFinite(lo) && Number.isFinite(hi) && hi - lo > 0.5,
           )
           .sort((x, y) => x[0] - y[0]);
         if (!sorted.length) return [];
@@ -1840,9 +1977,7 @@
         const s0 = Number(seg.startDistanceOnBase);
         const s1 = Number(seg.endDistanceOnBase);
         const useAnchors =
-          Number.isFinite(s0) &&
-          Number.isFinite(s1) &&
-          Math.abs(s1 - s0) > 0.5;
+          Number.isFinite(s0) && Number.isFinite(s1) && Math.abs(s1 - s0) > 0.5;
 
         if (useAnchors) {
           const lo = Math.min(s0, s1);
@@ -1944,7 +2079,9 @@
             Math.abs(se - sb) > 0.5;
           const mr = mergeManualDetourOntoReference(
             base,
-            previousMerged && previousMerged.length >= 2 ? previousMerged : base,
+            previousMerged && previousMerged.length >= 2
+              ? previousMerged
+              : base,
             seg,
           );
           if (!mr) return;
@@ -1977,8 +2114,14 @@
         });
         if (!mergedResult) return null;
 
-        const { mergedCoords, bypassedCoords, detourCoords, segOnBase, dA, dB } =
-          mergedResult;
+        const {
+          mergedCoords,
+          bypassedCoords,
+          detourCoords,
+          segOnBase,
+          dA,
+          dB,
+        } = mergedResult;
 
         const prevRanges = previousProfile
           ? normalizeBypassRangesOnBase(previousProfile)
@@ -2020,9 +2163,7 @@
       /** Copie profonde d’un JSON sérialisable (état payload / overrides). */
       function tamCloneSerializable(fallback, src) {
         try {
-          return JSON.parse(
-            JSON.stringify(src !== undefined ? src : fallback),
-          );
+          return JSON.parse(JSON.stringify(src !== undefined ? src : fallback));
         } catch {
           return fallback;
         }
@@ -2059,8 +2200,13 @@
       /** Segments successifs issus du stockage (chaîne ou ancien format une seule portion). */
       function manualProfileToVisualChainArray(mp) {
         if (!mp || typeof mp !== "object") return [];
-        if (Array.isArray(mp.detourVisualChain) && mp.detourVisualChain.length) {
-          return mp.detourVisualChain.map(normalizeDeviationChainSegmentFromStored);
+        if (
+          Array.isArray(mp.detourVisualChain) &&
+          mp.detourVisualChain.length
+        ) {
+          return mp.detourVisualChain.map(
+            normalizeDeviationChainSegmentFromStored,
+          );
         }
         if (Array.isArray(mp.detourCoords) && mp.detourCoords.length >= 2) {
           return [
@@ -2156,7 +2302,9 @@
         }
         const p = getMapVisualProfile();
         chains.forEach((seg, segIdx) => {
-          const byp = Array.isArray(seg.bypassedCoords) ? seg.bypassedCoords : [];
+          const byp = Array.isArray(seg.bypassedCoords)
+            ? seg.bypassedCoords
+            : [];
           const det = Array.isArray(seg.detourCoords) ? seg.detourCoords : [];
           if (byp.length >= 2) {
             const line = L.polyline(byp, {
@@ -2216,9 +2364,14 @@
             .forEach((s) => s.classList.add("show"));
           missionTabBtn?.classList.add("active");
         } else if (panelName === "ops") {
-          controlPanelEl
-            .querySelectorAll(".panel-ops")
-            .forEach((s) => s.classList.add("show"));
+          controlPanelEl.querySelectorAll(".panel-ops").forEach((s) => {
+            if (s.hasAttribute("data-ops-sub")) {
+              s.classList.remove("show");
+            } else {
+              s.classList.add("show");
+            }
+          });
+          applyOpsPanelsVisibility();
           opsTabBtn?.classList.add("active");
         } else if (panelName === "voice") {
           controlPanelEl
@@ -2308,7 +2461,10 @@
           temporaryDeviationBtn.textContent = on
             ? "Création en cours…"
             : "Créer la déviation temporaire";
-          temporaryDeviationBtn.setAttribute("aria-pressed", on ? "true" : "false");
+          temporaryDeviationBtn.setAttribute(
+            "aria-pressed",
+            on ? "true" : "false",
+          );
           temporaryDeviationBtn.classList.toggle("primary", on);
         }
         if (temporaryDeviationCommitBtn) {
@@ -2436,10 +2592,7 @@
         refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
         rebuildDuplicateFromOptions();
         refreshDuplicateTargetsForSelectedSource();
-        appendOpsLog(
-          "temporary_saved_deviations_purged",
-          [...idSet].join(","),
-        );
+        appendOpsLog("temporary_saved_deviations_purged", [...idSet].join(","));
       }
 
       function getPatternDigest(pat) {
@@ -2451,7 +2604,9 @@
       /** Horodatage et empreintes communes aux entrées « Déviations enregistrées » (localStorage). */
       function stampDeviationItemPayloadMeta(cur, p, nowIso) {
         cur.pattern_id = p.pattern_id;
-        cur.origin_deviation_id = String(cur.origin_deviation_id || cur.id || "");
+        cur.origin_deviation_id = String(
+          cur.origin_deviation_id || cur.id || "",
+        );
         cur.pattern_signature_snapshot = getPatternDigest(p);
         cur.dataset_digest_snapshot = datasetDigestLoaded || "";
         cur.updated_at = nowIso;
@@ -2483,7 +2638,9 @@
       }
 
       function isDeviationTemporaireStoredLabel(raw) {
-        const s = String(raw || "").trim().toLowerCase();
+        const s = String(raw || "")
+          .trim()
+          .toLowerCase();
         return (
           s.startsWith("déviation temporaire") ||
           s.startsWith("deviation temporaire")
@@ -2541,7 +2698,9 @@
 
       function routeShortNameForSavedDeviation(item) {
         const pid = String(item?.pattern_id || "");
-        const pat = data?.patterns?.find((p) => String(p.pattern_id || "") === pid);
+        const pat = data?.patterns?.find(
+          (p) => String(p.pattern_id || "") === pid,
+        );
         return String(pat?.route_short_name || "");
       }
 
@@ -2577,15 +2736,17 @@
               Number(pair[1]),
             ]),
             detourVisualChain: Array.isArray(mp.detourVisualChain)
-              ? mp.detourVisualChain.map(normalizeDeviationChainSegmentFromStored)
-              : ((mp.detourCoords || []).length >= 2
-                  ? [
-                      normalizeDeviationChainSegmentFromStored({
-                        detourCoords: mp.detourCoords,
-                        bypassedCoords: mp.bypassedCoords,
-                      }),
-                    ]
-                  : []),
+              ? mp.detourVisualChain.map(
+                  normalizeDeviationChainSegmentFromStored,
+                )
+              : (mp.detourCoords || []).length >= 2
+                ? [
+                    normalizeDeviationChainSegmentFromStored({
+                      detourCoords: mp.detourCoords,
+                      bypassedCoords: mp.bypassedCoords,
+                    }),
+                  ]
+                : [],
           };
         }
         return {
@@ -2597,10 +2758,7 @@
             {},
             opsState.manualStopOverrides,
           ),
-          provisionalStops: tamCloneSerializable(
-            [],
-            opsState.provisionalStops,
-          ),
+          provisionalStops: tamCloneSerializable([], opsState.provisionalStops),
         };
       }
 
@@ -2645,7 +2803,9 @@
         filteredByHeadsign.sort((a, b) =>
           a.variant_name.localeCompare(b.variant_name, "fr"),
         );
-        const vi = filteredByHeadsign.findIndex((x) => x.pattern_id === pat.pattern_id);
+        const vi = filteredByHeadsign.findIndex(
+          (x) => x.pattern_id === pat.pattern_id,
+        );
         if (vi < 0) return false;
         variantSelect.selectedIndex = vi;
         variantSelect.dispatchEvent(new Event("change"));
@@ -2660,7 +2820,9 @@
           }
           return;
         }
-        const anchor = data.patterns.find((p) => (p.pattern_id || "") === pidAnchor);
+        const anchor = data.patterns.find(
+          (p) => (p.pattern_id || "") === pidAnchor,
+        );
         if (!anchor) {
           duplicateTargetVariantSelectEl.innerHTML = "";
           return;
@@ -2749,7 +2911,9 @@
           return;
         }
         const st = readDeviationStore();
-        const src = st.items.find((x) => x.id === duplicateFromDeviationSelectEl.value);
+        const src = st.items.find(
+          (x) => x.id === duplicateFromDeviationSelectEl.value,
+        );
         rebuildDuplicateVariantChoices(src?.pattern_id || null);
         const originId = String(src?.origin_deviation_id || src?.id || "");
         const remaining = duplicateVariantChoices.filter((pat) => {
@@ -2777,7 +2941,8 @@
             });
           }
         }
-        if (duplicateDeviationBtn) duplicateDeviationBtn.disabled = !remaining.length;
+        if (duplicateDeviationBtn)
+          duplicateDeviationBtn.disabled = !remaining.length;
       }
 
       /** Affiche une date `YYYY-MM-DD` en libellé français (ex. 26 avril 2026). */
@@ -2875,7 +3040,9 @@
           refreshRecapDeviationMeta();
           return;
         }
-        const anchor = data.patterns.find((p) => (p.pattern_id || "") === item.pattern_id);
+        const anchor = data.patterns.find(
+          (p) => (p.pattern_id || "") === item.pattern_id,
+        );
 
         if (duplicateFromDeviationSelectEl) {
           duplicateFromDeviationSelectEl.value = item.id || "";
@@ -2916,10 +3083,7 @@
         }
 
         if (today && hasRange()) {
-          if (
-            item.valid_from &&
-            String(today) < String(item.valid_from)
-          ) {
+          if (item.valid_from && String(today) < String(item.valid_from)) {
             warns.push(
               `Période de validité : pas encore en vigueur (début le ${item.valid_from}).`,
             );
@@ -3005,14 +3169,13 @@
           return null;
         }
         const id =
-          savedDeviationSelectEl.selectedOptions[0]?.dataset?.deviationId ||
-          "";
+          savedDeviationSelectEl.selectedOptions[0]?.dataset?.deviationId || "";
         const st = storeCtx || readDeviationStore();
         return st.items.find((i) => String(i.id) === String(id)) || null;
       }
 
       /**
-       * Réécrit le payload de l'entrée sélectionnée si elle correspond à la mission courante (sans second clic « Mettre à jour »).
+       * Réécrit le payload de l'entrée sélectionnée si elle correspond à la mission courante (sans second clic « MàJ des dates… »).
        * Retourne true si une écriture locale a été effectuée.
        */
       function autoUpdateSelectedDeviationPayloadIfPossible(reasonShort) {
@@ -3126,10 +3289,7 @@
 
       async function loadDeviationItemIntoApp(item, opts) {
         const o = opts || {};
-        if (
-          opsState.temporaryDeviationActive &&
-          snapshotBeforeTemporary
-        ) {
+        if (opsState.temporaryDeviationActive && snapshotBeforeTemporary) {
           window.alert(
             "Quittez la déviation temporaire (bouton « Rétablir le mode exploitation du début de mission ») avant de charger une déviation enregistrée.",
           );
@@ -3228,13 +3388,17 @@
           (x) => String(x.pattern_id || "") === String(snap.pattern_id || ""),
         );
         if (!pat) {
-          window.alert("Mission du snapshot introuvable dans les données chargées.");
+          window.alert(
+            "Mission du snapshot introuvable dans les données chargées.",
+          );
           return;
         }
         restoringTemporarySnapshot = true;
         try {
           if (!selectMissionSelectorsForPattern(pat)) {
-            window.alert("Impossible de repositionner les sélecteurs de mission.");
+            window.alert(
+              "Impossible de repositionner les sélecteurs de mission.",
+            );
             return;
           }
           running = false;
@@ -3248,7 +3412,9 @@
           });
           await restoreDeviationPayloadIntoLiveState(snap.payload || {});
           opsState.returnMode = coerceOpsMode(snap.returnMode || OPS_MODE.BASE);
-          opsState.initialMode = coerceOpsMode(snap.initialMode || OPS_MODE.BASE);
+          opsState.initialMode = coerceOpsMode(
+            snap.initialMode || OPS_MODE.BASE,
+          );
           opsState.temporaryDeviationActive = false;
           snapshotBeforeTemporary = null;
           applyOpsStateUi();
@@ -3263,7 +3429,9 @@
             "return_initial",
             "Restauration état avant déviation temporaire",
           );
-          setGpsStatus("Mode d'exploitation rétabli (avant déviation temporaire).");
+          setGpsStatus(
+            "Mode d'exploitation rétabli (avant déviation temporaire).",
+          );
         } finally {
           restoringTemporarySnapshot = false;
           refreshTemporaryDeviationUi();
@@ -3279,13 +3447,7 @@
           return null;
         }
         ensureOpsTargetPattern();
-        const pl = deviationPayloadFromLiveState();
-        if (deviationPayloadIsEmpty(pl)) {
-          window.alert(
-            "Rien à enregistrer : aucun tracé manuel, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
-          );
-          return null;
-        }
+        const plLive = deviationPayloadFromLiveState();
         const nowIso = new Date().toISOString();
         const st = readDeviationStore();
         const vf = savedDeviationValidFromEl?.value || "";
@@ -3299,6 +3461,33 @@
           if (!cur) {
             window.alert("Sélectionnez une entrée à mettre à jour.");
             return null;
+          }
+          if (String(cur.pattern_id || "") !== String(p.pattern_id || "")) {
+            window.alert(
+              "L’entrée sélectionnée ne correspond pas à la mission affichée (ligne / sens / variante). Utilisez « Charger la sélection » ou repositionnez les sélecteurs.",
+            );
+            return null;
+          }
+          let pl = plLive;
+          if (deviationPayloadIsEmpty(plLive)) {
+            const stored =
+              cur.payload && typeof cur.payload === "object" ? cur.payload : {};
+            if (!deviationPayloadIsEmpty(stored)) {
+              pl = tamCloneSerializable(
+                {
+                  manualProfile: null,
+                  mergedCoordsManual: null,
+                  manualStopOverrides: {},
+                  provisionalStops: [],
+                },
+                stored,
+              );
+            } else {
+              window.alert(
+                "Rien à enregistrer : aucun tracé manuel, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
+              );
+              return null;
+            }
           }
           stampDeviationItemPayloadMeta(cur, p, nowIso);
           cur.valid_from = vf || "";
@@ -3318,8 +3507,16 @@
           }
           refreshSavedDeviationBannerAndDup(cur);
           appendOpsLog("deviation_updated", cur.id);
-          setGpsStatus("Déviation locale mise à jour.");
+          setGpsStatus(
+            "Entrée sélectionnée mise à jour (stockage local) : dates et, le cas échéant, état planifié sauvegardés.",
+          );
           return cur.id;
+        }
+        if (deviationPayloadIsEmpty(plLive)) {
+          window.alert(
+            "Rien à enregistrer : aucun tracé manuel, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
+          );
+          return null;
         }
         const idNew =
           typeof crypto !== "undefined" && crypto.randomUUID
@@ -3334,7 +3531,7 @@
           origin_deviation_id: idNew,
           valid_from: vf || "",
           valid_to: vt || "",
-          payload: pl,
+          payload: plLive,
         };
         stampDeviationItemPayloadMeta(rowNew, p, nowIso);
         st.items.push(rowNew);
@@ -3384,13 +3581,10 @@
         const vi = duplicateTargetVariantSelectEl
           ? Number(duplicateTargetVariantSelectEl.value)
           : NaN;
-        const targetPat = duplicateVariantChoices[
-          Number.isFinite(vi) ? vi : -1
-        ];
+        const targetPat =
+          duplicateVariantChoices[Number.isFinite(vi) ? vi : -1];
         if (!cur || !targetPat) {
-          window.alert(
-            "Sélectionnez un enregistrement et une variante cible.",
-          );
+          window.alert("Sélectionnez un enregistrement et une variante cible.");
           return;
         }
         const nowIso = new Date().toISOString();
@@ -3501,7 +3695,11 @@
         skippedStopIdSet = new Set();
         if (!currentPattern?.stops) return;
 
-        if (opsState.manualActive && opsState.manualProfile && opsState.baseCoordinates) {
+        if (
+          opsState.manualActive &&
+          opsState.manualProfile &&
+          opsState.baseCoordinates
+        ) {
           const base = opsState.baseCoordinates;
           const cum = buildCumMetersForCoords(base);
           const ranges = normalizeBypassRangesOnBase(opsState.manualProfile);
@@ -3514,10 +3712,7 @@
             for (const rg of ranges) {
               const lo = rg[0];
               const hi = rg[1];
-              if (
-                d > lo + edgeMarginMeters &&
-                d < hi - edgeMarginMeters
-              ) {
+              if (d > lo + edgeMarginMeters && d < hi - edgeMarginMeters) {
                 skippedStopIdSet.add(String(st.stop_id || ""));
               }
             }
@@ -3527,7 +3722,8 @@
         const overrides = opsState.manualStopOverrides || {};
         for (const st of currentPattern.stops) {
           const sid = String(st?.stop_id || "");
-          if (!sid || !Object.prototype.hasOwnProperty.call(overrides, sid)) continue;
+          if (!sid || !Object.prototype.hasOwnProperty.call(overrides, sid))
+            continue;
           if (overrides[sid]) skippedStopIdSet.add(sid);
           else skippedStopIdSet.delete(sid);
         }
@@ -3599,7 +3795,9 @@
       }
 
       function getServedMergedEntriesRaw() {
-        return collectMergedGuideEntriesRaw().filter(mergedEntryIsServedForGuide);
+        return collectMergedGuideEntriesRaw().filter(
+          mergedEntryIsServedForGuide,
+        );
       }
 
       function buildServedGuideSnapshotNormalized() {
@@ -3675,8 +3873,7 @@
           if ((stopMetersAlong[idx] || 0) <= d + 0.5) pos = p;
         }
         const currIdx = served[pos] ?? 0;
-        const nextIdx =
-          served[Math.min(pos + 1, served.length - 1)] ?? currIdx;
+        const nextIdx = served[Math.min(pos + 1, served.length - 1)] ?? currIdx;
         return {
           curr: mkGtfsGuideSlot(currIdx),
           next: mkGtfsGuideSlot(nextIdx),
@@ -3718,7 +3915,10 @@
           return;
         }
         const p = getMapVisualProfile();
-        const r = Math.max(p.stopRadius + 1, (p.stopRadius + p.skippedRadius) / 2);
+        const r = Math.max(
+          p.stopRadius + 1,
+          (p.stopRadius + p.skippedRadius) / 2,
+        );
         for (const ps of opsState.provisionalStops) {
           const lat = Number(ps.lat);
           const lon = Number(ps.lon);
@@ -3809,7 +4009,8 @@
             });
           }
           marker.on("click", (ev) => {
-            if (!(opsState.manualActive && opsState.nonServedEditActive)) return;
+            if (!(opsState.manualActive && opsState.nonServedEditActive))
+              return;
             if (typeof L !== "undefined" && L.DomEvent?.stopPropagation) {
               L.DomEvent.stopPropagation(ev);
             } else if (ev?.originalEvent?.stopPropagation) {
@@ -3856,7 +4057,10 @@
         stopMetersAlong = buildStopMetersAlong(currentPattern);
         rebuildActiveGuideStops();
         fullLine.setLatLngs(activeCoordinates);
-        const newD = Math.min(pathTotalMeters, Math.max(0, ratio * pathTotalMeters));
+        const newD = Math.min(
+          pathTotalMeters,
+          Math.max(0, ratio * pathTotalMeters),
+        );
         distanceAlongPathMeters = newD;
         redrawDoneLineAtDistance(distanceAlongPathMeters);
         updateMapNavigation({
@@ -4010,7 +4214,9 @@
           return;
         }
         const payload =
-          item && item.route_short_name != null ? item : { route_short_name: "" };
+          item && item.route_short_name != null
+            ? item
+            : { route_short_name: "" };
         applyLineColorStyling(headsignSelect, payload, "missionSelect");
         applyLineColorStyling(variantSelect, payload, "missionSelect");
         const hf = document.getElementById("headsignField");
@@ -4185,9 +4391,14 @@
         }
         lineListboxOpen = open;
         lineSelectListbox.hidden = !open;
-        lineSelectTrigger.setAttribute("aria-expanded", open ? "true" : "false");
+        lineSelectTrigger.setAttribute(
+          "aria-expanded",
+          open ? "true" : "false",
+        );
         const v = String(lineSelect.value);
-        for (const row of lineSelectListbox.querySelectorAll(".line-pick-row")) {
+        for (const row of lineSelectListbox.querySelectorAll(
+          ".line-pick-row",
+        )) {
           const ok = row.getAttribute("data-line-idx") === v;
           row.setAttribute("aria-selected", ok ? "true" : "false");
         }
@@ -4199,7 +4410,11 @@
           const item = lineOptionLookup[Number(val)];
           if (!item) {
             lineSelectTriggerLabel.textContent = "—";
-            applyLineColorStyling(lineSelectTrigger, { route_short_name: "" }, "trigger");
+            applyLineColorStyling(
+              lineSelectTrigger,
+              { route_short_name: "" },
+              "trigger",
+            );
           } else {
             lineSelectTriggerLabel.textContent = displayLineLabel(item);
             applyLineColorStyling(lineSelectTrigger, item, "trigger");
@@ -4289,7 +4504,9 @@
         }
         if (typeof data === "undefined" || !data || !lineOptionLookup.length) {
           if (missionContextScroll) {
-            missionContextScroll.classList.remove("mission-context-scroll--pan");
+            missionContextScroll.classList.remove(
+              "mission-context-scroll--pan",
+            );
             missionContextScroll.scrollLeft = 0;
           }
           missionContextBar.hidden = true;
@@ -4299,7 +4516,9 @@
         const item = lineOptionLookup[Number(val)];
         if (!item) {
           if (missionContextScroll) {
-            missionContextScroll.classList.remove("mission-context-scroll--pan");
+            missionContextScroll.classList.remove(
+              "mission-context-scroll--pan",
+            );
             missionContextScroll.scrollLeft = 0;
           }
           missionContextBar.hidden = true;
@@ -4313,7 +4532,8 @@
         missionContextPill.textContent = displayLineLabel(item);
         applyLineColorStyling(missionContextPill, item, "contextPill");
         const headOpt =
-          headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
+          headsignSelect.options[headsignSelect.selectedIndex]?.textContent ||
+          "";
         const dest = parseHeadsignForContextBar(headOpt);
         if (dest) {
           missionContextDest.textContent = "\u00a0\u2014\u00a0" + dest;
@@ -4569,9 +4789,13 @@
         const d = distanceAlongPathMeters;
         const useRealGpsPosition =
           driveMode === DRIVE_MODE.REAL && Array.isArray(lastGpsLatLng);
-        const pos = useRealGpsPosition ? lastGpsLatLng : pointAtDistanceMeters(d);
+        const pos = useRealGpsPosition
+          ? lastGpsLatLng
+          : pointAtDistanceMeters(d);
         const brg = useRealGpsPosition
-          ? (lastGpsHeadingDeg != null ? lastGpsHeadingDeg : getTrackBearingDeg(d))
+          ? lastGpsHeadingDeg != null
+            ? lastGpsHeadingDeg
+            : getTrackBearingDeg(d)
           : getTrackBearingDeg(d);
         marker.setLatLng(pos);
         const el =
@@ -4786,7 +5010,8 @@
           if (d > (stopMetersAlong[i] || 0) + 0.5) {
             voixAnnounced.add(`d${i}_${j}`);
           }
-          const mid = ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
+          const mid =
+            ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
           if (d > mid + 0.5) {
             voixAnnounced.add(`m${i}_${j}`);
           }
@@ -4912,9 +5137,7 @@
             }
           }
           const nextPos =
-            delta < 0
-              ? Math.max(pos - 1, 0)
-              : Math.min(pos + 1, g.length - 1);
+            delta < 0 ? Math.max(pos - 1, 0) : Math.min(pos + 1, g.length - 1);
           distanceAlongPathMeters = g[nextPos].meters || 0;
           lastRafTime = 0;
           resyncVoixForPosition(distanceAlongPathMeters);
@@ -4943,7 +5166,10 @@
 
         let idx = served[0] || 0;
         for (let p = 0; p < served.length; p++) {
-          if ((stopMetersAlong[served[p]] || 0) <= distanceAlongPathMeters + 0.5) {
+          if (
+            (stopMetersAlong[served[p]] || 0) <=
+            distanceAlongPathMeters + 0.5
+          ) {
             idx = served[p];
           }
         }
@@ -5215,8 +5441,7 @@
             const skipped =
               slot.kind === "gtfs" &&
               skippedStopIdSet.has(String(slot.stop_id || ""));
-            const prov =
-              slot.kind === "prov" ? " (provisoire)" : "";
+            const prov = slot.kind === "prov" ? " (provisoire)" : "";
             return `${slot.name}${skipped ? " (non desservi)" : ""}${prov}`;
           }
           currentStopEl.textContent = fmtSlot(pair.curr);
@@ -5331,12 +5556,11 @@
           opsState.manualProfile &&
           Array.isArray(opsState.manualProfile.mergedCoords) &&
           opsState.manualProfile.mergedCoords.length >= 2;
-        const hadDraft =
-          !!manualDrawActive && manualDraftPoints.length > 0;
+        const hadDraft = !!manualDrawActive && manualDraftPoints.length > 0;
         if (!hadValidatedTrace && !hadDraft) return;
 
         const msg = hadValidatedTrace
-          ? "Supprimer tout le tracé manuel sur la carte (y compris les plusieurs portions si vous avez validé plusieurs fois) ? Les arrêts non desservis et les arrêts provisoires sont conservés."
+          ? "Supprimer toutes les déviations sur la carte (y compris si vous avez validé plusieurs fois) ? Les arrêts non desservis et les arrêts provisoires sont conservés."
           : "Abandonner le tracé en cours et effacer les points posés sur la carte ?";
         if (!skipConfirm && !window.confirm(msg)) return;
 
@@ -5370,7 +5594,7 @@
           hadValidatedTrace
             ? persistedAuto
               ? "Tracé manuel supprimé ; entrée locale mise à jour (arrêts conservés)."
-              : "Tracé manuel supprimé : les arrêts sont conservés. Sélectionnez une entrée puis « Mettre à jour l’entrée sélectionnée » pour persister."
+              : "Tracé manuel supprimé : les arrêts sont conservés. Sélectionnez une entrée puis « MàJ des dates de l’entrée sélectionnée » pour persister."
             : "Brouillon de tracé effacé.",
         );
       }
@@ -5381,12 +5605,14 @@
         if (!p) return;
         if (manualDrawActive && manualDraftPoints.length > 0) {
           window.alert(
-            "Terminez ou abandonnez le brouillon de tracé (« Quitter le tracé » ou supprimer tout le tracé) avant.",
+            "Terminez ou abandonnez le brouillon de tracé (« Quitter le tracé » ou supprimer toutes les déviations) avant.",
           );
           return;
         }
         fillMissingManualSegmentBaseAnchors(opsState.manualProfile);
-        const chainArr = manualProfileToVisualChainArray(opsState.manualProfile);
+        const chainArr = manualProfileToVisualChainArray(
+          opsState.manualProfile,
+        );
         const n = chainArr.length;
         if (!n || !manualTraceSegmentSelectEl) return;
         const idx = parseInt(manualTraceSegmentSelectEl.value || "0", 10);
@@ -5395,7 +5621,7 @@
         const remaining = chainArr.filter((_, i) => i !== idx);
         if (
           !window.confirm(
-            `Supprimer uniquement la portion n°${idx + 1} sur ${n} ? Les autres portions restent (réordonnées si besoin).`,
+            `Supprimer la déviation n°${idx + 1} sur ${n} ? Les autres déviations restent (réordonnées si besoin).`,
           )
         ) {
           return;
@@ -5408,7 +5634,7 @@
         const rebuilt = rebuildManualProfileFromVisualChain(remaining);
         if (!rebuilt) {
           window.alert(
-            "Impossible de recalculer le tracé — utilisez « Supprimer tout le tracé manuel » puis retracer.",
+            "Impossible de recalculer le tracé — utilisez « Supprimer toutes les déviations » puis retracer.",
           );
           return;
         }
@@ -5433,7 +5659,7 @@
         const persistedAuto =
           autoUpdateSelectedDeviationPayloadIfPossible("portion retirée");
         setGpsStatus(
-          `Portion n°${idx + 1} retirée ; il en reste ${remaining.length}.${
+          `Déviation n°${idx + 1} retirée ; il en reste ${remaining.length}.${
             persistedAuto
               ? " Enregistrement local synchronisé (entrée sélectionnée)."
               : ""
@@ -5563,7 +5789,9 @@
         const p = ensureOpsTargetPattern();
         if (!p) return;
         if (manualDraftPoints.length < 2) {
-          window.alert("Ajoutez au moins 2 points sur la carte pour valider le tracé manuel.");
+          window.alert(
+            "Ajoutez au moins 2 points sur la carte pour valider le tracé manuel.",
+          );
           return;
         }
         const hadPriorMerged =
@@ -5855,7 +6083,10 @@
       initVocalUI();
       try {
         const savedDriveMode = localStorage.getItem(LS_KEY_DRIVE_MODE);
-        if (savedDriveMode === DRIVE_MODE.REAL || savedDriveMode === DRIVE_MODE.SIMULATION) {
+        if (
+          savedDriveMode === DRIVE_MODE.REAL ||
+          savedDriveMode === DRIVE_MODE.SIMULATION
+        ) {
           driveMode = savedDriveMode;
         }
       } catch (e) {
@@ -5891,6 +6122,14 @@
       missionTabBtn?.addEventListener("click", () => setPanelTab("mission"));
       opsTabBtn?.addEventListener("click", () => setPanelTab("ops"));
       voiceTabBtn?.addEventListener("click", () => setPanelTab("voice"));
+      controlPanelEl
+        ?.querySelectorAll(".panel-ops-subtabs [data-ops-subtab]")
+        .forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const sub = btn.getAttribute("data-ops-subtab");
+            if (sub) setOpsSubtab(sub);
+          });
+        });
       controlPanelEl?.addEventListener("click", (e) => {
         if (e.target === controlPanelEl) {
           closeControlPanel();
