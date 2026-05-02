@@ -779,7 +779,7 @@
                 <p
                   id="savedDeviationStaleNote"
                   class="note"
-                  style="margin: 0 0 4px"
+                  style="margin: 0 0 4px; color: #c62828; font-weight: 400"
                   hidden
                 ></p>
               </div>
@@ -825,7 +825,7 @@
             </div>
             <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
-                <p class="note" style="margin: 0">
+                <p class="note" style="margin: 0; color: #c62828; font-weight: 400">
                   <strong>Duplication de variantes</strong> — pour dupliquer
                   vers une autre variante (même ligne et sens), choisissez une
                   <strong>fiche source</strong> et la
@@ -924,7 +924,7 @@
         <div class="map-wrap">
           <div id="mapRecap" class="map-recap">
             <div class="stats">
-              <div><b>Mission:</b> <span id="missionName">-</span></div>
+              <div><b>Ligne:</b> <span id="missionName">-</span></div>
               <div>
                 <b>Mode actif:</b>
                 <span id="modeActive" class="mono">BASE</span>
@@ -2851,9 +2851,14 @@
       }
 
       function getDeviationLabelForUi(it) {
+        function fmtDate(raw) {
+          const t = String(raw || "").trim();
+          if (!t) return "?";
+          return /^\d{4}-\d{2}-\d{2}$/.test(t) ? formatIsoDateFrench(t) : t;
+        }
         return (
           normalizeDeviationLabel(it?.label || "") ||
-          `${it?.pattern_id || "Entrée"} (${it?.valid_from || "?"} -> ${it?.valid_to || "?"})`
+          `${it?.pattern_id || "Entrée"} (${fmtDate(it?.valid_from)} -> ${fmtDate(it?.valid_to)})`
         );
       }
 
@@ -2945,18 +2950,25 @@
           duplicateDeviationBtn.disabled = !remaining.length;
       }
 
-      /** Affiche une date `YYYY-MM-DD` en libellé français (ex. 26 avril 2026). */
+      /**
+       * Affiche une date ISO `YYYY-MM-DD` en ordre français JJ/MM/AAAA (ex. 05/05/2026).
+       * Sans mois en toutes lettres ; les entrées `<input type="date">` restent en ISO en interne.
+       */
       function formatIsoDateFrench(iso) {
         const s = String(iso || "").trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || "";
-        const parts = s.split("-").map((x) => parseInt(x, 10));
-        const dt = new Date(parts[0], parts[1] - 1, parts[2]);
-        if (Number.isNaN(dt.getTime())) return s;
-        return dt.toLocaleDateString("fr-FR", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        });
+        const [y, m, d] = s.split("-");
+        if (
+          !y ||
+          !m ||
+          !d ||
+          Number.isNaN(Number(y)) ||
+          Number.isNaN(Number(m)) ||
+          Number.isNaN(Number(d))
+        ) {
+          return s;
+        }
+        return `${d}/${m}/${y}`;
       }
 
       function refreshRecapDeviationMeta() {
@@ -3085,12 +3097,12 @@
         if (today && hasRange()) {
           if (item.valid_from && String(today) < String(item.valid_from)) {
             warns.push(
-              `Période de validité : pas encore en vigueur (début le ${item.valid_from}).`,
+              `Période de validité : pas encore en vigueur (début le ${formatIsoDateFrench(item.valid_from)}).`,
             );
           }
           if (item.valid_to && String(today) > String(item.valid_to)) {
             warns.push(
-              `Période de validité : peut-être hors plage affichée (fin le ${item.valid_to}).`,
+              `Période de validité : peut-être hors plage affichée (fin le ${formatIsoDateFrench(item.valid_to)}).`,
             );
           }
         }
@@ -3442,7 +3454,7 @@
         const p = selectedPattern();
         if (!p) {
           window.alert(
-            "Choisissez une mission puis la déviation avant d'enregistrer.",
+            "Choisissez une ligne (terminus et variante) puis la déviation avant d'enregistrer.",
           );
           return null;
         }
@@ -3462,17 +3474,20 @@
             window.alert("Sélectionnez une entrée à mettre à jour.");
             return null;
           }
-          if (String(cur.pattern_id || "") !== String(p.pattern_id || "")) {
-            window.alert(
-              "L’entrée sélectionnée ne correspond pas à la mission affichée (ligne / sens / variante). Utilisez « Charger la sélection » ou repositionnez les sélecteurs.",
-            );
-            return null;
-          }
+          const storedPayloadRaw =
+            cur.payload && typeof cur.payload === "object" ? cur.payload : {};
+          const patternMismatch =
+            String(cur.pattern_id || "") !== String(p.pattern_id || "");
+          const liveEmpty = deviationPayloadIsEmpty(plLive);
+          const storedNonempty =
+            !deviationPayloadIsEmpty(storedPayloadRaw);
+          /** Dates / métadonnées locales uniquement : rien en session carte, payload conservé en stock. */
+          const datesOnlyDifferentVariantOk =
+            patternMismatch && liveEmpty && storedNonempty;
+
           let pl = plLive;
-          if (deviationPayloadIsEmpty(plLive)) {
-            const stored =
-              cur.payload && typeof cur.payload === "object" ? cur.payload : {};
-            if (!deviationPayloadIsEmpty(stored)) {
+          if (liveEmpty) {
+            if (storedNonempty) {
               pl = tamCloneSerializable(
                 {
                   manualProfile: null,
@@ -3480,7 +3495,7 @@
                   manualStopOverrides: {},
                   provisionalStops: [],
                 },
-                stored,
+                storedPayloadRaw,
               );
             } else {
               window.alert(
@@ -3489,10 +3504,25 @@
               return null;
             }
           }
-          stampDeviationItemPayloadMeta(cur, p, nowIso);
-          cur.valid_from = vf || "";
-          cur.valid_to = vt || "";
-          cur.payload = pl;
+
+          if (patternMismatch && !datesOnlyDifferentVariantOk) {
+            window.alert(
+              "L’entrée sélectionnée ne correspond pas à la ligne affichée (ligne / sens / variante). Utilisez « Charger la sélection » ou repositionnez les sélecteurs.",
+            );
+            return null;
+          }
+
+          if (datesOnlyDifferentVariantOk) {
+            cur.valid_from = vf || "";
+            cur.valid_to = vt || "";
+            cur.updated_at = nowIso;
+            cur.payload = pl;
+          } else {
+            stampDeviationItemPayloadMeta(cur, p, nowIso);
+            cur.valid_from = vf || "";
+            cur.valid_to = vt || "";
+            cur.payload = pl;
+          }
           writeDeviationStore(st);
           refreshSavedDeviationSelectOptions();
           if (savedDeviationSelectEl) {
