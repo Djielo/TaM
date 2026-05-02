@@ -166,7 +166,10 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 | Fichier | Rôle |
 |---------|------|
-| `simulateur_sae.html` | UI, carte, **déviation manuelle** (tracé chaîné, portions, arrêts non desservis, **arrêts provisoires**, stockage local) ; sous-onglets **Planifiée / Temporaire / Enregistrée-Dupliquée** (mai 2026) ; flux planifié auto / temps réel **absents** du JS |
+| `simulateur_sae.html` | Marque‑up + styles ; charge **sans build** les trois scripts du dossier `simulateur_sae/` (**ordre obligatoire 1→2→3**, voir lignes suivantes). |
+| `simulateur_sae/simulateur_sae_1_state_mission.js` | **Segment 1/3** : données mission, lignes, ops / carte « base », état jusqu’à `ensureOpsTargetPattern`. |
+| `simulateur_sae/simulateur_sae_2_deviations.js` | **Segment 2/3** : stockage local, fiches et UI associées jusqu’à `deviationDuplicateSelectionToVariant`. |
+| `simulateur_sae/simulateur_sae_3_ui_simulation.js` | **Segment 3/3** : depuis `previewMissionToken` jusqu’aux écouteurs DOM et `fetch(simulation_data.json)`. |
 | `serve_tam.py` | Fichiers statiques + API locale (ex. perturbations) |
 | `build_simulator_data.py` | Génère `simulation_data.json` (GTFS + réseau 3M en ZIP/JSON) |
 | `update_tam_perturbations.py` | Télécharge / alimente les perturbations (secours) |
@@ -175,4 +178,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-02 — ajout **§2.1** (Planifiée / Temporaire, Rétablir, verrou enregistrement planifiée, purge fiches temporaires, noms des helpers JS) ; case **Dupliquer** 4C passée en réalisé V1. Voir aussi `RAPPORT_REFACTORISATION_2026-05-02.md` pour un autre volet refactor. Mettre à jour cette date quand on modifie le mémo.*
+*Dernière révision de **ce** fichier markdown : 2026-05-01 — découpe **simulateur_sae**.js (`1→2→3`) documentée §6 ; mise à jour **§2.1** (mai 2026), **Dupliquer** 4C. Voir `RAPPORT_REFACTORISATION_2026-05-02.md` si pertinent. Mettre à jour cette date quand on modifie le mémo.*

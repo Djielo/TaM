@@ -44,6 +44,8 @@ python serve_tam.py
 
 Dans l’onglet **Déviation** du simulateur, les sous-onglets **Planifiée** et **Temporaire** sont des parcours distincts (session temporaire, Rétablir, enregistrements locaux) — voir **[EVOLUTION_ET_BACKLOG.md](EVOLUTION_ET_BACKLOG.md)** §2.1 pour le comportement acté et les noms des helpers dans le code.
 
+Le JavaScript est découpé en trois fichiers sous **`simulateur_sae/`** (`simulateur_sae_1_state_mission.js`, `_2_deviations.js`, `_3_ui_simulation.js`), chargés dans cet ordre par la page — **aucune étape de build** ; le déploiement statique (GitHub Pages, etc.) reste identique à condition de **pousser le dossier** avec le HTML.
+
 Optionnel (secours hors ligne pour le mode planifie):
 
 ```bash
