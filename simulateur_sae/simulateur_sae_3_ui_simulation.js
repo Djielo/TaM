@@ -6,30 +6,10 @@ let previewMissionToken = 0;
 async function previewSelectedMission() {
   const p = selectedPattern();
   if (!p) return;
-  if (
-    !restoringTemporarySnapshot &&
-    !revertingMissionSelectors &&
-    opsState.temporaryDeviationActive &&
-    snapshotBeforeTemporary &&
-    String(p.pattern_id || "") !==
-      String(snapshotBeforeTemporary.pattern_id || "")
-  ) {
-    window.alert(
+  if (missionViolatesTemporaryDeviationLock(p)) {
+    alertAndRevertMissionSelectorsForTemporaryLock(
       "Une déviation temporaire est en cours. Rétablissez le mode d'exploitation du début de mission avant de changer de ligne ou de variante.",
     );
-    const pat = data?.patterns?.find(
-      (x) =>
-        String(x.pattern_id || "") ===
-        String(snapshotBeforeTemporary.pattern_id || ""),
-    );
-    if (pat) {
-      revertingMissionSelectors = true;
-      try {
-        selectMissionSelectorsForPattern(pat);
-      } finally {
-        revertingMissionSelectors = false;
-      }
-    }
     return;
   }
   const token = ++previewMissionToken;
@@ -404,13 +384,7 @@ function drawAllStopsOverlay() {
       const current = skippedStopIdSet.has(sid);
       const next = !current;
       opsState.manualStopOverrides[sid] = next;
-      recomputeSkippedStopsForCurrentMission();
-      rebuildActiveGuideStops();
-      drawAllStopsOverlay();
-      drawSkippedStopsOverlay();
-      drawProvisionalStopsOverlay();
-      updateStopToStopOverlay();
-      updateStats();
+      refreshMissionStopVisualsAndStats();
       setGpsStatus(
         next
           ? `Arrêt non desservi activé: ${st.stop_name || "-"}`
@@ -1772,11 +1746,7 @@ async function setMission(pattern, opts) {
   rebuildPathMetrics(activeCoordinates);
   trimActivePathToPatternStops(pattern);
   stopMetersAlong = buildStopMetersAlong(pattern);
-  recomputeSkippedStopsForCurrentMission();
-  rebuildActiveGuideStops();
-  drawAllStopsOverlay();
-  drawSkippedStopsOverlay();
-  drawProvisionalStopsOverlay();
+  recomputeSkippedAndRedrawStopLayers();
 
   fullLine.setLatLngs(activeCoordinates);
   doneLine.setLatLngs([activeCoordinates[0]]);
@@ -1836,6 +1806,25 @@ function updateStats() {
   progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
     BASE_METERS_PER_SECOND * speed * 3.6,
   )} km/h sim.`;
+}
+
+/**
+ * Recalcule skips + guide puis redraw pastilles/overlays carte (sans stats ni tronçon stop-to-stop) —
+ * utilisé avant repositionnement lignes carte dans `setMission`.
+ */
+function recomputeSkippedAndRedrawStopLayers() {
+  recomputeSkippedStopsForCurrentMission();
+  rebuildActiveGuideStops();
+  drawAllStopsOverlay();
+  drawSkippedStopsOverlay();
+  drawProvisionalStopsOverlay();
+}
+
+/** Même flux + tronçon guide et bloc stats progression (motif très répandu dans les handlers). */
+function refreshMissionStopVisualsAndStats() {
+  recomputeSkippedAndRedrawStopLayers();
+  updateStopToStopOverlay();
+  updateStats();
 }
 
 function tickRaf(now) {
@@ -1956,13 +1945,7 @@ async function clearManualDeviationTraceKeepingStops(skipConfirm) {
   opsState.returnMode = OPS_MODE.BASE;
   applyOpsStateUi();
   await applyTraceForOpsMode(OPS_MODE.BASE, { centerCamera: false });
-  recomputeSkippedStopsForCurrentMission();
-  rebuildActiveGuideStops();
-  drawAllStopsOverlay();
-  drawSkippedStopsOverlay();
-  drawProvisionalStopsOverlay();
-  updateStopToStopOverlay();
-  updateStats();
+  refreshMissionStopVisualsAndStats();
   resyncVoixForPosition(distanceAlongPathMeters);
   appendOpsLog(
     "manual_trace_cleared",
@@ -2025,13 +2008,7 @@ async function removeManualDeviationSegmentsFromSelectedIndex() {
   opsState.returnMode = OPS_MODE.MANUEL;
   applyOpsStateUi();
   await applyTraceForOpsMode(OPS_MODE.MANUEL, { centerCamera: false });
-  recomputeSkippedStopsForCurrentMission();
-  rebuildActiveGuideStops();
-  drawAllStopsOverlay();
-  drawSkippedStopsOverlay();
-  drawProvisionalStopsOverlay();
-  updateStopToStopOverlay();
-  updateStats();
+  refreshMissionStopVisualsAndStats();
   resyncVoixForPosition(distanceAlongPathMeters);
   appendOpsLog(
     "manual_trace_single_removed",
@@ -2080,13 +2057,7 @@ nonServedBtn?.addEventListener("click", () => {
   }
   nonServedEditFocusStopId = null;
   applyOpsStateUi();
-  recomputeSkippedStopsForCurrentMission();
-  rebuildActiveGuideStops();
-  drawAllStopsOverlay();
-  drawSkippedStopsOverlay();
-  drawProvisionalStopsOverlay();
-  updateStopToStopOverlay();
-  updateStats();
+  refreshMissionStopVisualsAndStats();
   setGpsStatus(
     opsState.nonServedEditActive
       ? "Mode arrêt non desservi actif: cliquez une pastille pour activer/désactiver."
@@ -2280,13 +2251,7 @@ returnInitialBtn.addEventListener("click", () => {
     applyModeFlags(coerceOpsMode(opsState.returnMode || OPS_MODE.BASE));
     applyOpsStateUi();
     applyTraceForOpsMode(recomputeOpsMode());
-    recomputeSkippedStopsForCurrentMission();
-    rebuildActiveGuideStops();
-    drawAllStopsOverlay();
-    drawSkippedStopsOverlay();
-    drawProvisionalStopsOverlay();
-    updateStopToStopOverlay();
-    updateStats();
+    refreshMissionStopVisualsAndStats();
     appendOpsLog("return_initial", "Retour état initial mission");
   })().catch((e) => console.warn("return_initial:", e));
 });
@@ -2318,13 +2283,7 @@ returnBaseBtn.addEventListener("click", () => {
   nonServedEditFocusStopId = null;
   applyOpsStateUi();
   applyTraceForOpsMode(OPS_MODE.BASE);
-  recomputeSkippedStopsForCurrentMission();
-  rebuildActiveGuideStops();
-  drawAllStopsOverlay();
-  drawSkippedStopsOverlay();
-  drawProvisionalStopsOverlay();
-  updateStopToStopOverlay();
-  updateStats();
+  refreshMissionStopVisualsAndStats();
   setGpsStatus("Mode base rétabli : déviation courante effacée.");
   appendOpsLog("return_base", "Forçage mode BASE");
 });

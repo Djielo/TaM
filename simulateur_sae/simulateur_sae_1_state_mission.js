@@ -1684,33 +1684,47 @@ function resetOpsStateForMission(ropts) {
   applyOpsStateUi();
 }
 
-function ensureOpsTargetPattern() {
-  const p = selectedPattern() || currentPattern;
-  if (!p) return null;
-  if (
+/** True tant qu'il faut empêcher de quitter la mission attachée au snapshot Temporaire. */
+function missionViolatesTemporaryDeviationLock(pattern) {
+  return (
     !restoringTemporarySnapshot &&
     !revertingMissionSelectors &&
     opsState.temporaryDeviationActive &&
     snapshotBeforeTemporary &&
-    String(p.pattern_id || "") !==
+    pattern &&
+    String(pattern.pattern_id || "") !==
       String(snapshotBeforeTemporary.pattern_id || "")
-  ) {
-    window.alert(
+  );
+}
+
+/**
+ * Alerte puis repositionnement ligne/variante sur la mission du snapshot Temporaire.
+ * @returns {object|null} entrée trouvée dans `data.patterns`
+ */
+function alertAndRevertMissionSelectorsForTemporaryLock(alertMessage) {
+  window.alert(alertMessage);
+  const targetId = String(snapshotBeforeTemporary?.pattern_id || "");
+  const pat =
+    data?.patterns?.find((x) => String(x.pattern_id || "") === targetId) ||
+    null;
+  if (pat) {
+    revertingMissionSelectors = true;
+    try {
+      selectMissionSelectorsForPattern(pat);
+    } finally {
+      revertingMissionSelectors = false;
+    }
+  }
+  return pat;
+}
+
+function ensureOpsTargetPattern() {
+  const p = selectedPattern() || currentPattern;
+  if (!p) return null;
+  if (missionViolatesTemporaryDeviationLock(p)) {
+    const pat = alertAndRevertMissionSelectorsForTemporaryLock(
       "Une déviation temporaire est en cours. Enregistrez-la (Temporaire) ou rétablissez l'état de début de mission avant de changer de mission.",
     );
-    const pat = data?.patterns?.find(
-      (x) =>
-        String(x.pattern_id || "") ===
-        String(snapshotBeforeTemporary.pattern_id || ""),
-    );
-    if (pat) {
-      revertingMissionSelectors = true;
-      try {
-        selectMissionSelectorsForPattern(pat);
-      } finally {
-        revertingMissionSelectors = false;
-      }
-    }
     return currentPattern || pat || null;
   }
   if (!opsState.targetPatternId) {

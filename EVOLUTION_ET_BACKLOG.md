@@ -90,7 +90,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 | **Snapshot Rétablir** | Mémorisé au **chargement** d’une fiche enregistrée et à l’**ouverture** de session temporaire (clone du payload carte). Rétablir restaure cet état (ex. planifiée chargée), pas la ligne brute sans déviation. |
 | **Verrou « Enregistrer planifiée »** | Après **Enregistrer la déviation temporaire** ou après **Rétablir…**, le bouton reste inactif tant qu’aucune **validation du tracé** n’est faite via le bouton **Planifiée** (« Valider le tracé de la déviation planifiée »). Quitter un brouillon sans rien tracer ne doit pas rouvrir l’enregistrement planifiée par erreur. |
 | **Purge locale au Rétablir** | Retrait du stockage navigateur des fiches dont le libellé est une déviation **temporaire** pour la **même ligne** (`route_short_name`), y compris duplicatas de variante. |
-| **Refactor lisibilité** | `buildTemporaryRevertSnapshotFromMissionPattern`, `computePlannedSaveDeviationToolbarState`, `computeTemporarySaveDeviationToolbarState`, `refreshDeviationStoreSelectorsAfterMutation`. |
+| **Refactor lisibilité** | Snapshot / toolbar / store : `buildTemporaryRevertSnapshotFromMissionPattern`, `computePlannedSaveDeviationToolbarState`, `computeTemporarySaveDeviationToolbarState`, `refreshDeviationStoreSelectorsAfterMutation`. Verrou mission Temporaire : `missionViolatesTemporaryDeviationLock`, `alertAndRevertMissionSelectorsForTemporaryLock`. Carte + stats (regroupe un flux répété) : `recomputeSkippedAndRedrawStopLayers`, `refreshMissionStopVisualsAndStats`. Fiches locales : `generateLocalDeviationRecordId`, `selectSavedDeviationSelectOptionByDeviationId`. |
 
 ---
 
@@ -178,4 +178,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-01 — découpe **simulateur_sae**.js (`1→2→3`) documentée §6 ; mise à jour **§2.1** (mai 2026), **Dupliquer** 4C. Voir `RAPPORT_REFACTORISATION_2026-05-02.md` si pertinent. Mettre à jour cette date quand on modifie le mémo.*
+*Dernière révision de **ce** fichier markdown : 2026-05-01 — aide-mémoire §2.1 enrichi (**DRY** : verrou mission Temporaire, refresh carte/stats, IDs fiches) ; §6 inchangé (découpe `1→2→3`). Mettre à jour cette date quand on modifie le mémo.*

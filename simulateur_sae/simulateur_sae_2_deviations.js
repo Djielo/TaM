@@ -33,6 +33,24 @@ function refreshDeviationStoreSelectorsAfterMutation() {
   refreshDuplicateTargetsForSelectedSource();
 }
 
+function generateLocalDeviationRecordId() {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `d_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
+}
+
+function selectSavedDeviationSelectOptionByDeviationId(deviationId) {
+  const id = deviationId != null ? String(deviationId) : "";
+  if (!id || !savedDeviationSelectEl) return;
+  const opts = savedDeviationSelectEl.options;
+  for (let i = 0; i < opts.length; i++) {
+    if (opts[i].dataset.deviationId === id) {
+      savedDeviationSelectEl.selectedIndex = i;
+      break;
+    }
+  }
+}
+
 function purgeDeviationsSavedDuringTemporarySession() {
   if (!deviationIdsSavedDuringTemporarySession.length) return;
   const idSet = new Set(deviationIdsSavedDuringTemporarySession);
@@ -826,13 +844,7 @@ async function restoreDeviationPayloadIntoLiveState(pl) {
   opsState.provisionalEditActive = false;
   nonServedEditFocusStopId = null;
   stopManualDrawMode();
-  recomputeSkippedStopsForCurrentMission();
-  rebuildActiveGuideStops();
-  drawAllStopsOverlay();
-  drawSkippedStopsOverlay();
-  drawProvisionalStopsOverlay();
-  updateStopToStopOverlay();
-  updateStats();
+  refreshMissionStopVisualsAndStats();
   resyncVoixForPosition(distanceAlongPathMeters);
   refreshManualDrawUi();
   refreshProvisionalUi();
@@ -1052,13 +1064,7 @@ async function restoreTemporaryMissionSnapshot() {
     applyOpsStateUi();
     snapshotBeforeTemporary =
       buildTemporaryRevertSnapshotFromMissionPattern(pat);
-    recomputeSkippedStopsForCurrentMission();
-    rebuildActiveGuideStops();
-    drawAllStopsOverlay();
-    drawSkippedStopsOverlay();
-    drawProvisionalStopsOverlay();
-    updateStopToStopOverlay();
-    updateStats();
+    refreshMissionStopVisualsAndStats();
     appendOpsLog(
       "return_initial",
       "Restauration état avant déviation temporaire",
@@ -1157,16 +1163,7 @@ async function deviationSaveOrUpdate(kind, opts) {
     }
     writeDeviationStore(st);
     refreshSavedDeviationSelectOptions();
-    if (savedDeviationSelectEl) {
-      for (let i = 0; i < savedDeviationSelectEl.options.length; i++) {
-        if (
-          savedDeviationSelectEl.options[i].dataset.deviationId === cur.id
-        ) {
-          savedDeviationSelectEl.selectedIndex = i;
-          break;
-        }
-      }
-    }
+    selectSavedDeviationSelectOptionByDeviationId(cur.id);
     refreshSavedDeviationBannerAndDup(cur);
     appendOpsLog("deviation_updated", cur.id);
     setGpsStatus(
@@ -1180,10 +1177,7 @@ async function deviationSaveOrUpdate(kind, opts) {
     );
     return null;
   }
-  const idNew =
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `d_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
+  const idNew = generateLocalDeviationRecordId();
   const rowNew = {
     id: idNew,
     created_at: nowIso,
@@ -1199,16 +1193,7 @@ async function deviationSaveOrUpdate(kind, opts) {
   st.items.push(rowNew);
   writeDeviationStore(st);
   refreshSavedDeviationSelectOptions();
-  if (savedDeviationSelectEl) {
-    for (let i = 0; i < savedDeviationSelectEl.options.length; i++) {
-      if (
-        savedDeviationSelectEl.options[i].dataset.deviationId === idNew
-      ) {
-        savedDeviationSelectEl.selectedIndex = i;
-        break;
-      }
-    }
-  }
+  selectSavedDeviationSelectOptionByDeviationId(idNew);
   refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
   appendOpsLog("deviation_saved", idNew);
   setGpsStatus("Déviation enregistrée en local.");
@@ -1250,10 +1235,7 @@ function deviationDuplicateSelectionToVariant() {
     return;
   }
   const nowIso = new Date().toISOString();
-  const idDup =
-    typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `d_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
+  const idDup = generateLocalDeviationRecordId();
   const rowDup = {
     id: idDup,
     created_at: nowIso,
@@ -1267,16 +1249,7 @@ function deviationDuplicateSelectionToVariant() {
   st.items.push(rowDup);
   writeDeviationStore(st);
   refreshSavedDeviationSelectOptions();
-  if (savedDeviationSelectEl) {
-    for (let i = 0; i < savedDeviationSelectEl.options.length; i++) {
-      if (
-        savedDeviationSelectEl.options[i].dataset.deviationId === idDup
-      ) {
-        savedDeviationSelectEl.selectedIndex = i;
-        break;
-      }
-    }
-  }
+  selectSavedDeviationSelectOptionByDeviationId(idDup);
   refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
   appendOpsLog("deviation_duplicated", idDup);
   setGpsStatus("Copie locale créée vers une autre variante.");
