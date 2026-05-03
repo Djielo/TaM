@@ -106,42 +106,34 @@
         background: #0f7d2f;
         box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
       }
-      /* Boîte nom arrêt provisoire (remplace prompt natif). */
-      #provisionalStopNameDialog {
-        border: none;
-        border-radius: 12px;
-        padding: 0;
-        max-width: min(520px, calc(100vw - 24px));
-        box-shadow: 0 10px 40px rgba(15, 23, 42, 0.35);
-        background: #fff;
-        color: #1b1f24;
-      }
-      #provisionalStopNameDialog::backdrop {
-        background: rgba(15, 23, 42, 0.45);
-      }
-      .tam-dialog__form {
-        padding: 16px 18px 14px;
-      }
-      .tam-dialog__title {
-        margin: 0 0 8px;
-        font-size: 17px;
-        font-weight: 700;
-      }
-      .tam-dialog__hint {
-        margin: 0 0 10px;
-      }
-      .tam-dialog__actions {
-        justify-content: flex-end;
-      }
-      .tam-dialog__actions button.grow {
-        flex: 1 1 120px;
-        max-width: 220px;
-      }
       .map-wrap {
         position: relative;
         isolation: isolate;
         border-radius: 10px;
         overflow: hidden;
+      }
+      /* Au-dessus du HUD mission (~1100) et du récap (~1250) : reste visible tant que non enregistré. */
+      .tam-unsaved-deviation-banner {
+        position: absolute;
+        left: max(8px, env(safe-area-inset-left, 0px));
+        right: max(8px, env(safe-area-inset-right, 0px));
+        top: max(8px, env(safe-area-inset-top, 0px));
+        z-index: 1320;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #fff3e0;
+        border: 1px solid #e65100;
+        color: #4a2000;
+        font-size: 13px;
+        line-height: 1.45;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+        pointer-events: none;
+      }
+      .tam-unsaved-deviation-banner strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #bf360c;
+        font-size: 13px;
       }
       /* Calque tuiles / trace sous le HUD (contrôles Leaflet ~1000). */
       #map {
@@ -163,6 +155,46 @@
         color: #4a5563;
         line-height: 1.45;
         margin: 4px 0 0 0;
+      }
+      /* Message utilisateur (remplace window.alert : pas de « localhost » ni case Chrome « ne plus solliciter »). */
+      .app-message-dialog {
+        border: none;
+        border-radius: 10px;
+        padding: 0;
+        max-width: min(92vw, 460px);
+        background: #fff;
+        color: #1b1f24;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.28);
+      }
+      .app-message-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.45);
+      }
+      .app-message-dialog__inner {
+        padding: 16px 18px 14px;
+      }
+      .app-message-dialog__title {
+        margin: 0 0 10px;
+        font-size: 17px;
+        font-weight: 700;
+        color: #005ca9;
+        line-height: 1.25;
+      }
+      .app-message-dialog__body {
+        margin: 0 0 16px;
+        font-size: 14px;
+        line-height: 1.5;
+        white-space: pre-line;
+      }
+      .app-message-dialog__actions {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .app-message-dialog__ok {
+        width: auto;
+        min-width: 88px;
+        padding: 10px 20px;
       }
       /* Mode saisie arrêt non desservi : tooltips toujours visibles (Chrome tactile sans survol). */
       .leaflet-tooltip.tam-stop-edit-tooltip {
@@ -1527,6 +1559,16 @@
       </div>
       <div class="card">
         <div class="map-wrap">
+          <div
+            id="tamUnsavedDeviationBanner"
+            class="tam-unsaved-deviation-banner"
+            role="alert"
+            aria-live="polite"
+            hidden
+          >
+            <strong>Déviation non enregistrée</strong>
+            <span id="tamUnsavedDeviationBannerDetail"></span>
+          </div>
           <div id="mapRecap" class="map-recap">
             <div class="stats">
               <div><b>Ligne:</b> <span id="missionName">-</span></div>
@@ -1642,39 +1684,18 @@
       </div>
     </div>
 
-    <dialog id="provisionalStopNameDialog" aria-labelledby="provisionalStopNameTitle">
-      <form method="dialog" class="tam-dialog__form">
-        <h2 id="provisionalStopNameTitle" class="tam-dialog__title">
-          Nom de l’arrêt provisoire
-        </h2>
-        <p class="note tam-dialog__hint">
-          La position est projetée sur le tracé de la mission. Le champ est prérempli avec
-          <span class="mono">Arrêt provisoire :</span> suivi d’un espace : saisissez ou choisissez une suggestion ;
-          la liste se filtre pendant la frappe (navigateurs récents).
-        </p>
-        <label for="provisionalStopNameInput">Libellé</label>
-        <input
-          type="text"
-          id="provisionalStopNameInput"
-          name="provisionalStopName"
-          list="provisionalStopNameDatalist"
-          autocomplete="off"
-          spellcheck="true"
-        />
-        <datalist id="provisionalStopNameDatalist"></datalist>
-        <div class="row tam-dialog__actions" style="margin-top: 12px; margin-bottom: 0">
-          <button
-            type="button"
-            class="secondary grow"
-            onclick="document.getElementById('provisionalStopNameDialog').close()"
-          >
-            Annuler
-          </button>
-          <button type="submit" class="grow" formmethod="dialog" value="ok">
-            Valider
-          </button>
-        </div>
-      </form>
+    <dialog
+      id="appMessageDialog"
+      class="app-message-dialog"
+      aria-labelledby="appMessageDialogTitle"
+    >
+      <div class="app-message-dialog__inner">
+        <h2 id="appMessageDialogTitle" class="app-message-dialog__title"></h2>
+        <p id="appMessageDialogBody" class="app-message-dialog__body"></p>
+        <form method="dialog" class="app-message-dialog__actions">
+          <button type="submit" class="app-message-dialog__ok">OK</button>
+        </form>
+      </div>
     </dialog>
 
     <script src="vendor/leaflet/leaflet.js"></script>

@@ -325,6 +325,7 @@ function drawProvisionalStopsOverlay() {
       updateStats();
       resyncVoixForPosition(distanceAlongPathMeters);
       refreshProvisionalUi();
+      refreshTemporaryDeviationUi();
       setGpsStatus("Arrêt provisoire retiré.");
     });
     mk.addTo(provisionalStopsLayer);
@@ -1487,6 +1488,12 @@ function announceInitialNextStopIfNeeded() {
  */
 function jumpServedStop(delta) {
   if (!currentPattern || pathTotalMeters <= 0) return false;
+  if (
+    typeof blockMissionResumeIfUnsavedDeviation === "function" &&
+    blockMissionResumeIfUnsavedDeviation()
+  ) {
+    return false;
+  }
   const stops = currentPattern.stops;
   if (!stops?.length || !stopMetersAlong.length) return false;
 
@@ -2011,6 +2018,14 @@ function togglePauseResumeMission() {
     refreshMapMissionHudState();
     return;
   }
+  if (!running) {
+    if (
+      typeof blockMissionResumeIfUnsavedDeviation === "function" &&
+      blockMissionResumeIfUnsavedDeviation()
+    ) {
+      return;
+    }
+  }
   running = !running;
   if (!running) {
     lastRafTime = 0;
@@ -2150,7 +2165,14 @@ startBtn.addEventListener("click", () => {
         appendOpsLog("mode_reel_start", "GPS actif");
       } else {
         stopGpsTracking();
-        running = true;
+        if (
+          typeof blockMissionResumeIfUnsavedDeviation === "function" &&
+          blockMissionResumeIfUnsavedDeviation()
+        ) {
+          running = false;
+        } else {
+          running = true;
+        }
       }
       mapMissionHudSessionActive = true;
       showMapMissionHud();
@@ -2349,6 +2371,7 @@ provisionalUndoBtn?.addEventListener("click", () => {
   updateStats();
   resyncVoixForPosition(distanceAlongPathMeters);
   refreshProvisionalUi();
+  refreshTemporaryDeviationUi();
   setGpsStatus("Dernier arrêt provisoire retiré.");
 });
 

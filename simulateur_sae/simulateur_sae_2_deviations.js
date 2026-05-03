@@ -25,6 +25,17 @@ function writeDeviationStore(store) {
   }
 }
 
+/**
+ * id de la fiche dont le payload a été appliqué sur la carte (« Charger la sélection »).
+ * null si la mission affichée ne correspond pas à une fiche explicitement chargée
+ * (évite de mettre à jour une entrée liste alors que la carte est encore « ligne de base »).
+ */
+let liveDeviationLoadedItemId = null;
+
+function clearLiveDeviationLoadedSource() {
+  liveDeviationLoadedItemId = null;
+}
+
 /** Listes déroulantes + duplication après lecture/écriture du stockage local fiches. */
 function refreshDeviationStoreSelectorsAfterMutation() {
   refreshSavedDeviationSelectOptions();
@@ -76,18 +87,14 @@ function routeShortNameForPatternId(patternId) {
  * Supprime du stockage local toutes les fiches dont le libellé est une « déviation temporaire »
  * pour la ligne (route_short_name), ex. les duplicatas V1/V2/V3.
  */
-function purgeTemporaryLabeledSavedDeviationsForRouteShortName(
-  routeShortName,
-) {
+function purgeTemporaryLabeledSavedDeviationsForRouteShortName(routeShortName) {
   const want = String(routeShortName || "").trim();
   if (!want) return;
   const st = readDeviationStore();
   const nBefore = st.items.length;
   st.items = st.items.filter((it) => {
     if (!isDeviationTemporaireStoredLabel(it?.label)) return true;
-    return (
-      String(routeShortNameForSavedDeviation(it) || "").trim() !== want
-    );
+    return String(routeShortNameForSavedDeviation(it) || "").trim() !== want;
   });
   if (st.items.length === nBefore) return;
   writeDeviationStore(st);
@@ -104,9 +111,7 @@ function getPatternDigest(pat) {
 /** Horodatage et empreintes communes aux entrées « Déviations enregistrées » (localStorage). */
 function stampDeviationItemPayloadMeta(cur, p, nowIso) {
   cur.pattern_id = p.pattern_id;
-  cur.origin_deviation_id = String(
-    cur.origin_deviation_id || cur.id || "",
-  );
+  cur.origin_deviation_id = String(cur.origin_deviation_id || cur.id || "");
   cur.pattern_signature_snapshot = getPatternDigest(p);
   cur.dataset_digest_snapshot = datasetDigestLoaded || "";
   cur.updated_at = nowIso;
@@ -142,8 +147,7 @@ function isDeviationTemporaireStoredLabel(raw) {
     .trim()
     .toLowerCase();
   return (
-    s.startsWith("déviation temporaire") ||
-    s.startsWith("deviation temporaire")
+    s.startsWith("déviation temporaire") || s.startsWith("deviation temporaire")
   );
 }
 
@@ -198,9 +202,7 @@ function normalizeDeviationLabel(raw) {
 
 function routeShortNameForSavedDeviation(item) {
   const pid = String(item?.pattern_id || "");
-  const pat = data?.patterns?.find(
-    (p) => String(p.pattern_id || "") === pid,
-  );
+  const pat = data?.patterns?.find((p) => String(p.pattern_id || "") === pid);
   return String(pat?.route_short_name || "");
 }
 
@@ -236,9 +238,7 @@ function deviationPayloadFromLiveState() {
         Number(pair[1]),
       ]),
       detourVisualChain: Array.isArray(mp.detourVisualChain)
-        ? mp.detourVisualChain.map(
-            normalizeDeviationChainSegmentFromStored,
-          )
+        ? mp.detourVisualChain.map(normalizeDeviationChainSegmentFromStored)
         : (mp.detourCoords || []).length >= 2
           ? [
               normalizeDeviationChainSegmentFromStored({
@@ -254,10 +254,7 @@ function deviationPayloadFromLiveState() {
     mergedCoordsManual: Array.isArray(merged)
       ? merged.map((xy) => [Number(xy[0]), Number(xy[1])])
       : null,
-    manualStopOverrides: tamCloneSerializable(
-      {},
-      opsState.manualStopOverrides,
-    ),
+    manualStopOverrides: tamCloneSerializable({}, opsState.manualStopOverrides),
     provisionalStops: tamCloneSerializable([], opsState.provisionalStops),
   };
 }
@@ -304,8 +301,7 @@ function computePlannedSaveDeviationToolbarState(o) {
     title =
       "Une session Temporaire est ouverte — enregistrez-la ou rétablissez avant une fiche planifiée.";
   } else if (!o.hasMission) {
-    title =
-      "Choisissez une mission pour enregistrer une déviation planifiée.";
+    title = "Choisissez une mission pour enregistrer une déviation planifiée.";
   } else if (deferEffective) {
     title =
       "Pour activer « Enregistrer la déviation planifiée », utilisez d’abord un bouton du sous-onglet Planifiée (tracé, retirer le dernier point, valider ce tracé côté planifiée…). Cela évite d’associer à la Planifiée un retour simplement « depuis Temporaire / Rétablir » sans intention explicite.";
@@ -322,16 +318,137 @@ function computePlannedSaveDeviationToolbarState(o) {
  * @returns {{ disabled: boolean, title: string }}
  */
 function computeTemporarySaveDeviationToolbarState(o) {
-  const canSave =
-    o.temporarySessionOn && o.hasMission && o.hasContent;
+  const canSave = o.temporarySessionOn && o.hasMission && o.hasContent;
   let title = "";
   if (!o.hasMission) {
-    title =
-      "Choisissez une mission pour enregistrer la déviation temporaire.";
+    title = "Choisissez une mission pour enregistrer la déviation temporaire.";
   } else if (!canSave) {
     title = o.tipWhenSavingNeedsContent;
   }
   return { disabled: !canSave, title };
+}
+
+/** Seuil de déplacement GPS avant bannière « déviation non enregistrée » (~précision horizontale courante). */
+const GPS_UNSAVED_DEVIATION_WARN_METERS = 25;
+let gpsUnsavedDeviationWarnAnchorLatLng = null;
+/** Mis à true après reprise bloquée (simu) ou déplacement GPS seuil ; effacé quand plus d’enregistrement attendu. */
+let unsavedDeviationUserWarnedLatch = false;
+
+function resetGpsUnsavedDeviationMovementWarn() {
+  gpsUnsavedDeviationWarnAnchorLatLng = null;
+}
+
+/** Texte du bandeau : consigne courte + modes de saisie actifs le cas échéant. */
+function buildUnsavedDeviationBannerDetailText() {
+  const parts = [];
+  if (opsState.provisionalEditActive) {
+    parts.push(
+      "quittez la saisie avec « Quitter la saisie arrêts provisoires »",
+    );
+  }
+  if (opsState.nonServedEditActive) {
+    parts.push("quittez la saisie arrêts non desservis");
+  }
+  if (typeof manualDrawActive !== "undefined" && manualDrawActive) {
+    parts.push("terminez ou annulez le tracé manuel en cours");
+  }
+  const head = parts.length > 0 ? `${parts.join(", puis ")}, puis ` : "";
+  return `${head}enregistrez avec « Enregistrer la déviation planifiée » ou « Enregistrer la déviation temporaire » (panneau latéral → Déviations), ou rétablissez l’état, avant de reprendre le trajet.`;
+}
+
+function refreshUnsavedDeviationBannerUi() {
+  const el = document.getElementById("tamUnsavedDeviationBanner");
+  const detailEl = document.getElementById("tamUnsavedDeviationBannerDetail");
+  if (!el) return;
+  if (typeof isDeviationSaveActionCurrentlyOffered !== "function") {
+    return;
+  }
+  const offered = isDeviationSaveActionCurrentlyOffered();
+  if (!offered) {
+    unsavedDeviationUserWarnedLatch = false;
+    el.hidden = true;
+    el.setAttribute("aria-hidden", "true");
+    if (detailEl) detailEl.textContent = "";
+    return;
+  }
+  const show = unsavedDeviationUserWarnedLatch;
+  el.hidden = !show;
+  el.setAttribute("aria-hidden", show ? "false" : "true");
+  if (detailEl) {
+    detailEl.textContent =
+      show && offered ? buildUnsavedDeviationBannerDetailText() : "";
+  }
+}
+
+/**
+ * True si au moins un bouton Enregistrer (planifiée ou temporaire) est actuellement cliquable —
+ * même critères que `refreshTemporaryDeviationUi`.
+ */
+function isDeviationSaveActionCurrentlyOffered() {
+  const temporarySessionOn = !!opsState.temporaryDeviationActive;
+  const pat = typeof selectedPattern === "function" ? selectedPattern() : null;
+  const hasMission = !!pat;
+  const hasContent = !deviationPayloadIsEmpty(deviationPayloadFromLiveState());
+  const tipWhenSavingNeedsContent =
+    "Ce bouton s’active si vous validez un tracé sur la carte ou si vous saisissez au moins un arrêt non desservi ou provisoire.";
+  const liveJson =
+    typeof deviationPayloadJsonForCompare === "function"
+      ? deviationPayloadJsonForCompare(deviationPayloadFromLiveState())
+      : "";
+  const baselineReady = plannedDeviationSaveBaselineJson != null;
+  const payloadDirty =
+    hasMission &&
+    hasContent &&
+    baselineReady &&
+    liveJson !== plannedDeviationSaveBaselineJson;
+  const planned = computePlannedSaveDeviationToolbarState({
+    temporarySessionOn,
+    hasMission,
+    hasContent,
+    deferPlannedGate: deferPlannedSaveUntilEditedAfterTempRecorded,
+    payloadDirty,
+    tipWhenSavingNeedsContent,
+  });
+  const temporary = computeTemporarySaveDeviationToolbarState({
+    temporarySessionOn,
+    hasMission,
+    hasContent,
+    tipWhenSavingNeedsContent,
+  });
+  return !planned.disabled || !temporary.disabled;
+}
+
+/**
+ * Bloque l’action si un enregistrement est attendu (bouton planifiée ou temporaire actif).
+ * @returns {boolean} true → ne pas reprendre la simulation / ne pas sauter d’arrêt
+ */
+function blockMissionResumeIfUnsavedDeviation() {
+  if (!isDeviationSaveActionCurrentlyOffered()) return false;
+  unsavedDeviationUserWarnedLatch = true;
+  refreshUnsavedDeviationBannerUi();
+  return true;
+}
+
+/**
+ * Appelé à chaque point GPS : déclenche la bannière persistante après ~25 m sans enregistrement.
+ */
+function maybeWarnUnsavedDeviationAfterGpsMovement(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  if (typeof L === "undefined" || !L.latLng) return;
+  if (!isDeviationSaveActionCurrentlyOffered()) {
+    gpsUnsavedDeviationWarnAnchorLatLng = null;
+    return;
+  }
+  const cur = L.latLng(lat, lon);
+  if (!gpsUnsavedDeviationWarnAnchorLatLng) {
+    gpsUnsavedDeviationWarnAnchorLatLng = cur;
+    return;
+  }
+  const dist = gpsUnsavedDeviationWarnAnchorLatLng.distanceTo(cur);
+  if (dist < GPS_UNSAVED_DEVIATION_WARN_METERS) return;
+  gpsUnsavedDeviationWarnAnchorLatLng = cur;
+  unsavedDeviationUserWarnedLatch = true;
+  refreshUnsavedDeviationBannerUi();
 }
 
 /** Repositionner les trois sélecteurs mission sur un pattern exact. */
@@ -357,8 +474,7 @@ function selectMissionSelectorsForPattern(pat) {
   headsignSelect.selectedIndex = hi;
   headsignSelect.dispatchEvent(new Event("change"));
   filteredByHeadsign = filteredByLine.filter(
-    (x) =>
-      x.direction_id === pat.direction_id && x.headsign === pat.headsign,
+    (x) => x.direction_id === pat.direction_id && x.headsign === pat.headsign,
   );
   filteredByHeadsign.sort((a, b) =>
     a.variant_name.localeCompare(b.variant_name, "fr"),
@@ -380,9 +496,7 @@ function rebuildDuplicateVariantChoices(pidAnchor) {
     }
     return;
   }
-  const anchor = data.patterns.find(
-    (p) => (p.pattern_id || "") === pidAnchor,
-  );
+  const anchor = data.patterns.find((p) => (p.pattern_id || "") === pidAnchor);
   if (!anchor) {
     duplicateTargetVariantSelectEl.innerHTML = "";
     return;
@@ -506,8 +620,7 @@ function refreshDuplicateTargetsForSelectedSource() {
       });
     }
   }
-  if (duplicateDeviationBtn)
-    duplicateDeviationBtn.disabled = !remaining.length;
+  if (duplicateDeviationBtn) duplicateDeviationBtn.disabled = !remaining.length;
 }
 
 /**
@@ -586,12 +699,8 @@ function syncDeviationEditorFieldsFromSelectedItem(item) {
   }
   const vf = String(item.valid_from || "").trim();
   const vt = String(item.valid_to || "").trim();
-  savedDeviationValidFromEl.value = /^\d{4}-\d{2}-\d{2}$/.test(vf)
-    ? vf
-    : "";
-  savedDeviationValidToEl.value = /^\d{4}-\d{2}-\d{2}$/.test(vt)
-    ? vt
-    : "";
+  savedDeviationValidFromEl.value = /^\d{4}-\d{2}-\d{2}$/.test(vf) ? vf : "";
+  savedDeviationValidToEl.value = /^\d{4}-\d{2}-\d{2}$/.test(vt) ? vt : "";
 }
 
 function refreshSavedDeviationBannerAndDup(item) {
@@ -692,8 +801,7 @@ function savedDeviationEnsureOptionSelectedForItemId(deviationItemId) {
 function refreshSavedDeviationSelectOptions() {
   if (!savedDeviationSelectEl) return;
   const prevSelectedId =
-    savedDeviationSelectEl.selectedOptions?.[0]?.dataset?.deviationId ||
-    "";
+    savedDeviationSelectEl.selectedOptions?.[0]?.dataset?.deviationId || "";
   const st = readDeviationStore();
   savedDeviationSelectEl.innerHTML = "";
   const sorted = sortSavedDeviationsForUi(
@@ -768,11 +876,9 @@ function autoUpdateSelectedDeviationPayloadIfPossible(reasonShort) {
   refreshSavedDeviationSelectOptions();
   savedDeviationEnsureOptionSelectedForItemId(cur.id);
   refreshSavedDeviationBannerAndDup(cur);
-  appendOpsLog(
-    "deviation_auto_updated",
-    `${cur.id}|${reasonShort || ""}`,
-  );
+  appendOpsLog("deviation_auto_updated", `${cur.id}|${reasonShort || ""}`);
   syncPlannedSaveBaselineFromLive();
+  liveDeviationLoadedItemId = String(cur.id || "");
   return true;
 }
 
@@ -781,10 +887,7 @@ async function restoreDeviationPayloadIntoLiveState(pl) {
     {},
     pl.manualStopOverrides,
   );
-  opsState.provisionalStops = tamCloneSerializable(
-    [],
-    pl.provisionalStops,
-  );
+  opsState.provisionalStops = tamCloneSerializable([], pl.provisionalStops);
   const mpIn = pl.manualProfile;
   opsState.manualProfile = null;
   if (mpIn && typeof mpIn === "object") {
@@ -795,10 +898,7 @@ async function restoreDeviationPayloadIntoLiveState(pl) {
       bypassedCoords: tamMapLatLngPairs(mpIn.bypassedCoords),
       mergedCoords: tamMapLatLngPairs(mpIn.mergedCoords),
     };
-    if (
-      Array.isArray(mpIn.baseBypassRanges) &&
-      mpIn.baseBypassRanges.length
-    ) {
+    if (Array.isArray(mpIn.baseBypassRanges) && mpIn.baseBypassRanges.length) {
       mp.baseBypassRanges = mpIn.baseBypassRanges.map((pair) => [
         Number(pair[0]),
         Number(pair[1]),
@@ -813,10 +913,7 @@ async function restoreDeviationPayloadIntoLiveState(pl) {
       mp.detourVisualChain = mpIn.detourVisualChain.map(
         normalizeDeviationChainSegmentFromStored,
       );
-    } else if (
-      Array.isArray(mp.detourCoords) &&
-      mp.detourCoords.length >= 2
-    ) {
+    } else if (Array.isArray(mp.detourCoords) && mp.detourCoords.length >= 2) {
       mp.detourVisualChain = [
         normalizeDeviationChainSegmentFromStored({
           detourCoords: mp.detourCoords,
@@ -894,8 +991,7 @@ async function loadDeviationItemIntoApp(item, opts) {
   });
   await restoreDeviationPayloadIntoLiveState(item.payload || {});
   /* Point de rétablissement (= cette fiche sur la carte, pour Rétablir sous Temporaire). */
-  snapshotBeforeTemporary =
-    buildTemporaryRevertSnapshotFromMissionPattern(pat);
+  snapshotBeforeTemporary = buildTemporaryRevertSnapshotFromMissionPattern(pat);
   refreshSavedDeviationBannerAndDup(item);
   appendOpsLog("deviation_loaded", item.pattern_id || "");
   syncPlannedSaveBaselineFromLive();
@@ -909,6 +1005,7 @@ async function loadDeviationItemIntoApp(item, opts) {
   }
   mapMissionHudSessionActive = true;
   showMapMissionHud();
+  liveDeviationLoadedItemId = String(item.id || "");
   return true;
 }
 
@@ -938,7 +1035,9 @@ function tryDismissTemporaryDeviationIfUnchanged(tag) {
   }
   const cur = deviationPayloadFromLiveState();
   const base = snapshotBeforeTemporary.payload || {};
-  if (deviationPayloadJsonForCompare(cur) !== deviationPayloadJsonForCompare(base)) {
+  if (
+    deviationPayloadJsonForCompare(cur) !== deviationPayloadJsonForCompare(base)
+  ) {
     return false;
   }
   opsState.temporaryDeviationActive = false;
@@ -946,10 +1045,7 @@ function tryDismissTemporaryDeviationIfUnchanged(tag) {
   deviationIdsSavedDuringTemporarySession = [];
   refreshTemporaryDeviationUi();
   applyOpsStateUi();
-  appendOpsLog(
-    "temporary_session_dismissed_untouched",
-    String(tag || ""),
-  );
+  appendOpsLog("temporary_session_dismissed_untouched", String(tag || ""));
   return true;
 }
 
@@ -980,16 +1076,12 @@ function tryDismissPlannedDeviationIfUnchanged(tag) {
   const cur = deviationPayloadFromLiveState();
   const base = plannedDeviationEditSnapshot.payload || {};
   if (
-    deviationPayloadJsonForCompare(cur) !==
-    deviationPayloadJsonForCompare(base)
+    deviationPayloadJsonForCompare(cur) !== deviationPayloadJsonForCompare(base)
   ) {
     return false;
   }
   plannedDeviationEditSnapshot = null;
-  appendOpsLog(
-    "planned_trace_snapshot_dismissed_untouched",
-    String(tag || ""),
-  );
+  appendOpsLog("planned_trace_snapshot_dismissed_untouched", String(tag || ""));
   return true;
 }
 
@@ -1008,8 +1100,7 @@ function activateTemporaryDeviationMode() {
   }
   ensureOpsTargetPattern();
   plannedDeviationEditSnapshot = null;
-  snapshotBeforeTemporary =
-    buildTemporaryRevertSnapshotFromMissionPattern(p);
+  snapshotBeforeTemporary = buildTemporaryRevertSnapshotFromMissionPattern(p);
   opsState.temporaryDeviationActive = true;
   refreshTemporaryDeviationUi();
   appendOpsLog(
@@ -1047,17 +1138,13 @@ async function restoreTemporaryMissionSnapshot() {
     (x) => String(x.pattern_id || "") === String(snap.pattern_id || ""),
   );
   if (!pat) {
-    window.alert(
-      "Mission du snapshot introuvable dans les données chargées.",
-    );
+    window.alert("Mission du snapshot introuvable dans les données chargées.");
     return;
   }
   restoringTemporarySnapshot = true;
   try {
     if (!selectMissionSelectorsForPattern(pat)) {
-      window.alert(
-        "Impossible de repositionner les sélecteurs de mission.",
-      );
+      window.alert("Impossible de repositionner les sélecteurs de mission.");
       return;
     }
     running = false;
@@ -1072,9 +1159,7 @@ async function restoreTemporaryMissionSnapshot() {
     });
     await restoreDeviationPayloadIntoLiveState(snap.payload || {});
     opsState.returnMode = coerceOpsMode(snap.returnMode || OPS_MODE.BASE);
-    opsState.initialMode = coerceOpsMode(
-      snap.initialMode || OPS_MODE.BASE,
-    );
+    opsState.initialMode = coerceOpsMode(snap.initialMode || OPS_MODE.BASE);
     opsState.temporaryDeviationActive = false;
     plannedDeviationEditSnapshot = null;
     /* Pas de bouton Planifiée bleu tant qu’aucun geste prévu sous Planifiée après ce retour carte. */
@@ -1088,9 +1173,7 @@ async function restoreTemporaryMissionSnapshot() {
       "return_initial",
       "Restauration état avant déviation temporaire",
     );
-    setGpsStatus(
-      "Mode d'exploitation rétabli (avant déviation temporaire).",
-    );
+    setGpsStatus("Mode d'exploitation rétabli (avant déviation temporaire).");
   } finally {
     restoringTemporarySnapshot = false;
     refreshTemporaryDeviationUi();
@@ -1103,151 +1186,192 @@ async function deviationSaveOrUpdate(kind, opts) {
   }
   deviationSaveOrUpdate._inFlight = true;
   try {
-  const o = opts || {};
-  const p = selectedPattern();
-  if (!p) {
-    window.alert(
-      "Choisissez une ligne (terminus et variante) puis la déviation avant d'enregistrer.",
-    );
-    return null;
-  }
-  if (
-    opsState.temporaryDeviationActive &&
-    !(o.allowDuringTemporaryDevSession && kind === "new")
-  ) {
-    window.alert(
-      "Une déviation temporaire est en cours : utilisez « Enregistrer la déviation temporaire » ou « Rétablir » depuis le sous-onglet Temporaire avant d’enregistrer une déviation planifiée.",
-    );
-    return null;
-  }
-  ensureOpsTargetPattern();
-  const plLive = deviationPayloadFromLiveState();
-  const nowIso = new Date().toISOString();
-  const st = readDeviationStore();
-  const vf = savedDeviationValidFromEl?.value || "";
-  const vt = savedDeviationValidToEl?.value || "";
-  if (vf && vt && String(vf) > String(vt)) {
-    window.alert("La date de fin doit être après la date de début.");
-    return null;
-  }
-  if (kind === "update") {
-    const cur = getSelectedDeviationItem(st);
-    if (!cur) {
-      window.alert("Sélectionnez une entrée à mettre à jour.");
-      return null;
-    }
-    const storedPayloadRaw =
-      cur.payload && typeof cur.payload === "object" ? cur.payload : {};
-    const patternMismatch =
-      String(cur.pattern_id || "") !== String(p.pattern_id || "");
-    const liveEmpty = deviationPayloadIsEmpty(plLive);
-    const storedNonempty =
-      !deviationPayloadIsEmpty(storedPayloadRaw);
-    /** Dates / métadonnées locales uniquement : rien en session carte, payload conservé en stock. */
-    const datesOnlyDifferentVariantOk =
-      patternMismatch && liveEmpty && storedNonempty;
-
-    let pl = plLive;
-    if (liveEmpty) {
-      if (storedNonempty) {
-        pl = tamCloneSerializable(
-          {
-            manualProfile: null,
-            mergedCoordsManual: null,
-            manualStopOverrides: {},
-            provisionalStops: [],
-          },
-          storedPayloadRaw,
-        );
-      } else {
-        window.alert(
-          "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
-        );
-        return null;
-      }
-    }
-
-    if (patternMismatch && !datesOnlyDifferentVariantOk) {
+    const o = opts || {};
+    const p = selectedPattern();
+    if (!p) {
       window.alert(
-        "L’entrée sélectionnée ne correspond pas à la ligne affichée (ligne / sens / variante). Utilisez « Charger la sélection » ou repositionnez les sélecteurs.",
+        "Choisissez une ligne (terminus et variante) puis la déviation avant d'enregistrer.",
       );
       return null;
     }
-
-    if (datesOnlyDifferentVariantOk) {
-      cur.valid_from = vf || "";
-      cur.valid_to = vt || "";
-      cur.updated_at = nowIso;
-      cur.payload = pl;
-    } else {
-      stampDeviationItemPayloadMeta(cur, p, nowIso);
-      cur.valid_from = vf || "";
-      cur.valid_to = vt || "";
-      cur.payload = pl;
+    if (
+      opsState.temporaryDeviationActive &&
+      !(o.allowDuringTemporaryDevSession && kind === "new")
+    ) {
+      window.alert(
+        "Une déviation temporaire est en cours : utilisez « Enregistrer la déviation temporaire » ou « Rétablir » depuis le sous-onglet Temporaire avant d’enregistrer une déviation planifiée.",
+      );
+      return null;
     }
+    ensureOpsTargetPattern();
+    const plLive = deviationPayloadFromLiveState();
+    const nowIso = new Date().toISOString();
+    const st = readDeviationStore();
+    const vf = savedDeviationValidFromEl?.value || "";
+    const vt = savedDeviationValidToEl?.value || "";
+    if (vf && vt && String(vf) > String(vt)) {
+      window.alert("La date de fin doit être après la date de début.");
+      return null;
+    }
+    if (kind === "update") {
+      const cur = getSelectedDeviationItem(st);
+      if (!cur) {
+        window.alert("Sélectionnez une entrée à mettre à jour.");
+        return null;
+      }
+      if (!o.allowDuringTemporaryDevSession) {
+        const loaded =
+          liveDeviationLoadedItemId != null
+            ? String(liveDeviationLoadedItemId)
+            : "";
+        if (String(cur.id || "") !== loaded) {
+          window.alert(
+            "Pour mettre à jour cette entrée, chargez-la d’abord sur la carte avec « Charger la sélection » — sinon vous risquez d’écraser une fiche alors que l’affichage ne correspond pas.",
+          );
+          return null;
+        }
+      }
+      const storedPayloadRaw =
+        cur.payload && typeof cur.payload === "object" ? cur.payload : {};
+      const patternMismatch =
+        String(cur.pattern_id || "") !== String(p.pattern_id || "");
+      const liveEmpty = deviationPayloadIsEmpty(plLive);
+      const storedNonempty = !deviationPayloadIsEmpty(storedPayloadRaw);
+      /** Dates / métadonnées locales uniquement : rien en session carte, payload conservé en stock. */
+      const datesOnlyDifferentVariantOk =
+        patternMismatch && liveEmpty && storedNonempty;
+
+      let pl = plLive;
+      if (liveEmpty) {
+        if (storedNonempty) {
+          pl = tamCloneSerializable(
+            {
+              manualProfile: null,
+              mergedCoordsManual: null,
+              manualStopOverrides: {},
+              provisionalStops: [],
+            },
+            storedPayloadRaw,
+          );
+        } else {
+          window.alert(
+            "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
+          );
+          return null;
+        }
+      }
+
+      if (patternMismatch && !datesOnlyDifferentVariantOk) {
+        window.alert(
+          "L’entrée sélectionnée ne correspond pas à la ligne affichée (ligne / sens / variante). Utilisez « Charger la sélection » ou repositionnez les sélecteurs.",
+        );
+        return null;
+      }
+
+      if (datesOnlyDifferentVariantOk) {
+        cur.valid_from = vf || "";
+        cur.valid_to = vt || "";
+        cur.updated_at = nowIso;
+        cur.payload = pl;
+      } else {
+        stampDeviationItemPayloadMeta(cur, p, nowIso);
+        cur.valid_from = vf || "";
+        cur.valid_to = vt || "";
+        cur.payload = pl;
+      }
+      writeDeviationStore(st);
+      refreshSavedDeviationSelectOptions();
+      selectSavedDeviationSelectOptionByDeviationId(cur.id);
+      refreshSavedDeviationBannerAndDup(cur);
+      appendOpsLog("deviation_updated", cur.id);
+      setGpsStatus(
+        "Entrée sélectionnée mise à jour (stockage local) : dates et, le cas échéant, état planifié sauvegardés.",
+      );
+      if (!o.allowDuringTemporaryDevSession) {
+        syncPlannedSaveBaselineFromLive();
+      }
+      liveDeviationLoadedItemId = String(cur.id || "");
+      return cur.id;
+    }
+    if (deviationPayloadIsEmpty(plLive)) {
+      window.alert(
+        "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
+      );
+      return null;
+    }
+    const idNew = generateLocalDeviationRecordId();
+    const rowNew = {
+      id: idNew,
+      created_at: nowIso,
+      label: opsState.temporaryDeviationActive
+        ? buildTemporaryDeviationDefaultLabel(p)
+        : buildAutoDeviationLabel(p),
+      origin_deviation_id: idNew,
+      valid_from: vf || "",
+      valid_to: vt || "",
+      payload: plLive,
+    };
+    stampDeviationItemPayloadMeta(rowNew, p, nowIso);
+    st.items.push(rowNew);
     writeDeviationStore(st);
     refreshSavedDeviationSelectOptions();
-    selectSavedDeviationSelectOptionByDeviationId(cur.id);
-    refreshSavedDeviationBannerAndDup(cur);
-    appendOpsLog("deviation_updated", cur.id);
-    setGpsStatus(
-      "Entrée sélectionnée mise à jour (stockage local) : dates et, le cas échéant, état planifié sauvegardés.",
-    );
+    selectSavedDeviationSelectOptionByDeviationId(idNew);
+    refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
+    appendOpsLog("deviation_saved", idNew);
+    setGpsStatus("Déviation enregistrée en local.");
     if (!o.allowDuringTemporaryDevSession) {
       syncPlannedSaveBaselineFromLive();
     }
-    return cur.id;
-  }
-  if (deviationPayloadIsEmpty(plLive)) {
-    window.alert(
-      "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
-    );
-    return null;
-  }
-  const idNew = generateLocalDeviationRecordId();
-  const rowNew = {
-    id: idNew,
-    created_at: nowIso,
-    label: opsState.temporaryDeviationActive
-      ? buildTemporaryDeviationDefaultLabel(p)
-      : buildAutoDeviationLabel(p),
-    origin_deviation_id: idNew,
-    valid_from: vf || "",
-    valid_to: vt || "",
-    payload: plLive,
-  };
-  stampDeviationItemPayloadMeta(rowNew, p, nowIso);
-  st.items.push(rowNew);
-  writeDeviationStore(st);
-  refreshSavedDeviationSelectOptions();
-  selectSavedDeviationSelectOptionByDeviationId(idNew);
-  refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
-  appendOpsLog("deviation_saved", idNew);
-  setGpsStatus("Déviation enregistrée en local.");
-  if (!o.allowDuringTemporaryDevSession) {
-    syncPlannedSaveBaselineFromLive();
-  }
-  return idNew;
+    liveDeviationLoadedItemId = String(idNew || "");
+    return idNew;
   } finally {
     deviationSaveOrUpdate._inFlight = false;
   }
 }
 
 /**
- * « Enregistrer la déviation planifiée » : si une fiche est sélectionnée pour la mission
- * courante (même pattern_id), on met à jour cette entrée au lieu d’en créer une nouvelle
- * (double-clic ou ré-enregistrement après « Charger la sélection »).
+ * « Enregistrer la déviation planifiée » : mise à jour seulement si la carte reflète la fiche
+ * chargée (`liveDeviationLoadedItemId`). Sinon création — **interdite** s’il existe déjà une fiche
+ * pour ce même `pattern_id` (pas de doublon depuis une ligne « vierge » sans charger la fiche).
  */
 function deviationSaveOrUpdatePlannedFromToolbar() {
   const cur = getSelectedDeviationItem();
   const p = selectedPattern();
-  const sameMission =
-    Boolean(
-      cur &&
-        p &&
-        String(cur.pattern_id || "") === String(p.pattern_id || ""),
+  if (!p) {
+    window.alert(
+      "Choisissez une ligne (terminus et variante) avant d’enregistrer.",
     );
-  return deviationSaveOrUpdate(sameMission ? "update" : "new");
+    return null;
+  }
+  const sameMission = Boolean(
+    cur && String(cur.pattern_id || "") === String(p.pattern_id || ""),
+  );
+  const selId = cur ? String(cur.id || "") : "";
+  const loadedId =
+    liveDeviationLoadedItemId != null ? String(liveDeviationLoadedItemId) : "";
+  const mapMatchesSelection = sameMission && selId !== "" && selId === loadedId;
+
+  const useUpdate = mapMatchesSelection;
+
+  if (!useUpdate) {
+    const st = readDeviationStore();
+    const existingSamePattern = st.items.some(
+      (it) => String(it.pattern_id || "") === String(p.pattern_id || ""),
+    );
+    if (existingSamePattern) {
+      showAppMessageDialog(
+        "Simulateur SAE TAM",
+        "Enregistrement impossible : une déviation est déjà enregistrée pour cette ligne, ce sens et cette variante.\n\n" +
+          "Allez sur « Déviation », puis « Enregistrée / Dupliquée » : sélectionnez la déviation dans la liste « Déviations enregistrées », " +
+          "puis cliquez sur « Charger la sélection ».\n\n" +
+          "Repassez sous le sous-onglet « Planifiée », puis répétez l’opération selon vos besoins " +
+          "(ex. « Saisir arrêts provisoires », « Saisir arrêt non desservi », tracer la déviation), avant d’enregistrer.",
+      );
+      return null;
+    }
+  }
+
+  return deviationSaveOrUpdate(useUpdate ? "update" : "new");
 }
 
 async function deviationDeleteSelected() {
@@ -1266,6 +1390,12 @@ async function deviationDeleteSelected() {
   const st = readDeviationStore();
   st.items = st.items.filter((x) => x.id !== cur.id);
   writeDeviationStore(st);
+  if (
+    liveDeviationLoadedItemId != null &&
+    String(cur.id) === String(liveDeviationLoadedItemId)
+  ) {
+    clearLiveDeviationLoadedSource();
+  }
   refreshSavedDeviationSelectOptions();
   appendOpsLog("deviation_deleted", cur.id);
   setGpsStatus("Enregistrement supprimé.");
@@ -1278,8 +1408,7 @@ function deviationDuplicateSelectionToVariant() {
   const vi = duplicateTargetVariantSelectEl
     ? Number(duplicateTargetVariantSelectEl.value)
     : NaN;
-  const targetPat =
-    duplicateVariantChoices[Number.isFinite(vi) ? vi : -1];
+  const targetPat = duplicateVariantChoices[Number.isFinite(vi) ? vi : -1];
   if (!cur || !targetPat) {
     window.alert("Sélectionnez un enregistrement et une variante cible.");
     return;
@@ -1304,4 +1433,3 @@ function deviationDuplicateSelectionToVariant() {
   appendOpsLog("deviation_duplicated", idDup);
   setGpsStatus("Copie locale créée vers une autre variante.");
 }
-

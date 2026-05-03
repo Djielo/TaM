@@ -381,6 +381,9 @@ function stopGpsTracking() {
   gpsWatchId = null;
   lastGpsLatLng = null;
   lastGpsHeadingDeg = null;
+  if (typeof resetGpsUnsavedDeviationMovementWarn === "function") {
+    resetGpsUnsavedDeviationMovementWarn();
+  }
 }
 
 function applyGpsPositionToMission(pos) {
@@ -420,6 +423,9 @@ function applyGpsPositionToMission(pos) {
   setGpsStatus(
     `${qualif} (~${Math.max(1, Math.round(acc || 0))} m${speedInfo}).`,
   );
+  if (typeof maybeWarnUnsavedDeviationAfterGpsMovement === "function") {
+    maybeWarnUnsavedDeviationAfterGpsMovement(lat, lon);
+  }
 }
 
 function startGpsTracking() {
@@ -527,70 +533,18 @@ function normalizeProvisionalStopNameInput(raw) {
   return s;
 }
 
-function fillProvisionalStopNameDatalist(dlEl) {
-  if (!dlEl) return;
-  const seen = new Set();
-  const bareNames = [];
-  const pushBare = (bareName) => {
-    const n = String(bareName ?? "").trim();
-    if (!n || seen.has(n)) return;
-    seen.add(n);
-    bareNames.push(n);
-  };
-  for (const s of currentPattern?.stops || []) {
-    pushBare(s?.stop_name);
-  }
-  for (const ps of opsState.provisionalStops || []) {
-    pushBare(ps?.stop_name);
-  }
-  bareNames.sort((a, b) =>
-    a.localeCompare(b, "fr", { sensitivity: "base" }),
-  );
-  dlEl.innerHTML = "";
-  for (const n of bareNames) {
-    const opt = document.createElement("option");
-    opt.value = PROVISIONAL_STOP_NAME_PREFIX + n;
-    dlEl.appendChild(opt);
-  }
-}
-
-/** @returns {Promise<string|null>} texte brut du champ, ou null si annulé */
+/**
+ * Saisie du nom : `window.prompt` uniquement (pas de calque HTML — évite blocages souris / Leaflet / preview).
+ * Prérempli « Arrêt provisoire : » ; normalisation côté pose sur la carte.
+ * @returns {Promise<string|null>}
+ */
 function openProvisionalStopNameDialog() {
-  return new Promise((resolve) => {
-    const dlg = document.getElementById("provisionalStopNameDialog");
-    const inp = document.getElementById("provisionalStopNameInput");
-    const dl = document.getElementById("provisionalStopNameDatalist");
-    if (!dlg || !inp) {
-      resolve(null);
-      return;
-    }
-    fillProvisionalStopNameDatalist(dl);
-    inp.value = PROVISIONAL_STOP_NAME_PREFIX;
-    if (typeof dlg.showModal !== "function") {
-      resolve(
-        window.prompt(
-          "Nom de l’arrêt provisoire (la position est projetée sur le tracé de la mission) :",
-          PROVISIONAL_STOP_NAME_PREFIX,
-        ),
-      );
-      return;
-    }
-    const onClose = () => {
-      dlg.removeEventListener("close", onClose);
-      if (dlg.returnValue === "ok") {
-        resolve(inp.value);
-      } else {
-        resolve(null);
-      }
-    };
-    dlg.addEventListener("close", onClose);
-    dlg.showModal();
-    requestAnimationFrame(() => {
-      inp.focus();
-      const end = inp.value.length;
-      inp.setSelectionRange(end, end);
-    });
-  });
+  return Promise.resolve(
+    window.prompt(
+      "Saisir le nom de l’arrêt provisoire (projeté sur le tracé) :",
+      PROVISIONAL_STOP_NAME_PREFIX,
+    ),
+  );
 }
 
 map.on("click", async (ev) => {
@@ -627,6 +581,7 @@ map.on("click", async (ev) => {
     updateStats();
     resyncVoixForPosition(distanceAlongPathMeters);
     refreshProvisionalUi();
+    refreshTemporaryDeviationUi();
     setGpsStatus(
       typeof provisionalStopPublicLabel === "function"
         ? `${provisionalStopPublicLabel(trimmed)} — ajouté.`
@@ -1743,6 +1698,9 @@ function refreshTemporaryDeviationUi() {
   if (headsignSelect) headsignSelect.disabled = temporarySessionOn;
   if (variantSelect) variantSelect.disabled = temporarySessionOn;
   if (lineSelectTrigger) lineSelectTrigger.disabled = temporarySessionOn;
+  if (typeof refreshUnsavedDeviationBannerUi === "function") {
+    refreshUnsavedDeviationBannerUi();
+  }
 }
 
 /** Lève la barrière planifiée après un « Enregistrer la déviation temporaire » (gestes distincts utilisateur). */
@@ -1785,6 +1743,9 @@ function resetOpsStateForMission(ropts) {
   plannedDeviationEditSnapshot = null;
   deferPlannedSaveUntilEditedAfterTempRecorded = false;
   plannedDeviationSaveBaselineJson = null;
+  if (typeof clearLiveDeviationLoadedSource === "function") {
+    clearLiveDeviationLoadedSource();
+  }
   applyOpsStateUi();
 }
 
@@ -1820,6 +1781,31 @@ function alertAndRevertMissionSelectorsForTemporaryLock(alertMessage) {
     }
   }
   return pat;
+}
+
+/**
+ * Message modal (titre + texte). Évite `window.alert` : pas d’en-tête d’origine (localhost)
+ * ni case « Ne pas autoriser… à vous solliciter à nouveau » (Chrome, alertes répétées).
+ * Retombe sur `window.alert` si `<dialog>` indisponible.
+ */
+function showAppMessageDialog(title, bodyText) {
+  const dlg = document.getElementById("appMessageDialog");
+  if (!dlg || typeof dlg.showModal !== "function") {
+    window.alert((title ? `${title}\n\n` : "") + String(bodyText || ""));
+    return;
+  }
+  if (!dlg.dataset.tamBackdropCloseWired) {
+    dlg.dataset.tamBackdropCloseWired = "1";
+    dlg.addEventListener("click", (ev) => {
+      if (ev.target === dlg) dlg.close();
+    });
+  }
+  const tEl = document.getElementById("appMessageDialogTitle");
+  const bEl = document.getElementById("appMessageDialogBody");
+  if (tEl) tEl.textContent = title || "Message";
+  if (bEl) bEl.textContent = bodyText || "";
+  dlg.returnValue = "";
+  dlg.showModal();
 }
 
 function ensureOpsTargetPattern() {
