@@ -534,6 +534,44 @@
         white-space: nowrap;
         vertical-align: middle;
       }
+      /* Incrustation prochain arrêt (audio coupé / éviter le récap plein écran) */
+      .map-mission-hud__nextStrip {
+        pointer-events: auto;
+        position: absolute;
+        right: max(6px, env(safe-area-inset-right, 0px));
+        bottom: calc(
+          max(6px, env(safe-area-inset-bottom, 0px)) + var(--map-hud-clear-attrib) +
+            var(--map-hud-h) + 8px
+        );
+        z-index: 1;
+        max-width: min(260px, calc(100vw - 24px));
+        padding: 7px 10px 8px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #ccd3db;
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+        text-align: left;
+      }
+      .map-mission-hud__nextStrip-kicker {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #5c6570;
+        margin: 0 0 3px;
+      }
+      .map-mission-hud__nextStrip-name {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+        color: #1b1f24;
+        line-height: 1.25;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        line-clamp: 2;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
       /* Vehicule (triangle) : pointe = avant; en mode nord fixe, on tourne le triangle. */
       .nav-vehicle {
         background: transparent;
@@ -1378,6 +1416,17 @@
             class="map-mission-hud map-mission-hud--inactive"
             aria-hidden="true"
           >
+            <div
+              class="map-mission-hud__nextStrip"
+              role="status"
+              aria-live="polite"
+              aria-label="Prochain arrêt annoncé"
+            >
+              <p class="map-mission-hud__nextStrip-kicker">Prochain arrêt</p>
+              <p id="mapHudNextStopLine" class="map-mission-hud__nextStrip-name">
+                —
+              </p>
+            </div>
             <div class="map-mission-hud__rail">
               <button
                 type="button"

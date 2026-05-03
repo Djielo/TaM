@@ -1082,6 +1082,11 @@ async function restoreTemporaryMissionSnapshot() {
 }
 
 async function deviationSaveOrUpdate(kind, opts) {
+  if (deviationSaveOrUpdate._inFlight) {
+    return null;
+  }
+  deviationSaveOrUpdate._inFlight = true;
+  try {
   const o = opts || {};
   const p = selectedPattern();
   if (!p) {
@@ -1201,6 +1206,26 @@ async function deviationSaveOrUpdate(kind, opts) {
   appendOpsLog("deviation_saved", idNew);
   setGpsStatus("Déviation enregistrée en local.");
   return idNew;
+  } finally {
+    deviationSaveOrUpdate._inFlight = false;
+  }
+}
+
+/**
+ * « Enregistrer la déviation planifiée » : si une fiche est sélectionnée pour la mission
+ * courante (même pattern_id), on met à jour cette entrée au lieu d’en créer une nouvelle
+ * (double-clic ou ré-enregistrement après « Charger la sélection »).
+ */
+function deviationSaveOrUpdatePlannedFromToolbar() {
+  const cur = getSelectedDeviationItem();
+  const p = selectedPattern();
+  const sameMission =
+    Boolean(
+      cur &&
+        p &&
+        String(cur.pattern_id || "") === String(p.pattern_id || ""),
+    );
+  return deviationSaveOrUpdate(sameMission ? "update" : "new");
 }
 
 async function deviationDeleteSelected() {

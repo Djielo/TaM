@@ -1783,6 +1783,7 @@ async function setMission(pattern, opts) {
 function updateStats() {
   if (!currentPattern) {
     refreshMapMissionHudState();
+    refreshMapHudNextStopPeek();
     return;
   }
   const stops = currentPattern.stops;
@@ -1812,6 +1813,7 @@ function updateStats() {
     BASE_METERS_PER_SECOND * speed * 3.6,
   )} km/h sim.`;
   refreshMapMissionHudState();
+  refreshMapHudNextStopPeek();
 }
 
 const HUD_ICON_PAUSE =
@@ -1863,6 +1865,14 @@ function refreshMapHudToggleIcon() {
   );
 }
 
+/** Même libellé que le récap `#nextStop`, affiché sur la carte. */
+function refreshMapHudNextStopPeek() {
+  const line = document.getElementById("mapHudNextStopLine");
+  if (!line || !nextStopEl) return;
+  const t = (nextStopEl.textContent || "").trim();
+  line.textContent = t.length ? t : "—";
+}
+
 function mapHudPauseShowsPauseAction() {
   if (driveMode === DRIVE_MODE.REAL) {
     return gpsWatchId != null;
@@ -1911,6 +1921,7 @@ function showMapMissionHud() {
   refreshMapMissionHudState();
   refreshMapHudToggleIcon();
   refreshMapHudSpeedLabel();
+  refreshMapHudNextStopPeek();
   refreshMapLayout();
 }
 
@@ -2452,9 +2463,9 @@ returnBaseBtn.addEventListener("click", () => {
   appendOpsLog("return_base", "Forçage mode BASE");
 });
 
-saveDeviationBtn?.addEventListener("click", () =>
-  deviationSaveOrUpdate("new"),
-);
+saveDeviationBtn?.addEventListener("click", () => {
+  void deviationSaveOrUpdatePlannedFromToolbar();
+});
 
 updateDeviationBtn?.addEventListener("click", () =>
   deviationSaveOrUpdate("update"),
