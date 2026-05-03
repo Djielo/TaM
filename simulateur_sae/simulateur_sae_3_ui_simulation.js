@@ -1823,6 +1823,46 @@ const HUD_CHEVRON_L =
 const HUD_CHEVRON_R =
   '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+/** Vitesses affichées sur la HUD carte — alignées sur `#speedSelect`. */
+const MAP_HUD_SPEED_SEQUENCE = [1, 2, 4, 10];
+
+function refreshMapHudSpeedLabel() {
+  const btn = document.getElementById("mapHudSpeedBtn");
+  if (!btn || !speedSelect) return;
+  const raw = Number(speedSelect.value);
+  const v = MAP_HUD_SPEED_SEQUENCE.includes(raw)
+    ? raw
+    : MAP_HUD_SPEED_SEQUENCE[0];
+  btn.textContent = `×${v}`;
+  btn.title = `Vitesse simulation (${btn.textContent}) — clic pour changer`;
+  btn.setAttribute("aria-label", `Vitesse simulation ${btn.textContent}`);
+}
+
+function cycleMapHudSpeed() {
+  if (!speedSelect) return;
+  const cur = Number(speedSelect.value) || 1;
+  const idx = MAP_HUD_SPEED_SEQUENCE.indexOf(cur);
+  const nextIdx =
+    idx === -1 ? 0 : (idx + 1) % MAP_HUD_SPEED_SEQUENCE.length;
+  speedSelect.value = String(MAP_HUD_SPEED_SEQUENCE[nextIdx]);
+  speedSelect.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function refreshMapHudToggleIcon() {
+  const root = document.getElementById("mapMissionHud");
+  const btn = document.getElementById("mapMissionHudToggleBtn");
+  if (!root || !btn) return;
+  const collapsed = root.classList.contains("map-mission-hud--collapsed");
+  btn.innerHTML = collapsed ? HUD_CHEVRON_L : HUD_CHEVRON_R;
+  btn.title = collapsed ? "Afficher les commandes" : "Masquer les commandes";
+  btn.setAttribute(
+    "aria-label",
+    collapsed
+      ? "Afficher les commandes mission"
+      : "Masquer les commandes mission",
+  );
+}
+
 function mapHudPauseShowsPauseAction() {
   if (driveMode === DRIVE_MODE.REAL) {
     return gpsWatchId != null;
@@ -1858,7 +1898,7 @@ function syncMapHudHeadingCheckboxFromMain() {
   const mapHeading = document.getElementById("mapHudHeadingUp");
   const cap = document.getElementById("mapHudHeadingCaption");
   if (mapHeading) mapHeading.checked = !!headingUpEl.checked;
-  if (cap) cap.textContent = headingUpEl.checked ? "Cap en haut" : "Nord en haut";
+  if (cap) cap.textContent = headingUpEl.checked ? "Cap" : "Nord";
 }
 
 function showMapMissionHud() {
@@ -1869,6 +1909,8 @@ function showMapMissionHud() {
   root.setAttribute("aria-hidden", "false");
   syncMapHudHeadingCheckboxFromMain();
   refreshMapMissionHudState();
+  refreshMapHudToggleIcon();
+  refreshMapHudSpeedLabel();
   refreshMapLayout();
 }
 
@@ -1901,34 +1943,31 @@ function togglePauseResumeMission() {
 
 function setupMapMissionHud() {
   const root = document.getElementById("mapMissionHud");
-  const reveal = document.getElementById("mapMissionHudRevealBtn");
-  const collapseB = document.getElementById("mapMissionHudCollapseBtn");
+  const toggleB = document.getElementById("mapMissionHudToggleBtn");
   const pauseB = document.getElementById("mapHudPauseBtn");
   const prevB = document.getElementById("mapHudPrevBtn");
   const nextB = document.getElementById("mapHudNextBtn");
+  const speedB = document.getElementById("mapHudSpeedBtn");
   const mapHeading = document.getElementById("mapHudHeadingUp");
   if (
     !root ||
-    !reveal ||
-    !collapseB ||
+    !toggleB ||
     !pauseB ||
     !prevB ||
     !nextB ||
+    !speedB ||
     !mapHeading
   )
     return;
 
-  collapseB.innerHTML = HUD_CHEVRON_R;
   prevB.innerHTML = HUD_CHEVRON_L;
   nextB.innerHTML = HUD_CHEVRON_R;
+  refreshMapHudToggleIcon();
+  refreshMapHudSpeedLabel();
 
-  reveal.addEventListener("click", () => {
-    root.classList.remove("map-mission-hud--collapsed");
-    refreshMapLayout();
-  });
-
-  collapseB.addEventListener("click", () => {
-    root.classList.add("map-mission-hud--collapsed");
+  toggleB.addEventListener("click", () => {
+    root.classList.toggle("map-mission-hud--collapsed");
+    refreshMapHudToggleIcon();
     refreshMapLayout();
   });
 
@@ -1940,6 +1979,9 @@ function setupMapMissionHud() {
   });
   nextB.addEventListener("click", () => {
     jumpServedStop(1);
+  });
+  speedB.addEventListener("click", () => {
+    cycleMapHudSpeed();
   });
 
   mapHeading.addEventListener("change", () => {
@@ -2460,8 +2502,10 @@ document.getElementById("prevBtn").addEventListener("click", () => {
 
 speedSelect.addEventListener("change", () => {
   speed = Number(speedSelect.value) || 1;
+  refreshMapHudSpeedLabel();
 });
 speed = Number(speedSelect.value) || 1;
+refreshMapHudSpeedLabel();
 
 lineSelect.addEventListener("change", updateHeadsigns);
 lineSelect.addEventListener("change", syncLineCustomTrigger);

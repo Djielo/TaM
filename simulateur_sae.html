@@ -108,10 +108,14 @@
       }
       .map-wrap {
         position: relative;
+        isolation: isolate;
         border-radius: 10px;
         overflow: hidden;
       }
+      /* Calque tuiles / trace sous le HUD (contrôles Leaflet ~1000). */
       #map {
+        position: relative;
+        z-index: 0;
         height: 420px;
         border-radius: 10px;
         overflow: hidden;
@@ -345,7 +349,7 @@
         max-width: 560px;
         max-height: calc(100% - 56px);
         overflow: auto;
-        z-index: 900;
+        z-index: 1250;
         background: rgba(255, 255, 255, 0.92);
         border: 1px solid #d7dde4;
         border-radius: 8px;
@@ -355,75 +359,104 @@
       .map-recap.show {
         display: block;
       }
-      /* Commandes mission sur la carte — même hauteur ouvert / fermé ; repli manuel (chevrons). */
+      /* Commandes mission sur la carte — au-dessus des couches Leaflet (contrôle ~1000). */
       .map-mission-hud {
         --map-hud-h: 52px;
-        --map-hud-peek-w: 42px;
+        --map-hud-clear-attrib: 30px;
         position: absolute;
         inset: 0;
-        z-index: 660;
+        z-index: 1100;
         pointer-events: none;
       }
       .map-mission-hud.map-mission-hud--inactive {
         display: none;
       }
-      /* Pilier fermé : plus haut que large, même hauteur que la barre ouverte */
-      .map-mission-hud__peek {
+      /* Rail : même bouton carré ouvrir/fermer à droite ; bandeau à gauche */
+      .map-mission-hud__rail {
         pointer-events: auto;
         position: absolute;
         right: max(10px, env(safe-area-inset-right, 0px));
-        bottom: max(10px, env(safe-area-inset-bottom, 0px));
-        box-sizing: border-box;
-        width: var(--map-hud-peek-w);
+        bottom: calc(
+          max(8px, env(safe-area-inset-bottom, 0px)) + var(--map-hud-clear-attrib)
+        );
+        left: max(8px, env(safe-area-inset-left, 0px));
+        display: flex;
+        flex-direction: row-reverse;
+        align-items: stretch;
+        gap: 8px;
         height: var(--map-hud-h);
-        border-radius: 14px;
+        max-width: calc(100vw - 16px);
+      }
+      .map-mission-hud__toggle {
+        flex: 0 0 var(--map-hud-h);
+        width: var(--map-hud-h);
+        height: var(--map-hud-h);
+        box-sizing: border-box;
+        border-radius: 12px;
         border: 1px solid #bbc4cf;
         background: rgba(255, 255, 255, 0.96);
         box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
         color: #005ca9;
-        display: none;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
         padding: 0;
         cursor: pointer;
         transition:
-          transform 0.2s ease,
-          box-shadow 0.2s ease;
+          transform 0.15s ease,
+          filter 0.15s ease;
       }
-      .map-mission-hud__peek:active {
-        transform: scale(0.97);
-        filter: brightness(0.96);
+      .map-mission-hud__toggle:active {
+        transform: scale(0.96);
+        filter: brightness(0.94);
       }
-      .map-mission-hud__peek svg {
+      .map-mission-hud__toggle svg {
         display: block;
       }
-      .map-mission-hud__panel {
-        pointer-events: auto;
-        position: absolute;
-        left: max(8px, env(safe-area-inset-left, 0px));
-        right: max(8px, env(safe-area-inset-right, 0px));
-        bottom: max(10px, env(safe-area-inset-bottom, 0px));
-        display: flex;
-        justify-content: center;
+      .map-mission-hud__stripWrap {
+        flex: 1 1 auto;
+        min-width: 0;
         transition:
-          opacity 0.22s ease,
-          transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+          opacity 0.2s ease,
+          transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+          max-width 0.22s ease;
+      }
+      .map-mission-hud.map-mission-hud--collapsed .map-mission-hud__stripWrap {
+        flex: 0 1 0;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      .map-mission-hud:not(.map-mission-hud--collapsed) .map-mission-hud__stripWrap {
+        opacity: 1;
+        visibility: visible;
+        max-width: min(560px, calc(100vw - var(--map-hud-h) - 40px));
       }
       .map-mission-hud__inner {
         box-sizing: border-box;
         display: flex;
         flex-wrap: nowrap;
         align-items: center;
-        justify-content: center;
-        gap: 8px;
-        width: 100%;
-        max-width: 560px;
+        justify-content: flex-start;
+        gap: 6px;
         height: var(--map-hud-h);
-        padding: 0 10px;
+        width: max-content;
+        max-width: 100%;
+        min-width: 0;
+        padding: 0 8px;
         border-radius: 14px;
         background: rgba(255, 255, 255, 0.94);
         border: 1px solid #ccd3db;
         box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      .map-mission-hud__inner::-webkit-scrollbar {
+        display: none;
       }
       .map-mission-hud__btn {
         flex: 0 0 auto;
@@ -449,11 +482,11 @@
         border-color: #004a8c;
         color: #fff;
       }
-      .map-mission-hud__btn--collapse {
-        min-width: 40px;
+      .map-mission-hud__btn--speed {
+        min-width: 44px;
         padding: 0 8px;
-        border-color: #c5cdd6;
-        color: #005ca9;
+        font-size: 13px;
+        letter-spacing: -0.02em;
       }
       .map-mission-hud__btn svg {
         display: block;
@@ -461,47 +494,35 @@
       .map-mission-hud__heading {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         margin: 0;
-        padding: 0 10px;
+        padding: 0 8px;
         height: 40px;
+        max-height: 40px;
         border-radius: 10px;
         border: 1px solid #ccd3db;
         background: #fff;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
         color: #1b1f24;
         cursor: pointer;
         user-select: none;
+        flex: 0 1 auto;
+        min-width: 0;
       }
       .map-mission-hud__heading input {
         width: auto;
         margin: 0;
         cursor: pointer;
       }
-      /* Largeur fixe pour « Cap en haut » / « Nord en haut » */
+      /* Libellé cap : tient dans la barre (ellipse si trop étroit) */
       #mapHudHeadingCaption {
         display: inline-block;
-        min-width: 8.25rem;
+        max-width: min(9.5rem, 28vw);
         white-space: nowrap;
-      }
-      .map-mission-hud.map-mission-hud--collapsed .map-mission-hud__peek {
-        display: flex;
-      }
-      .map-mission-hud.map-mission-hud--collapsed .map-mission-hud__panel {
-        visibility: hidden;
-        opacity: 0;
-        pointer-events: none;
-        transform: translateX(16px);
-      }
-      .map-mission-hud:not(.map-mission-hud--collapsed) .map-mission-hud__peek {
-        display: none;
-      }
-      .map-mission-hud:not(.map-mission-hud--collapsed) .map-mission-hud__panel {
-        visibility: visible;
-        opacity: 1;
-        pointer-events: auto;
-        transform: translateX(0);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
       }
       /* Vehicule (triangle) : pointe = avant; en mode nord fixe, on tourne le triangle. */
       .nav-vehicle {
@@ -1347,58 +1368,55 @@
             class="map-mission-hud map-mission-hud--inactive"
             aria-hidden="true"
           >
-            <button
-              type="button"
-              id="mapMissionHudRevealBtn"
-              class="map-mission-hud__peek"
-              aria-label="Afficher les commandes (s’ouvre vers la gauche)"
-              title="Afficher les commandes"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M14 7l-5 5 5 5"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.75"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
-            <div class="map-mission-hud__panel">
-              <div class="map-mission-hud__inner" role="toolbar" aria-label="Commandes mission">
-                <button
-                  type="button"
-                  id="mapMissionHudCollapseBtn"
-                  class="map-mission-hud__btn map-mission-hud__btn--collapse"
-                  aria-label="Masquer les commandes"
-                  title="Replier"
-                ></button>
-                <button
-                  type="button"
-                  id="mapHudPauseBtn"
-                  class="map-mission-hud__btn map-mission-hud__btn--primary"
-                  aria-label="Pause ou reprendre"
-                  title="Pause / Reprendre"
-                ></button>
-                <button
-                  type="button"
-                  id="mapHudPrevBtn"
-                  class="map-mission-hud__btn"
-                  aria-label="Arrêt précédent"
-                  title="Arrêt précédent"
-                ></button>
-                <button
-                  type="button"
-                  id="mapHudNextBtn"
-                  class="map-mission-hud__btn"
-                  aria-label="Arrêt suivant"
-                  title="Arrêt suivant"
-                ></button>
-                <label class="map-mission-hud__heading">
-                  <input type="checkbox" id="mapHudHeadingUp" />
-                  <span id="mapHudHeadingCaption">Cap en haut</span>
-                </label>
+            <div class="map-mission-hud__rail">
+              <button
+                type="button"
+                id="mapMissionHudToggleBtn"
+                class="map-mission-hud__toggle"
+                aria-label="Afficher ou masquer les commandes"
+                title="Afficher les commandes"
+              ></button>
+              <div class="map-mission-hud__stripWrap">
+                <div
+                  class="map-mission-hud__inner"
+                  role="toolbar"
+                  aria-label="Commandes mission"
+                >
+                  <button
+                    type="button"
+                    id="mapHudPauseBtn"
+                    class="map-mission-hud__btn map-mission-hud__btn--primary"
+                    aria-label="Pause ou reprendre"
+                    title="Pause / Reprendre"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapHudPrevBtn"
+                    class="map-mission-hud__btn"
+                    aria-label="Arrêt précédent"
+                    title="Arrêt précédent"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapHudNextBtn"
+                    class="map-mission-hud__btn"
+                    aria-label="Arrêt suivant"
+                    title="Arrêt suivant"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapHudSpeedBtn"
+                    class="map-mission-hud__btn map-mission-hud__btn--speed"
+                    aria-label="Vitesse ×1"
+                    title="Vitesse (clic pour ×1, ×2, ×4, ×10)"
+                  >
+                    ×1
+                  </button>
+                  <label class="map-mission-hud__heading">
+                    <input type="checkbox" id="mapHudHeadingUp" />
+                    <span id="mapHudHeadingCaption">Cap</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
