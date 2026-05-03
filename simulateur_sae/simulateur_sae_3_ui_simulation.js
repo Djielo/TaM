@@ -1827,6 +1827,10 @@ const HUD_CHEVRON_L =
   '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 7l-5 5 5 5" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const HUD_CHEVRON_R =
   '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const HUD_ICON_VOICE_ON =
+  '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>';
+const HUD_ICON_VOICE_OFF =
+  '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
 
 /** Vitesses affichées sur la HUD carte — alignées sur `#speedSelect`. */
 const MAP_HUD_SPEED_SEQUENCE = [1, 2, 4, 10];
@@ -1883,6 +1887,30 @@ function mapHudPauseShowsPauseAction() {
   return !!running;
 }
 
+function refreshMapHudVoiceBtn() {
+  const btn = document.getElementById("mapHudVoiceBtn");
+  const root = document.getElementById("mapMissionHud");
+  if (
+    !btn ||
+    !voiceEnabledEl ||
+    root?.classList.contains("map-mission-hud--inactive")
+  ) {
+    return;
+  }
+  const on = !!voiceEnabledEl.checked;
+  btn.innerHTML = on ? HUD_ICON_VOICE_ON : HUD_ICON_VOICE_OFF;
+  btn.classList.toggle("map-mission-hud__voice-icon--on", on);
+  btn.classList.toggle("map-mission-hud__voice-icon--off", !on);
+  btn.title = on
+    ? "Annonces vocales activées (clic pour couper)"
+    : "Annonces vocales coupées (clic pour activer)";
+  btn.setAttribute(
+    "aria-label",
+    on ? "Désactiver les annonces vocales" : "Activer les annonces vocales",
+  );
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
 function refreshMapMissionHudState() {
   const root = document.getElementById("mapMissionHud");
   const pauseB = document.getElementById("mapHudPauseBtn");
@@ -1897,6 +1925,7 @@ function refreshMapMissionHudState() {
   pauseB.innerHTML = showPause ? HUD_ICON_PAUSE : HUD_ICON_PLAY;
   pauseB.setAttribute("aria-label", showPause ? "Pause" : "Reprendre");
   pauseB.title = showPause ? "Pause" : "Reprendre";
+  refreshMapHudVoiceBtn();
 }
 
 function hideMapMissionHud() {
@@ -1958,6 +1987,7 @@ function togglePauseResumeMission() {
 function setupMapMissionHud() {
   const root = document.getElementById("mapMissionHud");
   const toggleB = document.getElementById("mapMissionHudToggleBtn");
+  const voiceB = document.getElementById("mapHudVoiceBtn");
   const pauseB = document.getElementById("mapHudPauseBtn");
   const prevB = document.getElementById("mapHudPrevBtn");
   const nextB = document.getElementById("mapHudNextBtn");
@@ -1966,6 +1996,7 @@ function setupMapMissionHud() {
   if (
     !root ||
     !toggleB ||
+    !voiceB ||
     !pauseB ||
     !prevB ||
     !nextB ||
@@ -1978,6 +2009,12 @@ function setupMapMissionHud() {
   nextB.innerHTML = HUD_CHEVRON_R;
   refreshMapHudToggleIcon();
   refreshMapHudSpeedLabel();
+  refreshMapHudVoiceBtn();
+
+  voiceB.addEventListener("click", () => {
+    voiceEnabledEl.checked = !voiceEnabledEl.checked;
+    voiceEnabledEl.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 
   toggleB.addEventListener("click", () => {
     root.classList.toggle("map-mission-hud--collapsed");
@@ -2595,6 +2632,7 @@ function initVocalUI() {
   voiceModeEl.disabled = !voiceEnabledEl.checked;
   refreshVoiceSelect();
   syncMapHudHeadingCheckboxFromMain();
+  refreshMapHudVoiceBtn();
   if (window.speechSynthesis) {
     window.speechSynthesis.addEventListener("voiceschanged", () => {
       refreshVoiceSelect();
@@ -2618,6 +2656,7 @@ function saveVocalPrefs() {
 voiceEnabledEl.addEventListener("change", () => {
   voiceModeEl.disabled = !voiceEnabledEl.checked;
   saveVocalPrefs();
+  refreshMapHudVoiceBtn();
 });
 voiceModeEl.addEventListener("change", saveVocalPrefs);
 voiceSelectEl.addEventListener("change", saveVocalPrefs);

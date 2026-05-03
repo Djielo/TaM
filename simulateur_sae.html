@@ -382,7 +382,8 @@
         position: absolute;
         right: max(6px, env(safe-area-inset-right, 0px));
         bottom: calc(
-          max(6px, env(safe-area-inset-bottom, 0px)) + var(--map-hud-clear-attrib)
+          max(6px, env(safe-area-inset-bottom, 0px)) +
+            var(--map-hud-clear-attrib)
         );
         left: max(6px, env(safe-area-inset-left, 0px));
         display: flex;
@@ -439,7 +440,8 @@
         pointer-events: none;
         visibility: hidden;
       }
-      .map-mission-hud:not(.map-mission-hud--collapsed) .map-mission-hud__stripWrap {
+      .map-mission-hud:not(.map-mission-hud--collapsed)
+        .map-mission-hud__stripWrap {
         opacity: 1;
         visibility: visible;
       }
@@ -454,7 +456,7 @@
         width: max-content;
         max-width: 100%;
         min-width: 0;
-        padding: 0 6px;
+        padding: 0 9px;
         border-radius: 12px;
         background: rgba(255, 255, 255, 0.94);
         border: 1px solid #ccd3db;
@@ -499,6 +501,39 @@
         font-size: 12px;
         letter-spacing: -0.03em;
       }
+      /* Voix : glyphe seul (pas de carré plein largeur) pour ne pas élargir la barre */
+      .map-mission-hud__voice-icon {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 0;
+        height: var(--map-hud-btn);
+        padding: 0 1px;
+        margin: 0;
+        border: none;
+        background: transparent;
+        box-shadow: none;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .map-mission-hud__voice-icon:active {
+        opacity: 0.82;
+        transform: scale(0.94);
+      }
+      .map-mission-hud__voice-icon--on {
+        color: #005ca9;
+      }
+      .map-mission-hud__voice-icon--off {
+        color: #64748b;
+      }
+      .map-mission-hud__voice-icon svg {
+        display: block;
+        width: 20px;
+        height: 20px;
+      }
       .map-mission-hud__btn svg {
         display: block;
         width: 18px;
@@ -540,8 +575,8 @@
         position: absolute;
         right: max(6px, env(safe-area-inset-right, 0px));
         bottom: calc(
-          max(6px, env(safe-area-inset-bottom, 0px)) + var(--map-hud-clear-attrib) +
-            var(--map-hud-h) + 8px
+          max(6px, env(safe-area-inset-bottom, 0px)) +
+            var(--map-hud-clear-attrib) + var(--map-hud-h) + 8px
         );
         z-index: 1;
         max-width: min(260px, calc(100vw - 24px));
@@ -909,17 +944,29 @@
             </div>
             <div class="row panel-section panel-ops" data-ops-sub="devtemp">
               <div class="grow">
-                <button id="tempManualDrawStartBtn" class="secondary" type="button">
+                <button
+                  id="tempManualDrawStartBtn"
+                  class="secondary"
+                  type="button"
+                >
                   Tracer la déviation temporaire
                 </button>
               </div>
               <div class="grow">
-                <button id="tempManualDrawUndoBtn" class="secondary" type="button">
+                <button
+                  id="tempManualDrawUndoBtn"
+                  class="secondary"
+                  type="button"
+                >
                   Retirer le dernier point
                 </button>
               </div>
               <div class="grow">
-                <button id="tempManualDrawSaveBtn" class="secondary" type="button">
+                <button
+                  id="tempManualDrawSaveBtn"
+                  class="secondary"
+                  type="button"
+                >
                   Valider le tracé de la déviation temporaire
                 </button>
               </div>
@@ -964,7 +1011,8 @@
                   style="margin: 6px 0 0; color: #c62828; font-weight: 400"
                 >
                   Après avoir cliqué sur
-                  <strong>«&nbsp;Enregistrer la déviation planifiée&nbsp;»</strong
+                  <strong
+                    >«&nbsp;Enregistrer la déviation planifiée&nbsp;»</strong
                   >,<br />
                   allez sur
                   <strong>«&nbsp;Enregistrée / Dupliquée&nbsp;»</strong> pour
@@ -1082,7 +1130,10 @@
             </div>
             <div class="row panel-section panel-ops" data-ops-sub="rec">
               <div class="grow">
-                <p class="note" style="margin: 0; color: #c62828; font-weight: 400">
+                <p
+                  class="note"
+                  style="margin: 0; color: #c62828; font-weight: 400"
+                >
                   <strong>Duplication de variantes</strong> — pour dupliquer
                   vers une autre variante (même ligne et sens), choisissez une
                   <strong>fiche source</strong> et la
@@ -1177,15 +1228,16 @@
             <div class="row panel-section panel-help">
               <div class="grow">
                 <p class="help-intro">
-                  Ouverture rapide&nbsp;: cliquez (ou touchez) un intitulé pour afficher ou
-                  masquer l’explication. Les boutons cités correspondent au menu
-                  du simulateur (onglets <strong>Ligne</strong>,
-                  <strong>Déviation</strong>,
+                  Ouverture rapide&nbsp;: cliquez (ou touchez) un intitulé pour
+                  afficher ou masquer l’explication. Les boutons cités
+                  correspondent au menu du simulateur (onglets
+                  <strong>Ligne</strong>, <strong>Déviation</strong>,
                   <strong>Audio</strong>).
                 </p>
                 <details class="help-item">
                   <summary>
-                    Vous souhaitez suivre une ligne sans créer de déviation&nbsp;?
+                    Vous souhaitez suivre une ligne sans créer de
+                    déviation&nbsp;?
                   </summary>
                   <div class="help-item-body">
                     <ul>
@@ -1196,64 +1248,80 @@
                         <strong>3)&nbsp;Variante</strong>.
                       </li>
                       <li>
-                        Sélectionnez <strong>Simulation (avance auto)</strong> ou
+                        Sélectionnez
+                        <strong>Simulation (avance auto)</strong> ou
                         <strong>Réel GPS (position téléphone)</strong>.
                       </li>
                       <li>
-                        Appuyez sur <strong>Démarrer simulation</strong> (le libellé
-                        peut indiquer le mode réel lorsque celui‑ci est choisi).
+                        Appuyez sur <strong>Démarrer simulation</strong> (le
+                        libellé peut indiquer le mode réel lorsque celui‑ci est
+                        choisi).
                       </li>
                       <li>
                         En simulation, la liste <strong>Vitesse</strong> permet
                         d’accélérer le parcours (×1, ×2, ×4 ou ×10). Utilisez
-                        <strong>Pause / Reprendre</strong> et les boutons d’arrêts si
-                        besoin.
+                        <strong>Pause / Reprendre</strong> et les boutons
+                        d’arrêts si besoin.
                       </li>
                       <li>
-                        L’option <strong>Cap en haut</strong> se trouve toujours sous
-                        <strong>Ligne</strong> dans ce menu (carte orientée comme un
-                        GPS ou nord fixe selon votre choix).
+                        L’option <strong>Cap en haut</strong> se trouve toujours
+                        sous <strong>Ligne</strong> dans ce menu (carte orientée
+                        comme un GPS ou nord fixe selon votre choix).
                       </li>
                     </ul>
                   </div>
                 </details>
                 <details class="help-item">
-                  <summary>Vous souhaitez créer une déviation planifiée&nbsp;?</summary>
+                  <summary>
+                    Vous souhaitez créer une déviation planifiée&nbsp;?
+                  </summary>
                   <div class="help-item-body">
                     <ul>
                       <li>
-                        Dans <strong>Ligne</strong>, vérifiez que la ligne, le sens et
-                        la variante désirés sont bien sélectionnés.
+                        Dans <strong>Ligne</strong>, vérifiez que la ligne, le
+                        sens et la variante désirés sont bien sélectionnés.
                       </li>
                       <li>
                         Passez à <strong>Déviation</strong> puis au sous‑onglet
-                        <strong>Planifiée</strong>&nbsp;: il s’affiche actif (surbrillance
-                        verte), comme pour <strong>Saisir arrêt non desservi</strong> ou
+                        <strong>Planifiée</strong>&nbsp;: il s’affiche actif
+                        (surbrillance verte), comme pour
+                        <strong>Saisir arrêt non desservi</strong> ou
                         <strong>Saisir arrêts provisoires</strong>.
                       </li>
                       <li>
-                        <strong>Commencer par le tracé</strong>&nbsp;: cliquez sur
-                        <strong>Tracer la déviation planifiée</strong>&nbsp;; vous ajoutez les
-                        points sur la carte et, si besoin, vous retirez le dernier point avec
-                        le bouton <strong>Retirer le dernier point</strong> dans le
-                        sous‑onglet <strong>Planifiée</strong> (répétable autant que
-                        nécessaire, tant qu’il subsiste un point et tant qu’on n’a pas cliqué
-                        sur <strong>Enregistrer la déviation planifiée</strong>). Puis
-                        <strong>Valider le tracé de la déviation planifiée</strong> pour enregistrer le tronçon
-                        sur la carte. Sans validation, <strong>Quitter le tracé (carte)</strong> supprime tout le
-                        brouillon de points.
+                        <strong>Commencer par le tracé</strong>&nbsp;: cliquez
+                        sur
+                        <strong>Tracer la déviation planifiée</strong>&nbsp;;
+                        vous ajoutez les points sur la carte et, si besoin, vous
+                        retirez le dernier point avec le bouton
+                        <strong>Retirer le dernier point</strong> dans le
+                        sous‑onglet <strong>Planifiée</strong> (répétable autant
+                        que nécessaire, tant qu’il subsiste un point et tant
+                        qu’on n’a pas cliqué sur
+                        <strong>Enregistrer la déviation planifiée</strong>).
+                        Puis
+                        <strong
+                          >Valider le tracé de la déviation planifiée</strong
+                        >
+                        pour enregistrer le tronçon sur la carte. Sans
+                        validation,
+                        <strong>Quitter le tracé (carte)</strong> supprime tout
+                        le brouillon de points.
                       </li>
                       <li>
-                        Si la <strong>déviation</strong> l’exige, utilisez ensuite
-                        <strong>Saisir arrêt non desservi</strong> et/ou
+                        Si la <strong>déviation</strong> l’exige, utilisez
+                        ensuite <strong>Saisir arrêt non desservi</strong> et/ou
                         <strong>Saisir arrêts provisoires</strong> (et
-                        <strong>Retirer dernier arrêt provisoire</strong> si nécessaire).
+                        <strong>Retirer dernier arrêt provisoire</strong> si
+                        nécessaire).
                       </li>
                       <li>
-                        Une fois votre déviation prête, sous <strong>Planifiée</strong>,
-                        utilisez <strong>Enregistrer la déviation planifiée</strong> pour
-                        créer une <strong>déviation enregistrée</strong>, que vous retrouvez
-                        dans le sous‑onglet <strong>Enregistrée / Dupliquée</strong>.
+                        Une fois votre déviation prête, sous
+                        <strong>Planifiée</strong>, utilisez
+                        <strong>Enregistrer la déviation planifiée</strong> pour
+                        créer une <strong>déviation enregistrée</strong>, que
+                        vous retrouvez dans le sous‑onglet
+                        <strong>Enregistrée / Dupliquée</strong>.
                       </li>
                       <li>
                         Les parties de tracé à retirer se gèrent via
@@ -1275,46 +1343,59 @@
                         <strong>Temporaire</strong>.
                       </li>
                       <li>
-                        Vous retrouvez <strong>les mêmes types d’actions</strong> que
-                        sous <strong>Planifiée</strong>, avec les intitulés adaptés :
+                        Vous retrouvez
+                        <strong>les mêmes types d’actions</strong> que sous
+                        <strong>Planifiée</strong>, avec les intitulés adaptés :
                         <strong>Tracer la déviation temporaire</strong>,
                         <strong>Retirer le dernier point</strong>,
-                        <strong>Valider le tracé de la déviation temporaire</strong>,
-                        <strong>Saisir arrêt non desservi</strong>,
+                        <strong
+                          >Valider le tracé de la déviation temporaire</strong
+                        >, <strong>Saisir arrêt non desservi</strong>,
                         <strong>Saisir arrêts provisoires</strong>,
-                        <strong>Retirer dernier arrêt provisoire</strong>, ainsi que la
-                        gestion du tracé via <strong>Déviation à supprimer</strong> /
-                        suppression de tronçons.
+                        <strong>Retirer dernier arrêt provisoire</strong>, ainsi
+                        que la gestion du tracé via
+                        <strong>Déviation à supprimer</strong> / suppression de
+                        tronçons.
                       </li>
                       <li>
-                        Sous <strong>Temporaire</strong>, aucun clic préalable de « création »
-                        n’est requis : au <strong>premier</strong> usage du tracé, des arrêts
-                        (non desservis ou provisoires) ou des suppressions de tronçon sur cette
-                        page, une <strong>session de déviation temporaire</strong> s’ouvre tout
-                        seule&nbsp;; les libellés diffèrent de la déviation
+                        Sous <strong>Temporaire</strong>, aucun clic préalable
+                        de « création » n’est requis : au
+                        <strong>premier</strong> usage du tracé, des arrêts (non
+                        desservis ou provisoires) ou des suppressions de tronçon
+                        sur cette page, une
+                        <strong>session de déviation temporaire</strong> s’ouvre
+                        tout seule&nbsp;; les libellés diffèrent de la déviation
                         <strong>planifiée</strong> pour lever toute confusion.
                       </li>
                       <li>
-                        <strong>Enregistrer la déviation temporaire</strong> sauvegarde une
-                        fiche locale <em>et</em> referme la session (sélecteurs de ligne de
-                        nouveau libres) tout en conservant l’état sur la carte comme mode
-                        d’exploitation courant&nbsp;; les dates se gèrent ensuite sous
-                        <strong>Enregistrée / Dupliquée</strong>, distinct de la chaîne
-                        <strong>planifiée</strong>.
+                        <strong>Enregistrer la déviation temporaire</strong>
+                        sauvegarde une fiche locale <em>et</em> referme la
+                        session (sélecteurs de ligne de nouveau libres) tout en
+                        conservant l’état sur la carte comme mode d’exploitation
+                        courant&nbsp;; les dates se gèrent ensuite sous
+                        <strong>Enregistrée / Dupliquée</strong>, distinct de la
+                        chaîne <strong>planifiée</strong>.
                       </li>
                       <li>
-                        Tant que vous n’avez pas <strong>validé le tracé</strong>,
-                        <strong>Quitter le tracé (carte)</strong> sous Temporaire ou Planifiée
-                        supprime uniquement les <strong>points en brouillon</strong>, sans garder ni
+                        Tant que vous n’avez pas
+                        <strong>validé le tracé</strong>,
+                        <strong>Quitter le tracé (carte)</strong> sous
+                        Temporaire ou Planifiée supprime uniquement les
+                        <strong>points en brouillon</strong>, sans garder ni
                         valider une déviation.
                       </li>
                       <li>
-                        <strong>Rétablir le mode exploitation du début de mission</strong>
-                        (sous-onglet <strong>Temporaire</strong> seulement) ramène à l’état au
-                        moment où la session Temporaire a démarré ou la fiche chargée servait de
-                        référence — y compris tracés déjà <strong>fusionnés</strong> sur la carte,
-                        marquages d’arrêts non desservis et arrêts provisoires depuis cette base.
-                        Pour un retour ligne pure, voir <strong>Revenir au Mode base</strong> sous
+                        <strong
+                          >Rétablir le mode exploitation du début de
+                          mission</strong
+                        >
+                        (sous-onglet <strong>Temporaire</strong> seulement)
+                        ramène à l’état au moment où la session Temporaire a
+                        démarré ou la fiche chargée servait de référence — y
+                        compris tracés déjà <strong>fusionnés</strong> sur la
+                        carte, marquages d’arrêts non desservis et arrêts
+                        provisoires depuis cette base. Pour un retour ligne
+                        pure, voir <strong>Revenir au Mode base</strong> sous
                         Planifiée / Temporaire.
                       </li>
                     </ul>
@@ -1329,41 +1410,48 @@
                     <ul>
                       <li>
                         Sous <strong>Déviation</strong>, ouvrez
-                        <strong>Enregistrée / Dupliquée</strong> pour voir les fiches du
-                        <strong>stockage navigateur</strong>.
+                        <strong>Enregistrée / Dupliquée</strong> pour voir les
+                        fiches du <strong>stockage navigateur</strong>.
                       </li>
                       <li>
-                        Une fois une déviation créée depuis <strong>Planifiée</strong>,
-                        le texte d’aide sous
-                        <strong>Enregistrer la déviation planifiée</strong> vous rappelle
-                        où saisir les <strong>périodes de validité</strong>.
+                        Une fois une déviation créée depuis
+                        <strong>Planifiée</strong>, le texte d’aide sous
+                        <strong>Enregistrer la déviation planifiée</strong> vous
+                        rappelle où saisir les
+                        <strong>périodes de validité</strong>.
                       </li>
                       <li>
-                        Renseignez <strong>Valide du</strong> / <strong>au</strong> puis,
-                        après avoir choisi une entrée dans la liste,
+                        Renseignez <strong>Valide du</strong> /
+                        <strong>au</strong> puis, après avoir choisi une entrée
+                        dans la liste,
                         <strong>MàJ des dates de l’entrée sélectionnée</strong>.
                       </li>
                       <li>
-                        <strong>Charger la sélection</strong> rapporte une fiche sur la
-                        carte&nbsp;; <strong>Supprimer la sélection</strong> efface une
-                        fiche locale.
+                        <strong>Charger la sélection</strong> rapporte une fiche
+                        sur la carte&nbsp;;
+                        <strong>Supprimer la sélection</strong> efface une fiche
+                        locale.
                       </li>
                       <li>
-                        En bas de cet onglet, la duplication entre variantes passe par
-                        <strong>Fiche source</strong>, <strong>Variante cible</strong> et
+                        En bas de cet onglet, la duplication entre variantes
+                        passe par
+                        <strong>Fiche source</strong>,
+                        <strong>Variante cible</strong> et
                         <strong>Confirmer la duplication</strong>.
                       </li>
                     </ul>
                   </div>
                 </details>
                 <details class="help-item">
-                  <summary>Vous souhaitez activer les annonces ou la voix&nbsp;?</summary>
+                  <summary>
+                    Vous souhaitez activer les annonces ou la voix&nbsp;?
+                  </summary>
                   <div class="help-item-body">
                     <ul>
                       <li>
-                        Utilisez l’onglet <strong>Audio</strong> pour activer les
-                        annonces « prochain arrêt », le moment où elles sont lues et la
-                        voix utilisée par le navigateur.
+                        Utilisez l’onglet <strong>Audio</strong> pour activer
+                        les annonces « prochain arrêt », le moment où elles sont
+                        lues et la voix utilisée par le navigateur.
                       </li>
                       <li>
                         Pour vérifier le rendu, servez‑vous du bouton
@@ -1423,7 +1511,10 @@
               aria-label="Prochain arrêt annoncé"
             >
               <p class="map-mission-hud__nextStrip-kicker">Prochain arrêt</p>
-              <p id="mapHudNextStopLine" class="map-mission-hud__nextStrip-name">
+              <p
+                id="mapHudNextStopLine"
+                class="map-mission-hud__nextStrip-name"
+              >
                 —
               </p>
             </div>
@@ -1441,6 +1532,14 @@
                   role="toolbar"
                   aria-label="Commandes mission"
                 >
+                  <button
+                    type="button"
+                    id="mapHudVoiceBtn"
+                    class="map-mission-hud__voice-icon map-mission-hud__voice-icon--on"
+                    aria-label="Annonces vocales"
+                    aria-pressed="true"
+                    title="Annonces vocales"
+                  ></button>
                   <button
                     type="button"
                     id="mapHudPauseBtn"
