@@ -373,7 +373,10 @@
       .map-mission-hud.map-mission-hud--inactive {
         display: none;
       }
-      /* Rail : même bouton carré ouvrir/fermer à droite ; bandeau à gauche */
+      /*
+       * Rail : toggle toujours au même endroit (premier enfant + row-reverse → bord droit).
+       * Le bandeau occupe toute la largeur à gauche du toggle ; son contenu est centré dans cette zone.
+       */
       .map-mission-hud__rail {
         pointer-events: auto;
         position: absolute;
@@ -384,7 +387,7 @@
         left: max(6px, env(safe-area-inset-left, 0px));
         display: flex;
         flex-direction: row-reverse;
-        align-items: stretch;
+        align-items: center;
         gap: 6px;
         height: var(--map-hud-h);
         max-width: calc(100vw - 12px);
@@ -420,6 +423,9 @@
       .map-mission-hud__stripWrap {
         flex: 1 1 auto;
         min-width: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
         transition:
           opacity 0.2s ease,
           transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
@@ -436,7 +442,6 @@
       .map-mission-hud:not(.map-mission-hud--collapsed) .map-mission-hud__stripWrap {
         opacity: 1;
         visibility: visible;
-        max-width: min(560px, calc(100vw - var(--map-hud-h) - 26px));
       }
       .map-mission-hud__inner {
         box-sizing: border-box;
