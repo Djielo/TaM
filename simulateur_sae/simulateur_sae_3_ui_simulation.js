@@ -1884,6 +1884,7 @@ startBtn.addEventListener("click", () => {
         stopGpsTracking();
         running = true;
       }
+      closeControlPanel();
     })
     .finally(() => {
       startBtn.disabled = false;
@@ -2297,10 +2298,14 @@ updateDeviationBtn?.addEventListener("click", () =>
 );
 
 loadDeviationBtn?.addEventListener("click", () => {
-  (async () => {
-    await loadDeviationItemIntoApp(getSelectedDeviationItem(), {
-      forceOpsReset: true,
-    });
+  void (async () => {
+    try {
+      await loadDeviationItemIntoApp(getSelectedDeviationItem(), {
+        forceOpsReset: true,
+      });
+    } finally {
+      closeControlPanel();
+    }
   })();
 });
 
