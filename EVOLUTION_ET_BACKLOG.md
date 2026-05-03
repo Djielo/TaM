@@ -76,7 +76,8 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - **Interface** : menu burger, onglets Mission / Modes / Audio, récap carte, **bandeau** sous le titre (ligne + direction, couleurs, appui long pour faire défiler le texte, relâchement = retour compact).
 - **Couleurs** de ligne (sélecteur, menus mission, pastilles) ; **contraste** texte (listes T3 / bus à fond clair, etc.) ; polyligne carte **restante** en **bleu TAM** (retrait de la coloration par ligne = lisibilité sur fond OSM).
 - **Modes d’exploitation** (onglet Déviation) : **V1 centrée déviation manuelle** ; les boutons planifié auto / temps réel ont été **retirés** du simulateur (mai 2026). **Planifiée** vs **Temporaire** (sous-onglets) ; tracés validés chaînés ; **Rétablir le mode exploitation…** sous **Temporaire** uniquement ; **base** commune avec « Revenir au Mode base ».
-- **Déviations enregistrées** : stockage **local** (`localStorage`), charger / nouvelle entrée / mise à jour / duplication vers autre variante ; correction mai 2026 du **double `readDeviationStore`** lors du « Mettre à jour » ; **synchronisation automatique** du payload de l’entrée sélectionnée après suppression d’une portion ou effacement du tracé validé (si la mission courante correspond au `pattern_id` de la fiche).
+- **Déviations enregistrées** : stockage **local** (`localStorage`), charger / nouvelle entrée / mise à jour / duplication vers autre variante ; correction mai 2026 du **double `readDeviationStore`** lors du « Mettre à jour » ; **synchronisation automatique** du payload de l’entrée sélectionnée après suppression d’une portion ou effacement du tracé validé (si la mission courante correspond au `pattern_id` de la fiche). **Garde-fou enregistrement planifié** : pas de **nouvelle** fiche pour un `pattern_id` déjà présent sans avoir chargé la fiche sur la carte (`liveDeviationLoadedItemId` + message d’aide). **Bandeau** carte si déviation non enregistrée / session temporaire ouverte ; **blocage** reprise simulation / sauts d’arrêts tant que l’état attendu n’est pas réglé.
+- **Modales utilisateur** : messages, confirmations et saisie courte (ex. nom arrêt provisoire) passent par des **`<dialog>` HTML** (`tamAppAlert`, `showAppConfirmDialog`, `showAppPromptDialog` dans le segment 1/3) avec titre **« Simulateur SAE TAM »** — plus d’en-tête navigateur « localhost » sur ces flux ; repli natif seulement si `<dialog>` indisponible.
 - **Perturbations** : piste `serve_tam` + `update_tam_perturbations.py` / `tam_perturbations.json` (éviter CORS sur chargement “Infos trafic”).
 
 ### 2.1 Déviation — Planifiée / Temporaire (`simulateur_sae.html`, mai 2026)
@@ -90,7 +91,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 | **Snapshot Rétablir** | Mémorisé au **chargement** d’une fiche enregistrée et à l’**ouverture** de session temporaire (clone du payload carte). Rétablir restaure cet état (ex. planifiée chargée), pas la ligne brute sans déviation. |
 | **Verrou « Enregistrer planifiée »** | Après **Enregistrer la déviation temporaire** ou après **Rétablir…**, le bouton reste inactif tant qu’aucune **validation du tracé** n’est faite via le bouton **Planifiée** (« Valider le tracé de la déviation planifiée »). Quitter un brouillon sans rien tracer ne doit pas rouvrir l’enregistrement planifiée par erreur. |
 | **Purge locale au Rétablir** | Retrait du stockage navigateur des fiches dont le libellé est une déviation **temporaire** pour la **même ligne** (`route_short_name`), y compris duplicatas de variante. |
-| **Refactor lisibilité** | Snapshot / toolbar / store : `buildTemporaryRevertSnapshotFromMissionPattern`, `computePlannedSaveDeviationToolbarState`, `computeTemporarySaveDeviationToolbarState`, `refreshDeviationStoreSelectorsAfterMutation`. Verrou mission Temporaire : `missionViolatesTemporaryDeviationLock`, `alertAndRevertMissionSelectorsForTemporaryLock`. Carte + stats (regroupe un flux répété) : `recomputeSkippedAndRedrawStopLayers`, `refreshMissionStopVisualsAndStats`. Fiches locales : `generateLocalDeviationRecordId`, `selectSavedDeviationSelectOptionByDeviationId`. |
+| **Refactor lisibilité** | Snapshot / toolbar / store : `buildTemporaryRevertSnapshotFromMissionPattern`, `computePlannedSaveDeviationToolbarState`, `computeTemporarySaveDeviationToolbarState`, `refreshDeviationStoreSelectorsAfterMutation`. Verrou mission Temporaire : `missionViolatesTemporaryDeviationLock`, `alertAndRevertMissionSelectorsForTemporaryLock`. Carte + stats (regroupe un flux répété) : `recomputeSkippedAndRedrawStopLayers`, `refreshMissionStopVisualsAndStats`. Fiches locales : `generateLocalDeviationRecordId`, `selectSavedDeviationSelectOptionByDeviationId`, `liveDeviationLoadedItemId` / `clearLiveDeviationLoadedSource`. **UI messages** : `tamAppAlert`, `showAppConfirmDialog`, `showAppPromptDialog` (+ balises `<dialog>` dans `simulateur_sae.html`). |
 
 ---
 
@@ -148,7 +149,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 ### 4E. Qualité & durabilité (à caler en continu)
 
 - [ ] Tests ou **smoke** sur génération `simulation_data.json` / intégrité.
-- [ ] Messages d’**erreur** clairs (pas de `simulation_data.json`, API HS, etc.).
+- [ ] Messages d’**erreur** clairs (pas de `simulation_data.json`, API HS, etc.) — **partiel** : flux déviation / confirmations du simulateur passent par des modales HTML (mai 2026) ; reste le chargement données / API.
 - [ ] (Option) Indicateur de **chargement** sur mobile pour gros JSON.
 
 ---
@@ -167,7 +168,7 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 | Fichier | Rôle |
 |---------|------|
 | `simulateur_sae.html` | Marque‑up + styles ; charge **sans build** les trois scripts du dossier `simulateur_sae/` (**ordre obligatoire 1→2→3**, voir lignes suivantes). |
-| `simulateur_sae/simulateur_sae_1_state_mission.js` | **Segment 1/3** : données mission, lignes, ops / carte « base », état jusqu’à `ensureOpsTargetPattern`. |
+| `simulateur_sae/simulateur_sae_1_state_mission.js` | **Segment 1/3** : données mission, lignes, ops / carte « base », état jusqu’à `ensureOpsTargetPattern` ; modales `<dialog>` (`tamAppAlert`, `showAppConfirmDialog`, `showAppPromptDialog`). |
 | `simulateur_sae/simulateur_sae_2_deviations.js` | **Segment 2/3** : stockage local, fiches et UI associées jusqu’à `deviationDuplicateSelectionToVariant`. |
 | `simulateur_sae/simulateur_sae_3_ui_simulation.js` | **Segment 3/3** : depuis `previewMissionToken` jusqu’aux écouteurs DOM et `fetch(simulation_data.json)`. |
 | `serve_tam.py` | Fichiers statiques + API locale (ex. perturbations) |
@@ -178,4 +179,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-01 — aide-mémoire §2.1 enrichi (**DRY** : verrou mission Temporaire, refresh carte/stats, IDs fiches) ; §6 inchangé (découpe `1→2→3`). Mettre à jour cette date quand on modifie le mémo.*
+*Dernière révision de **ce** fichier markdown : 2026-05-01 — alignement mémo : modales HTML simulateur, garde-fou fiche chargée / bandeau / blocage reprise ; §4E messages partiellement couverts ; §6 segment 1.*
