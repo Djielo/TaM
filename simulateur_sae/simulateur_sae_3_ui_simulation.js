@@ -1801,8 +1801,7 @@ function updateStats() {
       const skipped =
         slot.kind === "gtfs" &&
         skippedStopIdSet.has(String(slot.stop_id || ""));
-      const prov = slot.kind === "prov" ? " (provisoire)" : "";
-      return `${slot.name}${skipped ? " (non desservi)" : ""}${prov}`;
+      return `${slot.name}${skipped ? " (non desservi)" : ""}`;
     }
     currentStopEl.textContent = fmtSlot(pair.curr);
     nextStopEl.textContent = fmtSlot(pair.next);
@@ -1872,12 +1871,40 @@ function refreshMapHudToggleIcon() {
   );
 }
 
-/** Même libellé que le récap `#nextStop`, affiché sur la carte. */
+/**
+ * Pourcentage de remplissage de la pastille « Prochain arrêt » : distance parcourue
+ * entre l’arrêt courant et le prochain le long du tracé guide (0 → départ courant, 100 → prochain).
+ */
+function computeMapHudNextStripFillPercent(d) {
+  if (!currentPattern || pathTotalMeters <= 0) return 0;
+  const pair = getCurrentAndNextServedGuideSlots(d);
+  const m0 = pair.curr?.meters;
+  const m1 = pair.next?.meters;
+  if (m0 == null || m1 == null) return 0;
+  const v0 = Number(m0);
+  const v1 = Number(m1);
+  const span = v1 - v0;
+  const dn = Number(d);
+  if (span <= 1e-3) {
+    return dn >= v1 - 0.5 ? 100 : 0;
+  }
+  const ratio = (dn - v0) / span;
+  return Math.min(100, Math.max(0, Math.round(ratio * 100)));
+}
+
+/** Même libellé que le récap `#nextStop`, affiché sur la carte + barre de progression tronçon. */
 function refreshMapHudNextStopPeek() {
+  const strip = document.querySelector(
+    "#mapMissionHud .map-mission-hud__nextStrip",
+  );
   const line = document.getElementById("mapHudNextStopLine");
   if (!line || !nextStopEl) return;
   const t = (nextStopEl.textContent || "").trim();
   line.textContent = t.length ? t : "—";
+  if (strip) {
+    const pct = computeMapHudNextStripFillPercent(distanceAlongPathMeters);
+    strip.style.setProperty("--map-hud-next-fill-pct", String(pct));
+  }
 }
 
 function mapHudPauseShowsPauseAction() {
