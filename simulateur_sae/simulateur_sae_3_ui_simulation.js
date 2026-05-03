@@ -1688,6 +1688,10 @@ function updateStopToStopOverlay() {
 async function setMission(pattern, opts) {
   const o = opts || {};
   previewOnlyMode = !!o.previewOnly;
+  if (previewOnlyMode) {
+    mapMissionHudSessionActive = false;
+    hideMapMissionHud();
+  }
   stopManualDrawMode();
   currentPattern = pattern;
   distanceAlongPathMeters = 0;
@@ -1778,6 +1782,7 @@ async function setMission(pattern, opts) {
 
 function updateStats() {
   if (!currentPattern) {
+    refreshMapMissionHudState();
     return;
   }
   const stops = currentPattern.stops;
@@ -1806,6 +1811,142 @@ function updateStats() {
   progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
     BASE_METERS_PER_SECOND * speed * 3.6,
   )} km/h sim.`;
+  refreshMapMissionHudState();
+}
+
+const HUD_ICON_PAUSE =
+  '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.5" height="14" rx="1" fill="currentColor"/><rect x="13.5" y="5" width="4.5" height="14" rx="1" fill="currentColor"/></svg>';
+const HUD_ICON_PLAY =
+  '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13l11-6.5L8 5.5z"/></svg>';
+const HUD_CHEVRON_L =
+  '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 7l-5 5 5 5" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const HUD_CHEVRON_R =
+  '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function mapHudPauseShowsPauseAction() {
+  if (driveMode === DRIVE_MODE.REAL) {
+    return gpsWatchId != null;
+  }
+  return !!running;
+}
+
+function refreshMapMissionHudState() {
+  const root = document.getElementById("mapMissionHud");
+  const pauseB = document.getElementById("mapHudPauseBtn");
+  if (
+    !root ||
+    !pauseB ||
+    root.classList.contains("map-mission-hud--inactive")
+  ) {
+    return;
+  }
+  const showPause = mapHudPauseShowsPauseAction();
+  pauseB.innerHTML = showPause ? HUD_ICON_PAUSE : HUD_ICON_PLAY;
+  pauseB.setAttribute("aria-label", showPause ? "Pause" : "Reprendre");
+  pauseB.title = showPause ? "Pause" : "Reprendre";
+}
+
+function hideMapMissionHud() {
+  const root = document.getElementById("mapMissionHud");
+  if (!root) return;
+  root.classList.add("map-mission-hud--inactive");
+  root.classList.remove("map-mission-hud--collapsed");
+  root.setAttribute("aria-hidden", "true");
+}
+
+function syncMapHudHeadingCheckboxFromMain() {
+  const mapHeading = document.getElementById("mapHudHeadingUp");
+  const cap = document.getElementById("mapHudHeadingCaption");
+  if (mapHeading) mapHeading.checked = !!headingUpEl.checked;
+  if (cap) cap.textContent = headingUpEl.checked ? "Cap en haut" : "Nord en haut";
+}
+
+function showMapMissionHud() {
+  const root = document.getElementById("mapMissionHud");
+  if (!root) return;
+  root.classList.remove("map-mission-hud--inactive");
+  root.classList.remove("map-mission-hud--collapsed");
+  root.setAttribute("aria-hidden", "false");
+  syncMapHudHeadingCheckboxFromMain();
+  refreshMapMissionHudState();
+  refreshMapLayout();
+}
+
+function togglePauseResumeMission() {
+  if (previewOnlyMode) {
+    running = false;
+    lastRafTime = 0;
+    stopGpsTracking();
+    refreshMapMissionHudState();
+    return;
+  }
+  if (driveMode === DRIVE_MODE.REAL) {
+    if (!currentPattern) return;
+    if (gpsWatchId == null) {
+      running = startGpsTracking();
+    } else {
+      stopGpsTracking();
+      running = false;
+      setGpsStatus("GPS en pause.");
+    }
+    refreshMapMissionHudState();
+    return;
+  }
+  running = !running;
+  if (!running) {
+    lastRafTime = 0;
+  }
+  refreshMapMissionHudState();
+}
+
+function setupMapMissionHud() {
+  const root = document.getElementById("mapMissionHud");
+  const reveal = document.getElementById("mapMissionHudRevealBtn");
+  const collapseB = document.getElementById("mapMissionHudCollapseBtn");
+  const pauseB = document.getElementById("mapHudPauseBtn");
+  const prevB = document.getElementById("mapHudPrevBtn");
+  const nextB = document.getElementById("mapHudNextBtn");
+  const mapHeading = document.getElementById("mapHudHeadingUp");
+  if (
+    !root ||
+    !reveal ||
+    !collapseB ||
+    !pauseB ||
+    !prevB ||
+    !nextB ||
+    !mapHeading
+  )
+    return;
+
+  collapseB.innerHTML = HUD_CHEVRON_R;
+  prevB.innerHTML = HUD_CHEVRON_L;
+  nextB.innerHTML = HUD_CHEVRON_R;
+
+  reveal.addEventListener("click", () => {
+    root.classList.remove("map-mission-hud--collapsed");
+    refreshMapLayout();
+  });
+
+  collapseB.addEventListener("click", () => {
+    root.classList.add("map-mission-hud--collapsed");
+    refreshMapLayout();
+  });
+
+  pauseB.addEventListener("click", () => {
+    togglePauseResumeMission();
+  });
+  prevB.addEventListener("click", () => {
+    jumpServedStop(-1);
+  });
+  nextB.addEventListener("click", () => {
+    jumpServedStop(1);
+  });
+
+  mapHeading.addEventListener("change", () => {
+    headingUpEl.checked = mapHeading.checked;
+    headingUpEl.dispatchEvent(new Event("change", { bubbles: true }));
+    syncMapHudHeadingCheckboxFromMain();
+  });
 }
 
 /**
@@ -1884,6 +2025,8 @@ startBtn.addEventListener("click", () => {
         stopGpsTracking();
         running = true;
       }
+      mapMissionHudSessionActive = true;
+      showMapMissionHud();
       closeControlPanel();
     })
     .finally(() => {
@@ -1892,29 +2035,7 @@ startBtn.addEventListener("click", () => {
     });
 });
 
-pauseBtn.addEventListener("click", () => {
-  if (previewOnlyMode) {
-    running = false;
-    lastRafTime = 0;
-    stopGpsTracking();
-    return;
-  }
-  if (driveMode === DRIVE_MODE.REAL) {
-    if (!currentPattern) return;
-    if (gpsWatchId == null) {
-      running = startGpsTracking();
-    } else {
-      stopGpsTracking();
-      running = false;
-      setGpsStatus("GPS en pause.");
-    }
-    return;
-  }
-  running = !running;
-  if (!running) {
-    lastRafTime = 0;
-  }
-});
+pauseBtn.addEventListener("click", togglePauseResumeMission);
 
 /**
  * Retire uniquement le tracé manuel validé (profil + géométrie fusionnée).
@@ -2414,6 +2535,7 @@ function initVocalUI() {
   }
   voiceModeEl.disabled = !voiceEnabledEl.checked;
   refreshVoiceSelect();
+  syncMapHudHeadingCheckboxFromMain();
   if (window.speechSynthesis) {
     window.speechSynthesis.addEventListener("voiceschanged", () => {
       refreshVoiceSelect();
@@ -2443,6 +2565,7 @@ voiceSelectEl.addEventListener("change", saveVocalPrefs);
 
 headingUpEl.addEventListener("change", () => {
   saveMapPrefs();
+  syncMapHudHeadingCheckboxFromMain();
   if (currentPattern && pathTotalMeters > 0) {
     if (headingUpEl.checked) {
       updateMapNavigation({ centerCamera: true, zoom: map.getZoom() });
@@ -2514,6 +2637,7 @@ if (driveModeSelect) {
 }
 refreshDriveModeUi();
 refreshManualDrawUi();
+setupMapMissionHud();
 burgerMenuBtn?.addEventListener("click", () => openControlPanel());
 recapToggleBtn?.addEventListener("click", () => {
   const isOn = !!mapRecapEl?.classList.contains("show");

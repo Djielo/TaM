@@ -91,6 +91,8 @@ let deviationIdsSavedDuringTemporarySession = [];
  */
 let deferPlannedSaveUntilEditedAfterTempRecorded = false;
 let revertingMissionSelectors = false;
+/** HUD carte : commandes pause / arrêts / cap après démarrage ou chargement fiche (masqué à l’aperçu mission). */
+let mapMissionHudSessionActive = false;
 let restoringTemporarySnapshot = false;
 let skippedStopIdSet = new Set();
 let activeStopMetersForGuide = [];
@@ -453,6 +455,9 @@ function refreshDriveModeUi() {
     setGpsStatus("GPS inactif.");
   } else if (gpsWatchId == null) {
     setGpsStatus("Mode réel prêt. Appuyez sur Démarrer.");
+  }
+  if (typeof refreshMapMissionHudState === "function") {
+    refreshMapMissionHudState();
   }
 }
 

@@ -860,22 +860,22 @@ async function loadDeviationItemIntoApp(item, opts) {
     window.alert(
       "Quittez la déviation temporaire (bouton « Rétablir le mode exploitation du début de mission ») avant de charger une déviation enregistrée.",
     );
-    return;
+    return false;
   }
   if (!item || !item.pattern_id) {
     window.alert("Aucune entrée sélectionnée.");
-    return;
+    return false;
   }
   const pat = data?.patterns?.find(
     (p) => (p.pattern_id || "") === item.pattern_id,
   );
   if (!pat) {
     window.alert("Mission inconnue : pattern_id absent du JSON chargé.");
-    return;
+    return false;
   }
   if (!selectMissionSelectorsForPattern(pat)) {
     window.alert("Impossible de positionner automatiquement la mission.");
-    return;
+    return false;
   }
   deviationIdsSavedDuringTemporarySession = [];
   deferPlannedSaveUntilEditedAfterTempRecorded = false;
@@ -902,6 +902,9 @@ async function loadDeviationItemIntoApp(item, opts) {
     refreshDriveModeUi();
     setGpsStatus("Déviation chargée : simulation démarrée.");
   }
+  mapMissionHudSessionActive = true;
+  showMapMissionHud();
+  return true;
 }
 
 /** JSON stable pour comparer deux payloads (sessions temporaire / planifiée). */
