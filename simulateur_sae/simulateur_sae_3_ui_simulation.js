@@ -104,6 +104,13 @@ function getServedStopIndices() {
   return arr.length >= 2 ? arr : stops.map((_, i) => i);
 }
 
+/** Libellé affiché et annoncé pour un arrêt provisoire (stocké : suffixe seul après normalisation de la boîte de saisie). */
+function provisionalStopPublicLabel(stop_name) {
+  const bare = String(stop_name ?? "").trim() || "Arrêt provisoire";
+  if (/^arrêt provisoire\s*:\s*/i.test(bare)) return bare;
+  return `Arrêt provisoire : ${bare}`;
+}
+
 function collectMergedGuideEntriesRaw() {
   const stops = currentPattern?.stops || [];
   const list = [];
@@ -131,7 +138,7 @@ function collectMergedGuideEntriesRaw() {
     list.push({
       kind: "prov",
       id: ps.id,
-      name: ps.stop_name || "Arrêt provisoire",
+      name: provisionalStopPublicLabel(ps.stop_name),
       metersRaw: distanceAlongPathForLatLng(lat, lon),
       lat,
       lon,

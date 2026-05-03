@@ -35,6 +35,8 @@ const LS_KEY_OPS_LOG = "tam_sim_ops_log";
 const LS_KEY_RECAP = "tam_sim_recap_on";
 const LS_KEY_DRIVE_MODE = "tam_sim_drive_mode";
 const LS_KEY_DEVIATIONS = "tam_sim_saved_deviations_v1";
+/** Préfixe dans le champ de saisie ; le nom stocké et annoncé est le suffixe (ou tout le texte si le préfixe est retiré). */
+const PROVISIONAL_STOP_NAME_PREFIX = "Arrêt provisoire : ";
 /** Digest du dernier jeu `simulation_data.json` charge (pour garde-fou). */
 let datasetDigestLoaded = "";
 /** Liste des autres variantes meme sens (duplication UI). */
@@ -512,7 +514,86 @@ let marker = L.marker([43.61, 3.88], {
 map.on("zoomend", () => {
   applyMapVisualProfile();
 });
-map.on("click", (ev) => {
+
+function normalizeProvisionalStopNameInput(raw) {
+  const defaultBare = "Arrêt provisoire";
+  let s = String(raw ?? "").trim();
+  if (!s) return defaultBare;
+  const prefixRe = /^arrêt provisoire\s*:\s*/i;
+  if (prefixRe.test(s)) {
+    const rest = s.replace(prefixRe, "").trim();
+    return rest || defaultBare;
+  }
+  return s;
+}
+
+function fillProvisionalStopNameDatalist(dlEl) {
+  if (!dlEl) return;
+  const seen = new Set();
+  const bareNames = [];
+  const pushBare = (bareName) => {
+    const n = String(bareName ?? "").trim();
+    if (!n || seen.has(n)) return;
+    seen.add(n);
+    bareNames.push(n);
+  };
+  for (const s of currentPattern?.stops || []) {
+    pushBare(s?.stop_name);
+  }
+  for (const ps of opsState.provisionalStops || []) {
+    pushBare(ps?.stop_name);
+  }
+  bareNames.sort((a, b) =>
+    a.localeCompare(b, "fr", { sensitivity: "base" }),
+  );
+  dlEl.innerHTML = "";
+  for (const n of bareNames) {
+    const opt = document.createElement("option");
+    opt.value = PROVISIONAL_STOP_NAME_PREFIX + n;
+    dlEl.appendChild(opt);
+  }
+}
+
+/** @returns {Promise<string|null>} texte brut du champ, ou null si annulé */
+function openProvisionalStopNameDialog() {
+  return new Promise((resolve) => {
+    const dlg = document.getElementById("provisionalStopNameDialog");
+    const inp = document.getElementById("provisionalStopNameInput");
+    const dl = document.getElementById("provisionalStopNameDatalist");
+    if (!dlg || !inp) {
+      resolve(null);
+      return;
+    }
+    fillProvisionalStopNameDatalist(dl);
+    inp.value = PROVISIONAL_STOP_NAME_PREFIX;
+    if (typeof dlg.showModal !== "function") {
+      resolve(
+        window.prompt(
+          "Nom de l’arrêt provisoire (la position est projetée sur le tracé de la mission) :",
+          PROVISIONAL_STOP_NAME_PREFIX,
+        ),
+      );
+      return;
+    }
+    const onClose = () => {
+      dlg.removeEventListener("close", onClose);
+      if (dlg.returnValue === "ok") {
+        resolve(inp.value);
+      } else {
+        resolve(null);
+      }
+    };
+    dlg.addEventListener("close", onClose);
+    dlg.showModal();
+    requestAnimationFrame(() => {
+      inp.focus();
+      const end = inp.value.length;
+      inp.setSelectionRange(end, end);
+    });
+  });
+}
+
+map.on("click", async (ev) => {
   if (
     opsState.provisionalEditActive &&
     !manualDrawActive &&
@@ -520,15 +601,11 @@ map.on("click", (ev) => {
     pathTotalMeters > 0 &&
     ev?.latlng
   ) {
-    const defaultName = "Arrêt provisoire";
-    const nameIn = window.prompt(
-      "Nom de l’arrêt provisoire (la position est projetée sur le tracé de la mission) :",
-      defaultName,
-    );
+    const nameIn = await openProvisionalStopNameDialog();
     if (nameIn === null) {
       return;
     }
-    const trimmed = String(nameIn).trim() || defaultName;
+    const trimmed = normalizeProvisionalStopNameInput(nameIn);
     const id = `prov_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     const projM = distanceAlongPathForLatLng(
       ev.latlng.lat,
@@ -550,7 +627,11 @@ map.on("click", (ev) => {
     updateStats();
     resyncVoixForPosition(distanceAlongPathMeters);
     refreshProvisionalUi();
-    setGpsStatus(`Arrêt provisoire ajouté : ${trimmed}`);
+    setGpsStatus(
+      typeof provisionalStopPublicLabel === "function"
+        ? `${provisionalStopPublicLabel(trimmed)} — ajouté.`
+        : `Arrêt provisoire ajouté : ${trimmed}`,
+    );
     return;
   }
   if (

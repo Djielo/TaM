@@ -106,6 +106,37 @@
         background: #0f7d2f;
         box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
       }
+      /* Boîte nom arrêt provisoire (remplace prompt natif). */
+      #provisionalStopNameDialog {
+        border: none;
+        border-radius: 12px;
+        padding: 0;
+        max-width: min(520px, calc(100vw - 24px));
+        box-shadow: 0 10px 40px rgba(15, 23, 42, 0.35);
+        background: #fff;
+        color: #1b1f24;
+      }
+      #provisionalStopNameDialog::backdrop {
+        background: rgba(15, 23, 42, 0.45);
+      }
+      .tam-dialog__form {
+        padding: 16px 18px 14px;
+      }
+      .tam-dialog__title {
+        margin: 0 0 8px;
+        font-size: 17px;
+        font-weight: 700;
+      }
+      .tam-dialog__hint {
+        margin: 0 0 10px;
+      }
+      .tam-dialog__actions {
+        justify-content: flex-end;
+      }
+      .tam-dialog__actions button.grow {
+        flex: 1 1 120px;
+        max-width: 220px;
+      }
       .map-wrap {
         position: relative;
         isolation: isolate;
@@ -1610,6 +1641,41 @@
         </div>
       </div>
     </div>
+
+    <dialog id="provisionalStopNameDialog" aria-labelledby="provisionalStopNameTitle">
+      <form method="dialog" class="tam-dialog__form">
+        <h2 id="provisionalStopNameTitle" class="tam-dialog__title">
+          Nom de l’arrêt provisoire
+        </h2>
+        <p class="note tam-dialog__hint">
+          La position est projetée sur le tracé de la mission. Le champ est prérempli avec
+          <span class="mono">Arrêt provisoire :</span> suivi d’un espace : saisissez ou choisissez une suggestion ;
+          la liste se filtre pendant la frappe (navigateurs récents).
+        </p>
+        <label for="provisionalStopNameInput">Libellé</label>
+        <input
+          type="text"
+          id="provisionalStopNameInput"
+          name="provisionalStopName"
+          list="provisionalStopNameDatalist"
+          autocomplete="off"
+          spellcheck="true"
+        />
+        <datalist id="provisionalStopNameDatalist"></datalist>
+        <div class="row tam-dialog__actions" style="margin-top: 12px; margin-bottom: 0">
+          <button
+            type="button"
+            class="secondary grow"
+            onclick="document.getElementById('provisionalStopNameDialog').close()"
+          >
+            Annuler
+          </button>
+          <button type="submit" class="grow" formmethod="dialog" value="ok">
+            Valider
+          </button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="vendor/leaflet/leaflet.js"></script>
     <script src="vendor/leaflet/leaflet-rotate.js"></script>
