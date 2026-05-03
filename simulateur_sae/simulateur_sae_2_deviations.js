@@ -297,7 +297,7 @@ function computePlannedSaveDeviationToolbarState(o) {
   const canSave =
     !o.temporarySessionOn &&
     o.hasMission &&
-    o.hasContent &&
+    !!o.payloadDirty &&
     !deferEffective;
   let title = "";
   if (o.temporarySessionOn) {
@@ -309,8 +309,10 @@ function computePlannedSaveDeviationToolbarState(o) {
   } else if (deferEffective) {
     title =
       "Pour activer « Enregistrer la déviation planifiée », utilisez d’abord un bouton du sous-onglet Planifiée (tracé, retirer le dernier point, valider ce tracé côté planifiée…). Cela évite d’associer à la Planifiée un retour simplement « depuis Temporaire / Rétablir » sans intention explicite.";
-  } else if (!o.hasContent) {
-    title = o.tipWhenSavingNeedsContent;
+  } else if (!o.payloadDirty) {
+    title = !o.hasContent
+      ? o.tipWhenSavingNeedsContent
+      : "Aucune modification à enregistrer par rapport au dernier chargement ou enregistrement local.";
   }
   return { disabled: !canSave, title };
 }
@@ -770,6 +772,7 @@ function autoUpdateSelectedDeviationPayloadIfPossible(reasonShort) {
     "deviation_auto_updated",
     `${cur.id}|${reasonShort || ""}`,
   );
+  syncPlannedSaveBaselineFromLive();
   return true;
 }
 
@@ -887,6 +890,7 @@ async function loadDeviationItemIntoApp(item, opts) {
   await setMission(pat, {
     previewOnly: false,
     forceOpsReset: !!o.forceOpsReset,
+    skipPlannedBaselineSync: true,
   });
   await restoreDeviationPayloadIntoLiveState(item.payload || {});
   /* Point de rétablissement (= cette fiche sur la carte, pour Rétablir sous Temporaire). */
@@ -894,6 +898,7 @@ async function loadDeviationItemIntoApp(item, opts) {
     buildTemporaryRevertSnapshotFromMissionPattern(pat);
   refreshSavedDeviationBannerAndDup(item);
   appendOpsLog("deviation_loaded", item.pattern_id || "");
+  syncPlannedSaveBaselineFromLive();
   if (driveMode === DRIVE_MODE.SIMULATION) {
     previewOnlyMode = false;
     stopGpsTracking();
@@ -914,6 +919,14 @@ function deviationPayloadJsonForCompare(pl) {
   } catch {
     return "";
   }
+}
+
+/** Réaligne la ligne de base du bouton « planifiée » sur l’état carte courant (chargement, sauvegarde, mission). */
+function syncPlannedSaveBaselineFromLive() {
+  plannedDeviationSaveBaselineJson = deviationPayloadJsonForCompare(
+    deviationPayloadFromLiveState(),
+  );
+  refreshTemporaryDeviationUi();
 }
 /**
  * Si l’état carte / surcharge est encore identique au snapshot de début de session temporaire,
@@ -1018,6 +1031,7 @@ function commitTemporaryDeviationMode(opts) {
   opsState.initialMode = opsState.mode;
   opsState.returnMode = opsState.mode;
   applyOpsStateUi();
+  syncPlannedSaveBaselineFromLive();
   appendOpsLog("temporary_deviation_commit", `mode=${opsState.mode}`);
   setGpsStatus(
     typeof o.statusMessage === "string" && o.statusMessage
@@ -1054,6 +1068,7 @@ async function restoreTemporaryMissionSnapshot() {
       previewOnly: false,
       forceOpsReset: true,
       preserveTemporarySnapshot: true,
+      skipPlannedBaselineSync: true,
     });
     await restoreDeviationPayloadIntoLiveState(snap.payload || {});
     opsState.returnMode = coerceOpsMode(snap.returnMode || OPS_MODE.BASE);
@@ -1068,6 +1083,7 @@ async function restoreTemporaryMissionSnapshot() {
     snapshotBeforeTemporary =
       buildTemporaryRevertSnapshotFromMissionPattern(pat);
     refreshMissionStopVisualsAndStats();
+    syncPlannedSaveBaselineFromLive();
     appendOpsLog(
       "return_initial",
       "Restauration état avant déviation temporaire",
@@ -1177,6 +1193,9 @@ async function deviationSaveOrUpdate(kind, opts) {
     setGpsStatus(
       "Entrée sélectionnée mise à jour (stockage local) : dates et, le cas échéant, état planifié sauvegardés.",
     );
+    if (!o.allowDuringTemporaryDevSession) {
+      syncPlannedSaveBaselineFromLive();
+    }
     return cur.id;
   }
   if (deviationPayloadIsEmpty(plLive)) {
@@ -1205,6 +1224,9 @@ async function deviationSaveOrUpdate(kind, opts) {
   refreshSavedDeviationBannerAndDup(getSelectedDeviationItem());
   appendOpsLog("deviation_saved", idNew);
   setGpsStatus("Déviation enregistrée en local.");
+  if (!o.allowDuringTemporaryDevSession) {
+    syncPlannedSaveBaselineFromLive();
+  }
   return idNew;
   } finally {
     deviationSaveOrUpdate._inFlight = false;

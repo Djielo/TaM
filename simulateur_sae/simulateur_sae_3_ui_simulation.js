@@ -1778,6 +1778,9 @@ async function setMission(pattern, opts) {
   refreshProvisionalUi();
   updateStats();
   refreshRecapDeviationMeta();
+  if (!o.skipPlannedBaselineSync) {
+    syncPlannedSaveBaselineFromLive();
+  }
 }
 
 function updateStats() {
@@ -2459,6 +2462,7 @@ returnBaseBtn.addEventListener("click", () => {
   applyOpsStateUi();
   applyTraceForOpsMode(OPS_MODE.BASE);
   refreshMissionStopVisualsAndStats();
+  syncPlannedSaveBaselineFromLive();
   setGpsStatus("Mode base rétabli : déviation courante effacée.");
   appendOpsLog("return_base", "Forçage mode BASE");
 });

@@ -90,6 +90,11 @@ let deviationIdsSavedDuringTemporarySession = [];
  * Planifiée ne repasse disponible qu’après validation du tracé via le bouton Planifiée.
  */
 let deferPlannedSaveUntilEditedAfterTempRecorded = false;
+/**
+ * Empreinte JSON du dernier état considéré comme « déjà enregistré / chargé » pour le bouton planifiée.
+ * null = pas encore fixé après reset mission (bouton désactivé).
+ */
+let plannedDeviationSaveBaselineJson = null;
 let revertingMissionSelectors = false;
 /** HUD carte : commandes pause / arrêts / cap après démarrage ou chargement fiche (masqué à l’aperçu mission). */
 let mapMissionHudSessionActive = false;
@@ -1618,12 +1623,24 @@ function refreshTemporaryDeviationUi() {
   const tipWhenSavingNeedsContent =
     "Ce bouton s’active si vous validez un tracé sur la carte ou si vous saisissez au moins un arrêt non desservi ou provisoire.";
 
+  const liveJson =
+    typeof deviationPayloadJsonForCompare === "function"
+      ? deviationPayloadJsonForCompare(deviationPayloadFromLiveState())
+      : "";
+  const baselineReady = plannedDeviationSaveBaselineJson != null;
+  const payloadDirty =
+    hasMission &&
+    hasContent &&
+    baselineReady &&
+    liveJson !== plannedDeviationSaveBaselineJson;
+
   if (saveDeviationBtn) {
     const { disabled, title } = computePlannedSaveDeviationToolbarState({
       temporarySessionOn,
       hasMission,
       hasContent,
       deferPlannedGate: deferPlannedSaveUntilEditedAfterTempRecorded,
+      payloadDirty,
       tipWhenSavingNeedsContent,
     });
     saveDeviationBtn.disabled = disabled;
@@ -1686,6 +1703,7 @@ function resetOpsStateForMission(ropts) {
   }
   plannedDeviationEditSnapshot = null;
   deferPlannedSaveUntilEditedAfterTempRecorded = false;
+  plannedDeviationSaveBaselineJson = null;
   applyOpsStateUi();
 }
 
