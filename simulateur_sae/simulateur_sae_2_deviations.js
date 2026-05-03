@@ -19,7 +19,7 @@ function writeDeviationStore(store) {
   try {
     localStorage.setItem(LS_KEY_DEVIATIONS, JSON.stringify(store));
   } catch (e) {
-    window.alert(
+    tamAppAlert(
       "Stockage local plein ou désactivé : impossible d'enregistrer la déviation.",
     );
   }
@@ -161,20 +161,20 @@ function duplicateDeviationLabelForVariant(sourceItem, targetPat) {
 
 async function saveTemporaryDeviationToLocalStore() {
   if (!opsState.temporaryDeviationActive) {
-    window.alert(
+    tamAppAlert(
       "Commencez par utiliser le tracé ou la saisie d’arrêts sous Temporaire — la session temporaire s’ouvre au premier geste utile.",
     );
     return;
   }
   const p = selectedPattern();
   if (!p) {
-    window.alert("Choisissez une mission.");
+    tamAppAlert("Choisissez une mission.");
     return;
   }
   ensureOpsTargetPattern();
   const pl = deviationPayloadFromLiveState();
   if (deviationPayloadIsEmpty(pl)) {
-    window.alert(
+    tamAppAlert(
       "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
     );
     return;
@@ -957,24 +957,24 @@ async function loadDeviationItemIntoApp(item, opts) {
   tryDismissTemporaryDeviationIfUnchanged("pre_load_deviation");
   tryDismissPlannedDeviationIfUnchanged("pre_load_deviation");
   if (opsState.temporaryDeviationActive && snapshotBeforeTemporary) {
-    window.alert(
+    tamAppAlert(
       "Quittez la déviation temporaire (bouton « Rétablir le mode exploitation du début de mission ») avant de charger une déviation enregistrée.",
     );
     return false;
   }
   if (!item || !item.pattern_id) {
-    window.alert("Aucune entrée sélectionnée.");
+    tamAppAlert("Aucune entrée sélectionnée.");
     return false;
   }
   const pat = data?.patterns?.find(
     (p) => (p.pattern_id || "") === item.pattern_id,
   );
   if (!pat) {
-    window.alert("Mission inconnue : pattern_id absent du JSON chargé.");
+    tamAppAlert("Mission inconnue : pattern_id absent du JSON chargé.");
     return false;
   }
   if (!selectMissionSelectorsForPattern(pat)) {
-    window.alert("Impossible de positionner automatiquement la mission.");
+    tamAppAlert("Impossible de positionner automatiquement la mission.");
     return false;
   }
   deviationIdsSavedDuringTemporarySession = [];
@@ -1088,14 +1088,14 @@ function tryDismissPlannedDeviationIfUnchanged(tag) {
 function activateTemporaryDeviationMode() {
   if (opsState.temporaryDeviationActive) return;
   if (manualDrawActive && manualDraftPoints.length > 0) {
-    window.alert(
+    tamAppAlert(
       "Terminez ou annulez la saisie du tracé de la déviation planifiée avant d’ouvrir une session de déviation temporaire.",
     );
     return;
   }
   const p = selectedPattern() || currentPattern;
   if (!p) {
-    window.alert("Choisissez une mission d'abord.");
+    tamAppAlert("Choisissez une mission d'abord.");
     return;
   }
   ensureOpsTargetPattern();
@@ -1138,13 +1138,13 @@ async function restoreTemporaryMissionSnapshot() {
     (x) => String(x.pattern_id || "") === String(snap.pattern_id || ""),
   );
   if (!pat) {
-    window.alert("Mission du snapshot introuvable dans les données chargées.");
+    tamAppAlert("Mission du snapshot introuvable dans les données chargées.");
     return;
   }
   restoringTemporarySnapshot = true;
   try {
     if (!selectMissionSelectorsForPattern(pat)) {
-      window.alert("Impossible de repositionner les sélecteurs de mission.");
+      tamAppAlert("Impossible de repositionner les sélecteurs de mission.");
       return;
     }
     running = false;
@@ -1189,7 +1189,7 @@ async function deviationSaveOrUpdate(kind, opts) {
     const o = opts || {};
     const p = selectedPattern();
     if (!p) {
-      window.alert(
+      tamAppAlert(
         "Choisissez une ligne (terminus et variante) puis la déviation avant d'enregistrer.",
       );
       return null;
@@ -1198,7 +1198,7 @@ async function deviationSaveOrUpdate(kind, opts) {
       opsState.temporaryDeviationActive &&
       !(o.allowDuringTemporaryDevSession && kind === "new")
     ) {
-      window.alert(
+      tamAppAlert(
         "Une déviation temporaire est en cours : utilisez « Enregistrer la déviation temporaire » ou « Rétablir » depuis le sous-onglet Temporaire avant d’enregistrer une déviation planifiée.",
       );
       return null;
@@ -1210,13 +1210,13 @@ async function deviationSaveOrUpdate(kind, opts) {
     const vf = savedDeviationValidFromEl?.value || "";
     const vt = savedDeviationValidToEl?.value || "";
     if (vf && vt && String(vf) > String(vt)) {
-      window.alert("La date de fin doit être après la date de début.");
+      tamAppAlert("La date de fin doit être après la date de début.");
       return null;
     }
     if (kind === "update") {
       const cur = getSelectedDeviationItem(st);
       if (!cur) {
-        window.alert("Sélectionnez une entrée à mettre à jour.");
+        tamAppAlert("Sélectionnez une entrée à mettre à jour.");
         return null;
       }
       if (!o.allowDuringTemporaryDevSession) {
@@ -1225,7 +1225,7 @@ async function deviationSaveOrUpdate(kind, opts) {
             ? String(liveDeviationLoadedItemId)
             : "";
         if (String(cur.id || "") !== loaded) {
-          window.alert(
+          tamAppAlert(
             "Pour mettre à jour cette entrée, chargez-la d’abord sur la carte avec « Charger la sélection » — sinon vous risquez d’écraser une fiche alors que l’affichage ne correspond pas.",
           );
           return null;
@@ -1254,7 +1254,7 @@ async function deviationSaveOrUpdate(kind, opts) {
             storedPayloadRaw,
           );
         } else {
-          window.alert(
+          tamAppAlert(
             "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
           );
           return null;
@@ -1262,7 +1262,7 @@ async function deviationSaveOrUpdate(kind, opts) {
       }
 
       if (patternMismatch && !datesOnlyDifferentVariantOk) {
-        window.alert(
+        tamAppAlert(
           "L’entrée sélectionnée ne correspond pas à la ligne affichée (ligne / sens / variante). Utilisez « Charger la sélection » ou repositionnez les sélecteurs.",
         );
         return null;
@@ -1294,7 +1294,7 @@ async function deviationSaveOrUpdate(kind, opts) {
       return cur.id;
     }
     if (deviationPayloadIsEmpty(plLive)) {
-      window.alert(
+      tamAppAlert(
         "Rien à enregistrer : aucun tracé de déviation planifiée, aucun arrêt marqué non desservi, aucun arrêt provisoire.",
       );
       return null;
@@ -1338,7 +1338,7 @@ function deviationSaveOrUpdatePlannedFromToolbar() {
   const cur = getSelectedDeviationItem();
   const p = selectedPattern();
   if (!p) {
-    window.alert(
+    tamAppAlert(
       "Choisissez une ligne (terminus et variante) avant d’enregistrer.",
     );
     return null;
@@ -1359,8 +1359,7 @@ function deviationSaveOrUpdatePlannedFromToolbar() {
       (it) => String(it.pattern_id || "") === String(p.pattern_id || ""),
     );
     if (existingSamePattern) {
-      showAppMessageDialog(
-        "Simulateur SAE TAM",
+      tamAppAlert(
         "Enregistrement impossible : une déviation est déjà enregistrée pour cette ligne, ce sens et cette variante.\n\n" +
           "Allez sur « Déviation », puis « Enregistrée / Dupliquée » : sélectionnez la déviation dans la liste « Déviations enregistrées », " +
           "puis cliquez sur « Charger la sélection ».\n\n" +
@@ -1377,13 +1376,14 @@ function deviationSaveOrUpdatePlannedFromToolbar() {
 async function deviationDeleteSelected() {
   const cur = getSelectedDeviationItem();
   if (!cur) {
-    window.alert("Rien à supprimer.");
+    tamAppAlert("Rien à supprimer.");
     return;
   }
   if (
-    !window.confirm(
+    !(await showAppConfirmDialog(
+      TAM_APP_DIALOG_TITLE,
       `Supprimer l'enregistrement « ${cur.label || cur.pattern_id} » ?`,
-    )
+    ))
   ) {
     return;
   }
@@ -1410,7 +1410,7 @@ function deviationDuplicateSelectionToVariant() {
     : NaN;
   const targetPat = duplicateVariantChoices[Number.isFinite(vi) ? vi : -1];
   if (!cur || !targetPat) {
-    window.alert("Sélectionnez un enregistrement et une variante cible.");
+    tamAppAlert("Sélectionnez un enregistrement et une variante cible.");
     return;
   }
   const nowIso = new Date().toISOString();

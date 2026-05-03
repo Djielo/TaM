@@ -35,6 +35,8 @@ const LS_KEY_OPS_LOG = "tam_sim_ops_log";
 const LS_KEY_RECAP = "tam_sim_recap_on";
 const LS_KEY_DRIVE_MODE = "tam_sim_drive_mode";
 const LS_KEY_DEVIATIONS = "tam_sim_saved_deviations_v1";
+/** Titre des boîtes de dialogue HTML du simulateur (remplace l’origine « localhost » du navigateur). */
+const TAM_APP_DIALOG_TITLE = "Simulateur SAE TAM";
 /** Préfixe dans le champ de saisie ; le nom stocké et annoncé est le suffixe (ou tout le texte si le préfixe est retiré). */
 const PROVISIONAL_STOP_NAME_PREFIX = "Arrêt provisoire : ";
 /** Digest du dernier jeu `simulation_data.json` charge (pour garde-fou). */
@@ -430,7 +432,7 @@ function applyGpsPositionToMission(pos) {
 
 function startGpsTracking() {
   if (!navigator.geolocation) {
-    window.alert("Ce téléphone ne fournit pas la géolocalisation.");
+    tamAppAlert("Ce téléphone ne fournit pas la géolocalisation.");
     setGpsStatus("GPS indisponible sur cet appareil.");
     return false;
   }
@@ -534,16 +536,15 @@ function normalizeProvisionalStopNameInput(raw) {
 }
 
 /**
- * Saisie du nom : `window.prompt` uniquement (pas de calque HTML — évite blocages souris / Leaflet / preview).
+ * Saisie du nom (modale HTML, même style que les autres messages du simulateur).
  * Prérempli « Arrêt provisoire : » ; normalisation côté pose sur la carte.
  * @returns {Promise<string|null>}
  */
 function openProvisionalStopNameDialog() {
-  return Promise.resolve(
-    window.prompt(
-      "Saisir le nom de l’arrêt provisoire (projeté sur le tracé) :",
-      PROVISIONAL_STOP_NAME_PREFIX,
-    ),
+  return showAppPromptDialog(
+    TAM_APP_DIALOG_TITLE,
+    "Saisir le nom de l’arrêt provisoire (projeté sur le tracé) :",
+    PROVISIONAL_STOP_NAME_PREFIX,
   );
 }
 
@@ -1767,7 +1768,7 @@ function missionViolatesTemporaryDeviationLock(pattern) {
  * @returns {object|null} entrée trouvée dans `data.patterns`
  */
 function alertAndRevertMissionSelectorsForTemporaryLock(alertMessage) {
-  window.alert(alertMessage);
+  tamAppAlert(alertMessage);
   const targetId = String(snapshotBeforeTemporary?.pattern_id || "");
   const pat =
     data?.patterns?.find((x) => String(x.pattern_id || "") === targetId) ||
@@ -1781,6 +1782,11 @@ function alertAndRevertMissionSelectorsForTemporaryLock(alertMessage) {
     }
   }
   return pat;
+}
+
+/** Message informatif (titre fixe simulateur). */
+function tamAppAlert(bodyText) {
+  showAppMessageDialog(TAM_APP_DIALOG_TITLE, String(bodyText || ""));
 }
 
 /**
@@ -1806,6 +1812,121 @@ function showAppMessageDialog(title, bodyText) {
   if (bEl) bEl.textContent = bodyText || "";
   dlg.returnValue = "";
   dlg.showModal();
+}
+
+/**
+ * Confirmation (Oui / Non côté navigateur → OK / Annuler). Retombe sur `window.confirm` si besoin.
+ * @returns {Promise<boolean>}
+ */
+function showAppConfirmDialog(title, bodyText) {
+  return new Promise((resolve) => {
+    const dlg = document.getElementById("appConfirmDialog");
+    if (!dlg || typeof dlg.showModal !== "function") {
+      resolve(
+        window.confirm(
+          (title ? `${title}\n\n` : "") + String(bodyText || ""),
+        ),
+      );
+      return;
+    }
+    if (!dlg.dataset.tamBackdropCloseWired) {
+      dlg.dataset.tamBackdropCloseWired = "1";
+      dlg.addEventListener("click", (ev) => {
+        if (ev.target === dlg) dlg.close("cancel");
+      });
+    }
+    const tEl = document.getElementById("appConfirmDialogTitle");
+    const bEl = document.getElementById("appConfirmDialogBody");
+    const okBtn = document.getElementById("appConfirmDialogOk");
+    const cancelBtn = document.getElementById("appConfirmDialogCancel");
+    if (tEl) tEl.textContent = title || TAM_APP_DIALOG_TITLE;
+    if (bEl) {
+      bEl.textContent = bodyText || "";
+      bEl.style.whiteSpace = "pre-line";
+    }
+    const onOk = () => dlg.close("ok");
+    const onCancel = () => dlg.close("cancel");
+    const onClose = () => {
+      okBtn?.removeEventListener("click", onOk);
+      cancelBtn?.removeEventListener("click", onCancel);
+      resolve(dlg.returnValue === "ok");
+    };
+    dlg.addEventListener("close", onClose, { once: true });
+    okBtn?.addEventListener("click", onOk);
+    cancelBtn?.addEventListener("click", onCancel);
+    dlg.returnValue = "";
+    dlg.showModal();
+  });
+}
+
+/**
+ * Saisie texte courte. Retombe sur `window.prompt` si `<dialog>` indisponible.
+ * @returns {Promise<string|null>} chaîne saisie, ou `null` si Annuler / fermeture.
+ */
+function showAppPromptDialog(title, message, defaultValue) {
+  return new Promise((resolve) => {
+    const dlg = document.getElementById("appPromptDialog");
+    if (!dlg || typeof dlg.showModal !== "function") {
+      resolve(
+        window.prompt(
+          (title ? `${title}\n\n` : "") + String(message || ""),
+          defaultValue != null ? String(defaultValue) : "",
+        ),
+      );
+      return;
+    }
+    if (!dlg.dataset.tamBackdropCloseWired) {
+      dlg.dataset.tamBackdropCloseWired = "1";
+      dlg.addEventListener("click", (ev) => {
+        if (ev.target === dlg) dlg.close();
+      });
+    }
+    const tEl = document.getElementById("appPromptDialogTitle");
+    const mEl = document.getElementById("appPromptDialogMessage");
+    const input = document.getElementById("appPromptDialogInput");
+    const okBtn = document.getElementById("appPromptDialogOk");
+    const cancelBtn = document.getElementById("appPromptDialogCancel");
+    if (tEl) tEl.textContent = title || TAM_APP_DIALOG_TITLE;
+    if (mEl) {
+      mEl.textContent = message || "";
+      mEl.hidden = !message;
+    }
+    if (input) {
+      input.value = defaultValue != null ? String(defaultValue) : "";
+    }
+    const PENDING = {};
+    let result = PENDING;
+    const onClose = () => {
+      okBtn?.removeEventListener("click", onOk);
+      cancelBtn?.removeEventListener("click", onCancel);
+      input?.removeEventListener("keydown", onInputKeydown);
+      dlg.removeEventListener("close", onClose);
+      resolve(result === PENDING ? null : result);
+    };
+    function onOk() {
+      result = input ? input.value : "";
+      dlg.close();
+    }
+    function onCancel() {
+      result = null;
+      dlg.close();
+    }
+    function onInputKeydown(ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        onOk();
+      }
+    }
+    dlg.addEventListener("close", onClose, { once: true });
+    okBtn?.addEventListener("click", onOk);
+    cancelBtn?.addEventListener("click", onCancel);
+    input?.addEventListener("keydown", onInputKeydown);
+    dlg.showModal();
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.select();
+    });
+  });
 }
 
 function ensureOpsTargetPattern() {

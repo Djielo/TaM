@@ -302,7 +302,7 @@ function drawProvisionalStopsOverlay() {
       direction: "top",
       opacity: 0.95,
     });
-    mk.on("click", (ev) => {
+    mk.on("click", async (ev) => {
       if (!opsState.provisionalEditActive) return;
       if (typeof L !== "undefined" && L.DomEvent?.stopPropagation) {
         L.DomEvent.stopPropagation(ev);
@@ -310,9 +310,10 @@ function drawProvisionalStopsOverlay() {
         ev.originalEvent.stopPropagation();
       }
       if (
-        !window.confirm(
+        !(await showAppConfirmDialog(
+          TAM_APP_DIALOG_TITLE,
           `Retirer l’arrêt provisoire « ${ps.stop_name || "-"} » ?`,
-        )
+        ))
       ) {
         return;
       }
@@ -2203,7 +2204,12 @@ async function clearManualDeviationTraceKeepingStops(skipConfirm) {
   const msg = hadValidatedTrace
     ? "Supprimer toutes les déviations sur la carte (y compris si vous avez validé plusieurs fois) ? Les arrêts non desservis et les arrêts provisoires sont conservés."
     : "Abandonner le tracé en cours et effacer les points posés sur la carte ?";
-  if (!skipConfirm && !window.confirm(msg)) return;
+  if (
+    !skipConfirm &&
+    !(await showAppConfirmDialog(TAM_APP_DIALOG_TITLE, msg))
+  ) {
+    return;
+  }
 
   stopManualDrawMode({ keepPoints: false });
   opsState.manualProfile = null;
@@ -2239,7 +2245,7 @@ async function removeManualDeviationSegmentsFromSelectedIndex() {
   const p = ensureOpsTargetPattern();
   if (!p) return;
   if (manualDrawActive && manualDraftPoints.length > 0) {
-    window.alert(
+    tamAppAlert(
       "Terminez ou abandonnez le brouillon de tracé (« Quitter le tracé » ou supprimer toutes les déviations) avant.",
     );
     return;
@@ -2255,9 +2261,10 @@ async function removeManualDeviationSegmentsFromSelectedIndex() {
 
   const remaining = chainArr.filter((_, i) => i !== idx);
   if (
-    !window.confirm(
+    !(await showAppConfirmDialog(
+      TAM_APP_DIALOG_TITLE,
       `Supprimer la déviation n°${idx + 1} sur ${n} ? Les autres déviations restent (réordonnées si besoin).`,
-    )
+    ))
   ) {
     return;
   }
@@ -2268,7 +2275,7 @@ async function removeManualDeviationSegmentsFromSelectedIndex() {
   }
   const rebuilt = rebuildManualProfileFromVisualChain(remaining);
   if (!rebuilt) {
-    window.alert(
+    tamAppAlert(
       "Impossible de recalculer le tracé — utilisez « Supprimer toutes les déviations » puis retracer.",
     );
     return;
@@ -2301,7 +2308,7 @@ function activateStoredManualDeviationMode() {
   const p = ensureOpsTargetPattern();
   if (!p) return;
   if (!opsState.modeCoordinates[OPS_MODE.MANUEL]) {
-    window.alert(
+    tamAppAlert(
       "Aucun tracé de déviation planifiée enregistré. Utilisez d'abord « Tracer la déviation planifiée ».",
     );
     return;
@@ -2457,7 +2464,7 @@ async function onManualDrawSaveClick(validatedFromToolbar) {
   const p = ensureOpsTargetPattern();
   if (!p) return;
   if (manualDraftPoints.length < 2) {
-    window.alert(
+    tamAppAlert(
       temporarySessionOwnsDraft()
         ? "Ajoutez au moins 2 points sur la carte pour valider le tracé de la déviation temporaire."
         : "Ajoutez au moins 2 points sur la carte pour valider le tracé de la déviation planifiée.",
@@ -2470,7 +2477,7 @@ async function onManualDrawSaveClick(validatedFromToolbar) {
     opsState.manualProfile.mergedCoords?.length >= 2;
   const profile = buildManualProfileFromDraft(manualDraftPoints);
   if (!profile) {
-    window.alert(
+    tamAppAlert(
       "Impossible de raccorder la déviation à la ligne. Commencez et terminez bien sur la ligne.",
     );
     return;
@@ -2582,7 +2589,9 @@ loadDeviationBtn?.addEventListener("click", () => {
 });
 
 deleteDeviationBtn?.addEventListener("click", () => {
-  deviationDeleteSelected();
+  void deviationDeleteSelected().catch((e) =>
+    console.warn("deviationDeleteSelected:", e),
+  );
 });
 
 duplicateFromDeviationSelectEl?.addEventListener("change", () => {

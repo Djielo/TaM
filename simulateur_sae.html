@@ -156,8 +156,10 @@
         line-height: 1.45;
         margin: 4px 0 0 0;
       }
-      /* Message utilisateur (remplace window.alert : pas de « localhost » ni case Chrome « ne plus solliciter »). */
-      .app-message-dialog {
+      /* Modales HTML (remplacent alert / confirm / prompt natifs : pas d’en-tête « localhost » ni case Chrome). */
+      .app-message-dialog,
+      .app-confirm-dialog,
+      .app-prompt-dialog {
         border: none;
         border-radius: 10px;
         padding: 0;
@@ -166,7 +168,9 @@
         color: #1b1f24;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.28);
       }
-      .app-message-dialog::backdrop {
+      .app-message-dialog::backdrop,
+      .app-confirm-dialog::backdrop,
+      .app-prompt-dialog::backdrop {
         background: rgba(0, 0, 0, 0.45);
       }
       .app-message-dialog__inner {
@@ -195,6 +199,24 @@
         width: auto;
         min-width: 88px;
         padding: 10px 20px;
+      }
+      .app-message-dialog__actions--split {
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .app-message-dialog__actions--split button {
+        width: auto;
+        min-width: 100px;
+      }
+      .app-prompt-dialog__input {
+        width: 100%;
+        margin: 0 0 14px;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        font-size: 14px;
+        box-sizing: border-box;
       }
       /* Mode saisie arrêt non desservi : tooltips toujours visibles (Chrome tactile sans survol). */
       .leaflet-tooltip.tam-stop-edit-tooltip {
@@ -1695,6 +1717,65 @@
         <form method="dialog" class="app-message-dialog__actions">
           <button type="submit" class="app-message-dialog__ok">OK</button>
         </form>
+      </div>
+    </dialog>
+
+    <dialog
+      id="appConfirmDialog"
+      class="app-confirm-dialog"
+      aria-labelledby="appConfirmDialogTitle"
+      aria-describedby="appConfirmDialogBody"
+    >
+      <div class="app-message-dialog__inner">
+        <h2 id="appConfirmDialogTitle" class="app-message-dialog__title"></h2>
+        <p id="appConfirmDialogBody" class="app-message-dialog__body"></p>
+        <div
+          class="app-message-dialog__actions app-message-dialog__actions--split"
+        >
+          <button
+            type="button"
+            id="appConfirmDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button type="button" id="appConfirmDialogOk" class="app-message-dialog__ok">
+            OK
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog
+      id="appPromptDialog"
+      class="app-prompt-dialog"
+      aria-labelledby="appPromptDialogTitle"
+      aria-describedby="appPromptDialogMessage"
+    >
+      <div class="app-message-dialog__inner">
+        <h2 id="appPromptDialogTitle" class="app-message-dialog__title"></h2>
+        <p id="appPromptDialogMessage" class="app-message-dialog__body"></p>
+        <input
+          type="text"
+          id="appPromptDialogInput"
+          class="app-prompt-dialog__input"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div
+          class="app-message-dialog__actions app-message-dialog__actions--split"
+        >
+          <button
+            type="button"
+            id="appPromptDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button type="button" id="appPromptDialogOk" class="app-message-dialog__ok">
+            OK
+          </button>
+        </div>
       </div>
     </dialog>
 
