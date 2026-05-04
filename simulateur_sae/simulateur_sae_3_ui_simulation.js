@@ -12,7 +12,8 @@ let tamStopRailProgrammaticScroll = false;
 /** Après fermeture tactile par `touchend`, évite le double effet du `click` synthétique. */
 let tamStopRailSuppressInnerClickUntil = 0;
 
-const TAM_STOP_RAIL_TAP_MOVE_MAX_PX = 14;
+/** Au-delà : le geste n’est pas un « tap » (défilement, etc.). */
+const TAM_STOP_RAIL_TAP_MOVE_MAX_SQ = 28 * 28;
 
 async function previewSelectedMission() {
   const p = selectedPattern();
@@ -1958,60 +1959,74 @@ function ensureTamStopRailWired() {
     setTamStopRailExploreOpen(true);
   };
 
-  let railExploreTouchCx = -1;
-  let railExploreTouchCy = -1;
-  let railExploreTouchMovedBeyondTap = false;
-  inner.addEventListener(
+  let railExploreTouchSx = 0;
+  let railExploreTouchSy = 0;
+  let railExploreTouchTracing = false;
+  let railExploreTouchMaxDistSq = 0;
+
+  function resetRailExploreTouchTrace() {
+    railExploreTouchTracing = false;
+    railExploreTouchMaxDistSq = 0;
+  }
+
+  root.addEventListener(
     "touchstart",
     (ev) => {
-      railExploreTouchMovedBeyondTap = false;
+      resetRailExploreTouchTrace();
       if (ev.touches.length !== 1) return;
       const t = ev.touches[0];
-      railExploreTouchCx = t.clientX;
-      railExploreTouchCy = t.clientY;
+      railExploreTouchSx = t.clientX;
+      railExploreTouchSy = t.clientY;
+      railExploreTouchTracing = true;
+      railExploreTouchMaxDistSq = 0;
     },
     { capture: true, passive: true },
   );
-  inner.addEventListener(
+  root.addEventListener(
     "touchmove",
     (ev) => {
-      if (
-        railExploreTouchCx < 0 ||
-        ev.touches.length !== 1
-      ) {
-        return;
-      }
+      if (!railExploreTouchTracing || ev.touches.length !== 1) return;
       const t = ev.touches[0];
-      if (
-        Math.abs(t.clientX - railExploreTouchCx) >
-          TAM_STOP_RAIL_TAP_MOVE_MAX_PX ||
-        Math.abs(t.clientY - railExploreTouchCy) >
-          TAM_STOP_RAIL_TAP_MOVE_MAX_PX
-      ) {
-        railExploreTouchMovedBeyondTap = true;
+      const dx = t.clientX - railExploreTouchSx;
+      const dy = t.clientY - railExploreTouchSy;
+      const dsq = dx * dx + dy * dy;
+      if (dsq > railExploreTouchMaxDistSq) {
+        railExploreTouchMaxDistSq = dsq;
       }
     },
     { capture: true, passive: true },
   );
-  inner.addEventListener(
-    "touchend",
-    (ev) => {
-      if (
-        ev.changedTouches.length !== 1 ||
-        railExploreTouchMovedBeyondTap
-      ) {
-        railExploreTouchCx = -1;
-        return;
-      }
-      if (!root.classList.contains("tam-stop-rail--explore")) {
-        railExploreTouchCx = -1;
-        return;
-      }
-      setTamStopRailExploreOpen(false);
-      tamStopRailSuppressInnerClickUntil = performance.now() + 450;
-      railExploreTouchCx = -1;
+  root.addEventListener(
+    "touchcancel",
+    () => {
+      resetRailExploreTouchTrace();
     },
     { capture: true, passive: true },
+  );
+  root.addEventListener(
+    "touchend",
+    (ev) => {
+      if (!railExploreTouchTracing || ev.changedTouches.length !== 1) {
+        resetRailExploreTouchTrace();
+        return;
+      }
+      const t = ev.changedTouches[0];
+      const dx = t.clientX - railExploreTouchSx;
+      const dy = t.clientY - railExploreTouchSy;
+      const dsq = dx * dx + dy * dy;
+      const peak = Math.max(dsq, railExploreTouchMaxDistSq);
+      resetRailExploreTouchTrace();
+
+      if (!root.classList.contains("tam-stop-rail--explore")) {
+        return;
+      }
+      if (peak > TAM_STOP_RAIL_TAP_MOVE_MAX_SQ) return;
+
+      ev.preventDefault();
+      setTamStopRailExploreOpen(false);
+      tamStopRailSuppressInnerClickUntil = performance.now() + 500;
+    },
+    { capture: true, passive: false },
   );
 
   inner.addEventListener("click", () => {
