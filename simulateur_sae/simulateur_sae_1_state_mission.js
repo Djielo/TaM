@@ -369,6 +369,8 @@ let driveMode = DRIVE_MODE.SIMULATION;
 let gpsWatchId = null;
 let lastGpsLatLng = null;
 let lastGpsHeadingDeg = null;
+/** Vitesse mini (m/s) pour faire confiance au `heading` GPS : en dessous, cap souvent bruité à l’arrêt (contrairement aux apps type Maps qui le figent ou suivent la route). */
+const GPS_HEADING_MIN_SPEED_MS = 0.5;
 
 function setGpsStatus(msg) {
   if (gpsStatusEl) {
@@ -400,7 +402,13 @@ function applyGpsPositionToMission(pos) {
   }
   lastGpsLatLng = [lat, lon];
   const gpsHeading = Number(pos?.coords?.heading);
-  lastGpsHeadingDeg = Number.isFinite(gpsHeading) ? gpsHeading : null;
+  const rawSpeed = pos?.coords?.speed;
+  const speedMs = Number(rawSpeed);
+  const speedKnown = rawSpeed != null && Number.isFinite(speedMs);
+  const speedHighEnough =
+    speedKnown && speedMs >= GPS_HEADING_MIN_SPEED_MS;
+  lastGpsHeadingDeg =
+    Number.isFinite(gpsHeading) && speedHighEnough ? gpsHeading : null;
   const projected = distanceAlongPathForLatLng(lat, lon);
   let nextDistance = Math.max(0, Math.min(pathTotalMeters, projected));
   // Evite un retour en arriere trop brusque quand le GPS saute.
