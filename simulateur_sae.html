@@ -139,6 +139,51 @@
       .tam-stop-rail.tam-stop-rail--explore {
         width: min(240px, 55vw);
       }
+      /* Poignée : ouverture / réduction sans dépendre du tap sur toute la barre (mobile, liste longue). */
+      .tam-stop-rail__edgeHandle {
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translate(calc(-100% + 2px), -50%);
+        z-index: 4;
+        width: 15px;
+        min-height: 46px;
+        padding: 4px 0;
+        margin: 0;
+        border: 1px solid rgba(27, 31, 36, 0.22);
+        border-right: none;
+        border-radius: 8px 0 0 8px;
+        background: rgba(255, 255, 255, 0.78);
+        backdrop-filter: blur(4px);
+        color: #334155;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(0, 92, 169, 0.2);
+        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+      }
+      .tam-stop-rail__edgeHandle-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+      }
+      .tam-stop-rail__edgeHandle-icon--when-open {
+        display: none;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__edgeHandle-icon--when-collapsed {
+        display: none;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__edgeHandle-icon--when-open {
+        display: flex;
+      }
+      .tam-stop-rail__edgeHandle:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 2px;
+      }
       .tam-stop-rail__inner {
         position: relative;
         height: 100%;
@@ -1804,6 +1849,55 @@
             aria-label="Arrêts de la mission sur la ligne"
             hidden
           >
+            <button
+              type="button"
+              id="tamStopRailEdgeHandle"
+              class="tam-stop-rail__edgeHandle"
+              aria-expanded="false"
+              aria-controls="tamStopRailScroll"
+              aria-label="Ouvrir la liste des arrêts"
+            >
+              <span
+                class="tam-stop-rail__edgeHandle-icon tam-stop-rail__edgeHandle-icon--when-collapsed"
+                aria-hidden="true"
+              >
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M15 7l-5 5 5 5"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+              <span
+                class="tam-stop-rail__edgeHandle-icon tam-stop-rail__edgeHandle-icon--when-open"
+                aria-hidden="true"
+              >
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M10 7l5 5-5 5"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+            </button>
             <div class="tam-stop-rail__inner" id="tamStopRailInner">
               <div class="tam-stop-rail__trackBg" aria-hidden="true">
                 <div

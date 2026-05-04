@@ -14,6 +14,14 @@ let tamStopRailSuppressInnerClickUntil = 0;
 
 /** Au-delà : le geste n’est pas un « tap » (défilement, etc.). */
 const TAM_STOP_RAIL_TAP_MOVE_MAX_SQ = 28 * 28;
+/** Barre repliée : glisser vers la gauche pour ouvrir (évite le conflit avec le tap seul). */
+const TAM_STOP_RAIL_SWIPE_OPEN_MIN_PX = 34;
+const TAM_STOP_RAIL_SWIPE_OPEN_MAX_ABS_DY = 80;
+const TAM_STOP_RAIL_SWIPE_OPEN_MAX_PEAK_SQ = 95 * 95;
+/** Liste ouverte : glisser vers la droite hors zone liste pour réduire (même principe qu’un tiroir). */
+const TAM_STOP_RAIL_SWIPE_CLOSE_MIN_PX = 34;
+const TAM_STOP_RAIL_SWIPE_CLOSE_MAX_ABS_DY = 88;
+const TAM_STOP_RAIL_SWIPE_CLOSE_MAX_PEAK_SQ = 150 * 150;
 
 async function previewSelectedMission() {
   const p = selectedPattern();
@@ -1900,12 +1908,24 @@ function getTamStopRailEls() {
 function setTamStopRailExploreOpen(open) {
   const { root } = getTamStopRailEls();
   if (!root) return;
+  const edgeHandle = document.getElementById("tamStopRailEdgeHandle");
+  const syncEdgeHandle = () => {
+    if (!edgeHandle) return;
+    const isOpen = root.classList.contains("tam-stop-rail--explore");
+    edgeHandle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    edgeHandle.setAttribute(
+      "aria-label",
+      isOpen ? "Réduire la liste des arrêts" : "Ouvrir la liste des arrêts",
+    );
+  };
   if (open) {
     root.style.removeProperty("--tam-rail-pill");
     root.classList.add("tam-stop-rail--explore");
+    syncEdgeHandle();
     return;
   }
   root.classList.remove("tam-stop-rail--explore");
+  syncEdgeHandle();
   tamStopRailLastAutoSnapK = null;
   requestAnimationFrame(() => {
     snapTamStopRailScrollToLastPastImpl();
@@ -1965,11 +1985,14 @@ function ensureTamStopRailWired() {
   let railExploreTouchMaxDistSq = 0;
   /** Identifiant Touch du doigt suivi (évite les incohérences si plusieurs touchers). */
   let railExploreTouchId = null;
+  /** True si le pose a commencé sur la liste scrollable (pastilles). */
+  let railExploreTouchStartInScroll = false;
 
   function resetRailExploreTouchTrace() {
     railExploreTouchTracing = false;
     railExploreTouchMaxDistSq = 0;
     railExploreTouchId = null;
+    railExploreTouchStartInScroll = false;
   }
 
   function tamTouchListFind(tl, id) {
@@ -1981,77 +2004,122 @@ function ensureTamStopRailWired() {
     return null;
   }
 
-  function wireTamStopRailExploreTouchGesture(el) {
-    el.addEventListener(
-      "touchstart",
-      (ev) => {
-        resetRailExploreTouchTrace();
-        if (ev.touches.length !== 1) return;
-        const t = ev.touches[0];
-        railExploreTouchId = t.identifier;
-        railExploreTouchSx = t.clientX;
-        railExploreTouchSy = t.clientY;
-        railExploreTouchTracing = true;
-        railExploreTouchMaxDistSq = 0;
-      },
-      { capture: true, passive: true },
-    );
-    el.addEventListener(
-      "touchmove",
-      (ev) => {
-        if (
-          !railExploreTouchTracing ||
-          railExploreTouchId === null ||
-          ev.touches.length !== 1
-        ) {
-          return;
-        }
-        const t = tamTouchListFind(ev.touches, railExploreTouchId);
-        if (!t) return;
-        const dx = t.clientX - railExploreTouchSx;
-        const dy = t.clientY - railExploreTouchSy;
-        const dsq = dx * dx + dy * dy;
-        if (dsq > railExploreTouchMaxDistSq) {
-          railExploreTouchMaxDistSq = dsq;
-        }
-      },
-      { capture: true, passive: true },
-    );
-    /* Ne pas réinitialiser le trace sur `touchcancel` : sur zone scrollable, Chrome envoie souvent
-     * touchcancel avant touchend ; vider l’état ici empêchait alors la fermeture au tap. */
-    el.addEventListener(
-      "touchend",
-      (ev) => {
-        if (!railExploreTouchTracing || railExploreTouchId === null) {
-          resetRailExploreTouchTrace();
-          return;
-        }
-        const t = tamTouchListFind(ev.changedTouches, railExploreTouchId);
-        if (!t) {
-          resetRailExploreTouchTrace();
-          return;
-        }
-        const dx = t.clientX - railExploreTouchSx;
-        const dy = t.clientY - railExploreTouchSy;
-        const dsq = dx * dx + dy * dy;
-        const peak = Math.max(dsq, railExploreTouchMaxDistSq);
-        resetRailExploreTouchTrace();
-
-        if (!root.classList.contains("tam-stop-rail--explore")) {
-          return;
-        }
-        if (peak > TAM_STOP_RAIL_TAP_MOVE_MAX_SQ) return;
-
-        ev.preventDefault();
-        setTamStopRailExploreOpen(false);
-        tamStopRailSuppressInnerClickUntil = performance.now() + 500;
-      },
-      { capture: true, passive: false },
+  function onRailExploreTouchStart(ev) {
+    resetRailExploreTouchTrace();
+    if (ev.touches.length !== 1) return;
+    const t = ev.touches[0];
+    railExploreTouchId = t.identifier;
+    railExploreTouchSx = t.clientX;
+    railExploreTouchSy = t.clientY;
+    railExploreTouchTracing = true;
+    railExploreTouchMaxDistSq = 0;
+    railExploreTouchStartInScroll = !!(
+      ev.target instanceof Element && scroll.contains(ev.target)
     );
   }
 
-  wireTamStopRailExploreTouchGesture(root);
-  wireTamStopRailExploreTouchGesture(scroll);
+  function onRailExploreTouchMove(ev) {
+    if (
+      !railExploreTouchTracing ||
+      railExploreTouchId === null ||
+      ev.touches.length !== 1
+    ) {
+      return;
+    }
+    const t = tamTouchListFind(ev.touches, railExploreTouchId);
+    if (!t) return;
+    const dx = t.clientX - railExploreTouchSx;
+    const dy = t.clientY - railExploreTouchSy;
+    const dsq = dx * dx + dy * dy;
+    if (dsq > railExploreTouchMaxDistSq) {
+      railExploreTouchMaxDistSq = dsq;
+    }
+  }
+
+  /* Un seul suivi sur root (évite un double reset touchstart root + scroll). Touchend en double
+   * sur root et scroll pour garder le relâchement fiable sur liste longue. */
+  function onRailExploreTouchEnd(ev) {
+    if (ev.target instanceof Element && ev.target.closest(".tam-stop-rail__edgeHandle")) {
+      resetRailExploreTouchTrace();
+      return;
+    }
+    if (!railExploreTouchTracing || railExploreTouchId === null) {
+      resetRailExploreTouchTrace();
+      return;
+    }
+    const t = tamTouchListFind(ev.changedTouches, railExploreTouchId);
+    if (!t) {
+      resetRailExploreTouchTrace();
+      return;
+    }
+    const dx = t.clientX - railExploreTouchSx;
+    const dy = t.clientY - railExploreTouchSy;
+    const dsq = dx * dx + dy * dy;
+    const peak = Math.max(dsq, railExploreTouchMaxDistSq);
+    const startInScroll = railExploreTouchStartInScroll;
+    const explore = root.classList.contains("tam-stop-rail--explore");
+    resetRailExploreTouchTrace();
+
+    const horiz = dx;
+    const vertAbs = Math.abs(dy);
+
+    if (explore) {
+      if (peak <= TAM_STOP_RAIL_TAP_MOVE_MAX_SQ) {
+        ev.preventDefault();
+        setTamStopRailExploreOpen(false);
+        tamStopRailSuppressInnerClickUntil = performance.now() + 500;
+        return;
+      }
+      if (
+        !startInScroll &&
+        horiz >= TAM_STOP_RAIL_SWIPE_CLOSE_MIN_PX &&
+        vertAbs <= TAM_STOP_RAIL_SWIPE_CLOSE_MAX_ABS_DY &&
+        peak <= TAM_STOP_RAIL_SWIPE_CLOSE_MAX_PEAK_SQ
+      ) {
+        ev.preventDefault();
+        setTamStopRailExploreOpen(false);
+        tamStopRailSuppressInnerClickUntil = performance.now() + 500;
+      }
+      return;
+    }
+
+    if (
+      horiz <= -TAM_STOP_RAIL_SWIPE_OPEN_MIN_PX &&
+      vertAbs <= TAM_STOP_RAIL_SWIPE_OPEN_MAX_ABS_DY &&
+      peak <= TAM_STOP_RAIL_SWIPE_OPEN_MAX_PEAK_SQ
+    ) {
+      ev.preventDefault();
+      openExplore();
+      tamStopRailSuppressInnerClickUntil = performance.now() + 400;
+    }
+  }
+
+  root.addEventListener("touchstart", onRailExploreTouchStart, {
+    capture: true,
+    passive: true,
+  });
+  root.addEventListener("touchmove", onRailExploreTouchMove, {
+    capture: true,
+    passive: true,
+  });
+  root.addEventListener("touchend", onRailExploreTouchEnd, {
+    capture: true,
+    passive: false,
+  });
+  scroll.addEventListener("touchend", onRailExploreTouchEnd, {
+    capture: true,
+    passive: false,
+  });
+
+  const edgeHandle = document.getElementById("tamStopRailEdgeHandle");
+  if (edgeHandle) {
+    edgeHandle.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      tamStopRailSuppressInnerClickUntil = 0;
+      const isOpen = root.classList.contains("tam-stop-rail--explore");
+      setTamStopRailExploreOpen(!isOpen);
+    });
+  }
 
   inner.addEventListener("click", () => {
     if (performance.now() < tamStopRailSuppressInnerClickUntil) {
