@@ -4,6 +4,11 @@
 let previewMissionToken = 0;
 /** Signature `pattern_id:nbArrêts` pour éviter de reconstruire le rail à chaque frame. */
 let tamStopRailBuiltFor = "";
+/** Dernier indice guidage pour lequel on a appliqué l’auto-scroll (mode compact uniquement). */
+let tamStopRailLastAutoSnapK = null;
+let tamStopRailSnapRaf = 0;
+/** Évite d’ouvrir le mode explore sur un `scrollTop` appliqué par le simulateur. */
+let tamStopRailProgrammaticScroll = false;
 
 async function previewSelectedMission() {
   const p = selectedPattern();
@@ -125,10 +130,11 @@ function collectMergedGuideEntriesRaw() {
       patternIdx: i,
       stop_id: String(stops[i]?.stop_id || ""),
       name: stops[i]?.stop_name || "-",
-      metersRaw:
-        stopMetersAlong[i] !== undefined
-          ? stopMetersAlong[i]
-          : distanceAlongPathForLatLng(lat, lon),
+      // Important : on part des mètres "bruts" (projection sur la polyligne) et on normalise
+      // une seule fois dans `buildServedGuideSnapshotNormalized()`. Si on réutilise `stopMetersAlong`
+      // ici (déjà normalisé), on finit par normaliser deux fois et on désynchronise l'UI
+      // ("prochain arrêt" / pastilles vertes / remplissage).
+      metersRaw: distanceAlongPathForLatLng(lat, lon),
       lat,
       lon,
     });
@@ -1814,11 +1820,75 @@ async function setMission(pattern, opts) {
   }
 }
 
+/** Positionne le scroll (mode compact uniquement si le contenu dépasse — souvent inutile avec pastilles réparties sur toute la hauteur). */
+function snapTamStopRailScrollToLastPastCore() {
+  const { scroll, root } = getTamStopRailEls();
+  if (!scroll || !root || root.hidden) return;
+  const stops = currentPattern?.stops;
+  if (!stops?.length) return;
+  const n = stops.length;
+  const d = distanceAlongPathMeters;
+  const k = currentStopIndexForDistance(d);
+  const complete = pathTotalMeters > 0 && d >= pathTotalMeters - 0.05;
+  const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+
+  let target;
+  if (k <= 0 && !complete) {
+    target = maxScroll;
+  } else {
+    const lastPastIdx = complete ? n - 1 : k - 1;
+    const btn = scroll.querySelector(
+      `.tam-stop-rail__pill[data-tam-stop-idx="${lastPastIdx}"]`,
+    );
+    if (!btn) {
+      target = maxScroll;
+    } else {
+      const sr = scroll.getBoundingClientRect();
+      const br = btn.getBoundingClientRect();
+      const topInContent = br.top - sr.top + scroll.scrollTop;
+      const bottomInContent = topInContent + btn.offsetHeight;
+      const pad = 3;
+      target = bottomInContent - scroll.clientHeight + pad;
+    }
+  }
+  const clamped = Math.min(maxScroll, Math.max(0, Math.round(target)));
+  if (Math.abs(scroll.scrollTop - clamped) < 2) return;
+  tamStopRailProgrammaticScroll = true;
+  scroll.scrollTop = clamped;
+  requestAnimationFrame(() => {
+    tamStopRailProgrammaticScroll = false;
+  });
+}
+
+function snapTamStopRailScrollToLastPastImpl() {
+  const { root } = getTamStopRailEls();
+  if (!root || root.hidden) return;
+  if (root.classList.contains("tam-stop-rail--explore")) return;
+  snapTamStopRailScrollToLastPastCore();
+}
+
+/** Auto-scroll uniquement en mode compact (pas de recolle à chaque frame en liste étendue). */
+function maybeAutoSnapTamStopRailScroll(k) {
+  const { root, scroll } = getTamStopRailEls();
+  if (!root || !scroll || root.hidden) return;
+  if (root.classList.contains("tam-stop-rail--explore")) return;
+  if (tamStopRailLastAutoSnapK === k) return;
+  tamStopRailLastAutoSnapK = k;
+  if (tamStopRailSnapRaf) {
+    cancelAnimationFrame(tamStopRailSnapRaf);
+  }
+  tamStopRailSnapRaf = requestAnimationFrame(() => {
+    tamStopRailSnapRaf = 0;
+    snapTamStopRailScrollToLastPastImpl();
+  });
+}
+
 const TAM_STOP_RAIL_COLLAPSE_MS = 4000;
 
 function getTamStopRailEls() {
   return {
     root: document.getElementById("tamStopRail"),
+    inner: document.getElementById("tamStopRailInner"),
     scroll: document.getElementById("tamStopRailScroll"),
     fill: document.getElementById("tamStopRailProgressFill"),
   };
@@ -1838,30 +1908,76 @@ function scheduleTamStopRailCollapse() {
   tamStopRailCollapseTimer = setTimeout(() => {
     getTamStopRailEls().root?.classList.remove("tam-stop-rail--explore");
     tamStopRailCollapseTimer = null;
+    tamStopRailLastAutoSnapK = null;
+    requestAnimationFrame(() => {
+      snapTamStopRailScrollToLastPastImpl();
+      tamStopRailLastAutoSnapK = currentStopIndexForDistance(
+        distanceAlongPathMeters,
+      );
+      updateTamStopRailCompactSpacing();
+    });
   }, TAM_STOP_RAIL_COLLAPSE_MS);
 }
 
+function updateTamStopRailCompactSpacing() {
+  const { root, scroll } = getTamStopRailEls();
+  if (!root || !scroll) return;
+  if (root.hidden || root.classList.contains("tam-stop-rail--explore")) {
+    root.style.removeProperty("--tam-rail-pill");
+    return;
+  }
+  const n = scroll.querySelectorAll(".tam-stop-rail__pill").length;
+  if (!n) {
+    root.style.removeProperty("--tam-rail-pill");
+    return;
+  }
+  const cs = getComputedStyle(scroll);
+  const padY =
+    (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const innerH = Math.max(0, scroll.clientHeight - padY);
+  if (innerH <= 0) return;
+  const maxP = 12;
+  const minP = 5;
+  let p = maxP;
+  if (n * maxP > innerH) {
+    p = Math.max(minP, Math.floor((innerH / n) * 10) / 10);
+  }
+  root.style.setProperty("--tam-rail-pill", `${p}px`);
+}
+
 function ensureTamStopRailWired() {
-  const { scroll, root } = getTamStopRailEls();
-  if (!scroll || !root || scroll.dataset.tamRailWired) return;
-  scroll.dataset.tamRailWired = "1";
+  const { scroll, root, inner } = getTamStopRailEls();
+  if (!scroll || !root || !inner || inner.dataset.tamRailWired) return;
+  inner.dataset.tamRailWired = "1";
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => {
+      const r = getTamStopRailEls().root;
+      if (r && !r.classList.contains("tam-stop-rail--explore")) {
+        updateTamStopRailCompactSpacing();
+      }
+    });
+    ro.observe(scroll);
+  }
   const openExplore = () => {
+    root.style.removeProperty("--tam-rail-pill");
     root.classList.add("tam-stop-rail--explore");
   };
-  scroll.addEventListener(
-    "touchstart",
-    () => {
-      openExplore();
-      clearTamStopRailCollapseTimer();
-    },
-    { passive: true },
-  );
-  scroll.addEventListener("touchend", scheduleTamStopRailCollapse, {
-    passive: true,
-  });
+  const onTouchStart = () => {
+    openExplore();
+    clearTamStopRailCollapseTimer();
+  };
+  const onTouchEnd = () => {
+    scheduleTamStopRailCollapse();
+  };
+  inner.addEventListener("touchstart", onTouchStart, { passive: true });
+  inner.addEventListener("touchend", onTouchEnd, { passive: true });
+  inner.addEventListener("pointerdown", onTouchStart, { passive: true });
+  scroll.addEventListener("touchstart", onTouchStart, { passive: true });
+  scroll.addEventListener("touchend", onTouchEnd, { passive: true });
   scroll.addEventListener(
     "scroll",
     () => {
+      if (tamStopRailProgrammaticScroll) return;
       openExplore();
       scheduleTamStopRailCollapse();
     },
@@ -1877,60 +1993,198 @@ function ensureTamStopRailWired() {
   );
 }
 
+/**
+ * Remplissage cumulatif du rail depuis le bas :
+ * - au départ, la hauteur atteint immédiatement le haut de la 1re pastille (départ franchi),
+ * - puis progresse vers le haut de la suivante selon la distance réelle sur le tronçon,
+ * - sans jamais "repartir de zéro" entre deux arrêts.
+ */
+function tamStopRailProgressFillHeightPct(d) {
+  const { fill, scroll } = getTamStopRailEls();
+  const track = fill?.parentElement;
+  if (!fill || !scroll || !(track instanceof HTMLElement)) {
+    return null;
+  }
+  const stops = currentPattern?.stops;
+  const m = stopMetersAlong;
+  if (!stops?.length || !m?.length || pathTotalMeters <= 0) {
+    return 0;
+  }
+  const n = Math.min(stops.length, m.length);
+  const tr = track.getBoundingClientRect();
+  const H = Math.max(tr.height, 1e-6);
+
+  function zTopFromTrackBottomPx(patternIdx) {
+    const btn = scroll.querySelector(
+      `.tam-stop-rail__pill[data-tam-stop-idx="${patternIdx}"]`,
+    );
+    if (!btn) return null;
+    const br = btn.getBoundingClientRect();
+    return Math.max(0, tr.bottom - br.top);
+  }
+
+  const dc = Math.min(pathTotalMeters, Math.max(0, d));
+
+  if (dc >= pathTotalMeters - 0.05) {
+    return 100;
+  }
+
+  if (n < 2) {
+    return Math.min(100, Math.max(0, (dc / pathTotalMeters) * 100));
+  }
+
+  const s = currentStopIndexForDistance(dc);
+  const sNext = Math.min(s + 1, n - 1);
+
+  const z0 = zTopFromTrackBottomPx(s);
+  const z1 = zTopFromTrackBottomPx(sNext);
+  const m0 = m[s] || 0;
+  const m1 = m[sNext] ?? pathTotalMeters;
+
+  let t = 0;
+  if (sNext <= s || Math.abs(m1 - m0) <= 1e-3) {
+    t = dc >= m1 - 1e-3 ? 1 : dc <= m0 + 1e-3 ? 0 : 0.5;
+  } else {
+    t = Math.min(1, Math.max(0, (dc - m0) / (m1 - m0)));
+  }
+
+  let totalHeightPct = 0;
+  if (z0 != null && z1 != null) {
+    const basePct = Math.min(100, Math.max(0, (z0 / H) * 100));
+    const segPx = Math.max(z1 - z0, 0.5);
+    const segPct = Math.max(0, ((t * segPx) / H) * 100);
+    totalHeightPct = Math.min(100, Math.max(0, basePct + segPct));
+  }
+  /** Mesure DOM indisponible : repli comportement ancien (~proportional au trajet global). */
+  if (totalHeightPct <= 1e-4 && z0 == null) {
+    return Math.min(
+      100,
+      Math.max(0, (dc / pathTotalMeters) * 100),
+    );
+  }
+
+  return totalHeightPct;
+}
+
+/** Pastilles « déjà dépassées » : même logique d’index que le guidage (`currentStopIndexForDistance`). */
+function updateTamStopRailPillPastStates() {
+  const { scroll, root } = getTamStopRailEls();
+  if (!scroll || !root || root.hidden) return;
+  const stops = currentPattern?.stops;
+  if (!stops?.length || !stopMetersAlong.length) return;
+  const d = distanceAlongPathMeters;
+  const k = currentStopIndexForDistance(d);
+  const complete = pathTotalMeters > 0 && d >= pathTotalMeters - 0.05;
+  for (const btn of scroll.children) {
+    if (!(btn instanceof HTMLElement)) continue;
+    if (!btn.classList.contains("tam-stop-rail__pill")) continue;
+    const i = Number(btn.dataset.tamStopIdx);
+    if (!Number.isFinite(i)) continue;
+    /* Le départ est considéré franchi dès le lancement :
+     * k=0 => première pastille déjà validée (verte). */
+    const past = complete || i <= k;
+    btn.classList.toggle("tam-stop-rail__pill--past", past);
+  }
+}
+
 function updateTamStopRailProgressFill() {
   const { fill, root } = getTamStopRailEls();
   if (!fill || !root || root.hidden) return;
   if (pathTotalMeters <= 0) {
+    fill.style.bottom = "0";
     fill.style.height = "0%";
+    updateTamStopRailPillPastStates();
+    maybeAutoSnapTamStopRailScroll(
+      currentStopIndexForDistance(distanceAlongPathMeters),
+    );
     return;
   }
-  const pct = Math.min(
-    100,
-    Math.max(0, (distanceAlongPathMeters / pathTotalMeters) * 100),
+  const h = tamStopRailProgressFillHeightPct(distanceAlongPathMeters);
+  fill.style.bottom = "0";
+  fill.style.height = `${h}%`;
+  updateTamStopRailPillPastStates();
+  maybeAutoSnapTamStopRailScroll(
+    currentStopIndexForDistance(distanceAlongPathMeters),
   );
-  fill.style.height = `${pct}%`;
 }
 
 function refreshStopRail() {
   const { root, scroll, fill } = getTamStopRailEls();
   if (!root || !scroll) return;
   ensureTamStopRailWired();
+  const hud = document.getElementById("mapMissionHud");
+  const hudLive =
+    !!hud && !hud.classList.contains("map-mission-hud--inactive");
+
   if (!currentPattern?.stops?.length || pathTotalMeters <= 0) {
     tamStopRailBuiltFor = "";
+    tamStopRailLastAutoSnapK = null;
     root.hidden = true;
     root.classList.remove("tam-stop-rail--explore");
     clearTamStopRailCollapseTimer();
     scroll.innerHTML = "";
-    if (fill) fill.style.height = "0%";
+    if (fill) {
+      fill.style.bottom = "0";
+      fill.style.height = "0%";
+    }
+    return;
+  }
+  /* Même visibilité que le HUD carte (pastille prochain arrêt + commandes) : pas en aperçu mission. */
+  if (!hudLive) {
+    tamStopRailBuiltFor = "";
+    tamStopRailLastAutoSnapK = null;
+    root.hidden = true;
+    root.classList.remove("tam-stop-rail--explore");
+    clearTamStopRailCollapseTimer();
+    scroll.innerHTML = "";
+    if (fill) {
+      fill.style.bottom = "0";
+      fill.style.height = "0%";
+    }
     return;
   }
   const sig = `${currentPattern.pattern_id || ""}:${currentPattern.stops.length}`;
   if (sig === tamStopRailBuiltFor && scroll.children.length > 0) {
     updateTamStopRailProgressFill();
+    requestAnimationFrame(() => {
+      updateTamStopRailCompactSpacing();
+    });
     return;
   }
   tamStopRailBuiltFor = sig;
+  tamStopRailLastAutoSnapK = null;
   root.hidden = false;
   root.classList.remove("tam-stop-rail--explore");
   clearTamStopRailCollapseTimer();
   scroll.innerHTML = "";
-  currentPattern.stops.forEach((st, i) => {
+  /* stops[0] = premier arrêt du trajet, dernier = terminus. Colonne CSS = haut → bas :
+   * on ajoute du terminus vers le départ pour que le remplissage (bas = 0 %) coïncide avec le début de ligne en bas. */
+  const stops = currentPattern.stops;
+  for (let i = stops.length - 1; i >= 0; i--) {
+    const st = stops[i];
     const name = String(st.stop_name || st.name || `Arrêt ${i + 1}`);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "tam-stop-rail__pill";
+    btn.dataset.tamStopIdx = String(i);
     btn.setAttribute("aria-label", `Arrêt : ${name}`);
     const span = document.createElement("span");
     span.className = "tam-stop-rail__pillLabel";
     span.textContent = name;
     btn.appendChild(span);
     btn.addEventListener("click", () => {
+      root.style.removeProperty("--tam-rail-pill");
       root.classList.add("tam-stop-rail--explore");
       scheduleTamStopRailCollapse();
     });
     scroll.appendChild(btn);
-  });
+  }
   updateTamStopRailProgressFill();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      updateTamStopRailCompactSpacing();
+    });
+  });
 }
 
 function updateStats() {
@@ -2133,6 +2387,7 @@ function showMapMissionHud() {
   refreshMapHudToggleIcon();
   refreshMapHudSpeedLabel();
   refreshMapHudNextStopPeek();
+  refreshStopRail();
   refreshMapLayout();
 }
 
