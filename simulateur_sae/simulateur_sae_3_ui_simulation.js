@@ -1944,7 +1944,6 @@ function updateTamStopRailCompactSpacing() {
 
 function ensureTamStopRailWired() {
   const { scroll, root, inner } = getTamStopRailEls();
-  const shrink = document.getElementById("tamStopRailShrink");
   if (!scroll || !root || !inner || inner.dataset.tamRailWired) return;
   inner.dataset.tamRailWired = "1";
   if (typeof ResizeObserver !== "undefined") {
@@ -2025,13 +2024,6 @@ function ensureTamStopRailWired() {
     { capture: true, passive: false },
   );
 
-  if (shrink) {
-    shrink.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      tamStopRailSuppressInnerClickUntil = 0;
-      setTamStopRailExploreOpen(false);
-    });
-  }
   inner.addEventListener("click", () => {
     if (performance.now() < tamStopRailSuppressInnerClickUntil) {
       tamStopRailSuppressInnerClickUntil = 0;
