@@ -1883,8 +1883,6 @@ function maybeAutoSnapTamStopRailScroll(k) {
   });
 }
 
-const TAM_STOP_RAIL_COLLAPSE_MS = 4000;
-
 function getTamStopRailEls() {
   return {
     root: document.getElementById("tamStopRail"),
@@ -1894,29 +1892,23 @@ function getTamStopRailEls() {
   };
 }
 
-let tamStopRailCollapseTimer = null;
-
-function clearTamStopRailCollapseTimer() {
-  if (tamStopRailCollapseTimer != null) {
-    clearTimeout(tamStopRailCollapseTimer);
-    tamStopRailCollapseTimer = null;
+function setTamStopRailExploreOpen(open) {
+  const { root } = getTamStopRailEls();
+  if (!root) return;
+  if (open) {
+    root.style.removeProperty("--tam-rail-pill");
+    root.classList.add("tam-stop-rail--explore");
+    return;
   }
-}
-
-function scheduleTamStopRailCollapse() {
-  clearTamStopRailCollapseTimer();
-  tamStopRailCollapseTimer = setTimeout(() => {
-    getTamStopRailEls().root?.classList.remove("tam-stop-rail--explore");
-    tamStopRailCollapseTimer = null;
-    tamStopRailLastAutoSnapK = null;
-    requestAnimationFrame(() => {
-      snapTamStopRailScrollToLastPastImpl();
-      tamStopRailLastAutoSnapK = currentStopIndexForDistance(
-        distanceAlongPathMeters,
-      );
-      updateTamStopRailCompactSpacing();
-    });
-  }, TAM_STOP_RAIL_COLLAPSE_MS);
+  root.classList.remove("tam-stop-rail--explore");
+  tamStopRailLastAutoSnapK = null;
+  requestAnimationFrame(() => {
+    snapTamStopRailScrollToLastPastImpl();
+    tamStopRailLastAutoSnapK = currentStopIndexForDistance(
+      distanceAlongPathMeters,
+    );
+    updateTamStopRailCompactSpacing();
+  });
 }
 
 function updateTamStopRailCompactSpacing() {
@@ -1959,27 +1951,18 @@ function ensureTamStopRailWired() {
     ro.observe(scroll);
   }
   const openExplore = () => {
-    root.style.removeProperty("--tam-rail-pill");
-    root.classList.add("tam-stop-rail--explore");
+    setTamStopRailExploreOpen(true);
   };
-  const onTouchStart = () => {
-    openExplore();
-    clearTamStopRailCollapseTimer();
-  };
-  const onTouchEnd = () => {
-    scheduleTamStopRailCollapse();
-  };
-  inner.addEventListener("touchstart", onTouchStart, { passive: true });
-  inner.addEventListener("touchend", onTouchEnd, { passive: true });
-  inner.addEventListener("pointerdown", onTouchStart, { passive: true });
-  scroll.addEventListener("touchstart", onTouchStart, { passive: true });
-  scroll.addEventListener("touchend", onTouchEnd, { passive: true });
+  /* Pas de touchstart : il ouvrait puis le click synthétique refermait aussitôt. */
+  inner.addEventListener("click", () => {
+    const isOpen = root.classList.contains("tam-stop-rail--explore");
+    setTamStopRailExploreOpen(!isOpen);
+  });
   scroll.addEventListener(
     "scroll",
     () => {
       if (tamStopRailProgrammaticScroll) return;
       openExplore();
-      scheduleTamStopRailCollapse();
     },
     { passive: true },
   );
@@ -1987,7 +1970,6 @@ function ensureTamStopRailWired() {
     "wheel",
     () => {
       openExplore();
-      scheduleTamStopRailCollapse();
     },
     { passive: true },
   );
@@ -2121,7 +2103,7 @@ function refreshStopRail() {
     tamStopRailLastAutoSnapK = null;
     root.hidden = true;
     root.classList.remove("tam-stop-rail--explore");
-    clearTamStopRailCollapseTimer();
+    setTamStopRailExploreOpen(false);
     scroll.innerHTML = "";
     if (fill) {
       fill.style.bottom = "0";
@@ -2135,7 +2117,7 @@ function refreshStopRail() {
     tamStopRailLastAutoSnapK = null;
     root.hidden = true;
     root.classList.remove("tam-stop-rail--explore");
-    clearTamStopRailCollapseTimer();
+    setTamStopRailExploreOpen(false);
     scroll.innerHTML = "";
     if (fill) {
       fill.style.bottom = "0";
@@ -2154,8 +2136,7 @@ function refreshStopRail() {
   tamStopRailBuiltFor = sig;
   tamStopRailLastAutoSnapK = null;
   root.hidden = false;
-  root.classList.remove("tam-stop-rail--explore");
-  clearTamStopRailCollapseTimer();
+  setTamStopRailExploreOpen(false);
   scroll.innerHTML = "";
   /* stops[0] = premier arrêt du trajet, dernier = terminus. Colonne CSS = haut → bas :
    * on ajoute du terminus vers le départ pour que le remplissage (bas = 0 %) coïncide avec le début de ligne en bas. */
@@ -2172,11 +2153,6 @@ function refreshStopRail() {
     span.className = "tam-stop-rail__pillLabel";
     span.textContent = name;
     btn.appendChild(span);
-    btn.addEventListener("click", () => {
-      root.style.removeProperty("--tam-rail-pill");
-      root.classList.add("tam-stop-rail--explore");
-      scheduleTamStopRailCollapse();
-    });
     scroll.appendChild(btn);
   }
   updateTamStopRailProgressFill();
