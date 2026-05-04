@@ -79,6 +79,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - **Déviations enregistrées** : stockage **local** (`localStorage`), charger / nouvelle entrée / mise à jour / duplication vers autre variante ; correction mai 2026 du **double `readDeviationStore`** lors du « Mettre à jour » ; **synchronisation automatique** du payload de l’entrée sélectionnée après suppression d’une portion ou effacement du tracé validé (si la mission courante correspond au `pattern_id` de la fiche). **Garde-fou enregistrement planifié** : pas de **nouvelle** fiche pour un `pattern_id` déjà présent sans avoir chargé la fiche sur la carte (`liveDeviationLoadedItemId` + message d’aide). **Bandeau** carte si déviation non enregistrée / session temporaire ouverte ; **blocage** reprise simulation / sauts d’arrêts tant que l’état attendu n’est pas réglé.
 - **Modales utilisateur** : messages, confirmations et saisie courte (ex. nom arrêt provisoire) passent par des **`<dialog>` HTML** (`tamAppAlert`, `showAppConfirmDialog`, `showAppPromptDialog` dans le segment 1/3) avec titre **« Simulateur SAE TAM »** — plus d’en-tête navigateur « localhost » sur ces flux ; repli natif seulement si `<dialog>` indisponible.
 - **Perturbations** : piste `serve_tam` + `update_tam_perturbations.py` / `tam_perturbations.json` (éviter CORS sur chargement “Infos trafic”).
+- **Rail arrêts mission (V1)** : bandeau vertical **à droite** de la carte (`#tamStopRail`) — pastilles **à pas égal** (liste défilante), **barre fine** à côté dont le remplissage suit le **% de progression** le long du tracé (comme le récap) ; **mode explore** au scroll / molette / toucher : pastilles qui s’élargissent vers la gauche avec le nom ; repli automatique **4 s** après fin de scroll ou relâchement. **`aria-label`** sur chaque pastille = **lecteurs d’écran** uniquement (pas de doublon avec les annonces « prochain arrêt » déjà gérées par l’onglet Audio). **V2** possible : correspondances, alignement sur le **guidage** (arrêts provisoires / non desservis), réglage du délai de repli.
 
 ### 2.1 Déviation — Planifiée / Temporaire (`simulateur_sae.html`, mai 2026)
 
@@ -140,6 +141,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - [x] **Persistance locale** du trio **tracé + overrides arrêts non desservis + arrêts provisoires** dans une même entrée « Déviations enregistrées », avec **chargement** et **mise à jour** ; **réédition** sans tout resaisir — **V1 en place**. Restent ouverts : plages de dates métier plus riches si besoin, export hors navigateur, garde-fou GTFS (case suivante).
 - [ ] **Garde-fou données** : comparer au chargement **empreinte jeu GTFS / JSON** (`dataset_digest`) et **signature du pattern** (`pattern_signature`) à celles mémorisées avec l’enregistrement → **alerte** si le réseau de référence a changé (voir conception build `simulation_data.json`).
 - [x] **Dupliquer** une déviation enregistrée vers **d’autres variantes** du même sens — **V1 en place** dans le simulateur (UI Enregistrée / Dupliquée) ; révision par variante et garde-fou données restent ouverts ailleurs dans **4C**.
+- [x] **Rail arrêts mission** sur la carte (pastilles, barre % parcours, mode explore au scroll) — **V1 en place** (mai 2026) ; **V2** : correspondances, alignement sur le guidage réel (provisoires / non desservis), délai de repli configurable.
 
 ### 4D. Emballage produit (quand le fond métier est stable)
 
@@ -167,10 +169,10 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 | Fichier | Rôle |
 |---------|------|
-| `simulateur_sae.html` | Marque‑up + styles ; charge **sans build** les trois scripts du dossier `simulateur_sae/` (**ordre obligatoire 1→2→3**, voir lignes suivantes). |
+| `simulateur_sae.html` | Marque‑up + styles ; charge **sans build** les trois scripts du dossier `simulateur_sae/` (**ordre obligatoire 1→2→3**, voir lignes suivantes). Rail arrêts `#tamStopRail` (§2). |
 | `simulateur_sae/simulateur_sae_1_state_mission.js` | **Segment 1/3** : données mission, lignes, ops / carte « base », état jusqu’à `ensureOpsTargetPattern` ; modales `<dialog>` (`tamAppAlert`, `showAppConfirmDialog`, `showAppPromptDialog`). |
 | `simulateur_sae/simulateur_sae_2_deviations.js` | **Segment 2/3** : stockage local, fiches et UI associées jusqu’à `deviationDuplicateSelectionToVariant`. |
-| `simulateur_sae/simulateur_sae_3_ui_simulation.js` | **Segment 3/3** : depuis `previewMissionToken` jusqu’aux écouteurs DOM et `fetch(simulation_data.json)`. |
+| `simulateur_sae/simulateur_sae_3_ui_simulation.js` | **Segment 3/3** : depuis `previewMissionToken` jusqu’aux écouteurs DOM et `fetch(simulation_data.json)` ; `refreshStopRail` / rail arrêts. |
 | `serve_tam.py` | Fichiers statiques + API locale (ex. perturbations) |
 | `build_simulator_data.py` | Génère `simulation_data.json` (GTFS + réseau 3M en ZIP/JSON) |
 | `update_tam_perturbations.py` | Télécharge / alimente les perturbations (secours) |
@@ -179,4 +181,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-01 — alignement mémo : modales HTML simulateur, garde-fou fiche chargée / bandeau / blocage reprise ; §4E messages partiellement couverts ; §6 segment 1.*
+*Dernière révision de **ce** fichier markdown : 2026-05-01 — rail arrêts mission V1 (§2 + §6) ; précision `aria-label` vs annonces vocales.*

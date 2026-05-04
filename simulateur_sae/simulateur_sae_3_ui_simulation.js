@@ -2,6 +2,8 @@
  * S’appuie sur les fichiers 1 et 2. */
 
 let previewMissionToken = 0;
+/** Signature `pattern_id:nbArrêts` pour éviter de reconstruire le rail à chaque frame. */
+let tamStopRailBuiltFor = "";
 
 async function previewSelectedMission() {
   const p = selectedPattern();
@@ -1812,8 +1814,128 @@ async function setMission(pattern, opts) {
   }
 }
 
+const TAM_STOP_RAIL_COLLAPSE_MS = 4000;
+
+function getTamStopRailEls() {
+  return {
+    root: document.getElementById("tamStopRail"),
+    scroll: document.getElementById("tamStopRailScroll"),
+    fill: document.getElementById("tamStopRailProgressFill"),
+  };
+}
+
+let tamStopRailCollapseTimer = null;
+
+function clearTamStopRailCollapseTimer() {
+  if (tamStopRailCollapseTimer != null) {
+    clearTimeout(tamStopRailCollapseTimer);
+    tamStopRailCollapseTimer = null;
+  }
+}
+
+function scheduleTamStopRailCollapse() {
+  clearTamStopRailCollapseTimer();
+  tamStopRailCollapseTimer = setTimeout(() => {
+    getTamStopRailEls().root?.classList.remove("tam-stop-rail--explore");
+    tamStopRailCollapseTimer = null;
+  }, TAM_STOP_RAIL_COLLAPSE_MS);
+}
+
+function ensureTamStopRailWired() {
+  const { scroll, root } = getTamStopRailEls();
+  if (!scroll || !root || scroll.dataset.tamRailWired) return;
+  scroll.dataset.tamRailWired = "1";
+  const openExplore = () => {
+    root.classList.add("tam-stop-rail--explore");
+  };
+  scroll.addEventListener(
+    "touchstart",
+    () => {
+      openExplore();
+      clearTamStopRailCollapseTimer();
+    },
+    { passive: true },
+  );
+  scroll.addEventListener("touchend", scheduleTamStopRailCollapse, {
+    passive: true,
+  });
+  scroll.addEventListener(
+    "scroll",
+    () => {
+      openExplore();
+      scheduleTamStopRailCollapse();
+    },
+    { passive: true },
+  );
+  scroll.addEventListener(
+    "wheel",
+    () => {
+      openExplore();
+      scheduleTamStopRailCollapse();
+    },
+    { passive: true },
+  );
+}
+
+function updateTamStopRailProgressFill() {
+  const { fill, root } = getTamStopRailEls();
+  if (!fill || !root || root.hidden) return;
+  if (pathTotalMeters <= 0) {
+    fill.style.height = "0%";
+    return;
+  }
+  const pct = Math.min(
+    100,
+    Math.max(0, (distanceAlongPathMeters / pathTotalMeters) * 100),
+  );
+  fill.style.height = `${pct}%`;
+}
+
+function refreshStopRail() {
+  const { root, scroll, fill } = getTamStopRailEls();
+  if (!root || !scroll) return;
+  ensureTamStopRailWired();
+  if (!currentPattern?.stops?.length || pathTotalMeters <= 0) {
+    tamStopRailBuiltFor = "";
+    root.hidden = true;
+    root.classList.remove("tam-stop-rail--explore");
+    clearTamStopRailCollapseTimer();
+    scroll.innerHTML = "";
+    if (fill) fill.style.height = "0%";
+    return;
+  }
+  const sig = `${currentPattern.pattern_id || ""}:${currentPattern.stops.length}`;
+  if (sig === tamStopRailBuiltFor && scroll.children.length > 0) {
+    updateTamStopRailProgressFill();
+    return;
+  }
+  tamStopRailBuiltFor = sig;
+  root.hidden = false;
+  root.classList.remove("tam-stop-rail--explore");
+  clearTamStopRailCollapseTimer();
+  scroll.innerHTML = "";
+  currentPattern.stops.forEach((st, i) => {
+    const name = String(st.stop_name || st.name || `Arrêt ${i + 1}`);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tam-stop-rail__pill";
+    btn.setAttribute("aria-label", `Arrêt : ${name}`);
+    const span = document.createElement("span");
+    span.className = "tam-stop-rail__pillLabel";
+    span.textContent = name;
+    btn.appendChild(span);
+    btn.addEventListener("click", () => {
+      root.classList.add("tam-stop-rail--explore");
+      scheduleTamStopRailCollapse();
+    });
+    scroll.appendChild(btn);
+  });
+  updateTamStopRailProgressFill();
+}
+
 function updateStats() {
   if (!currentPattern) {
+    refreshStopRail();
     refreshMapMissionHudState();
     refreshMapHudNextStopPeek();
     return;
@@ -1843,6 +1965,7 @@ function updateStats() {
   progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
     BASE_METERS_PER_SECOND * speed * 3.6,
   )} km/h sim.`;
+  refreshStopRail();
   refreshMapMissionHudState();
   refreshMapHudNextStopPeek();
 }
@@ -2862,7 +2985,7 @@ fetch("./simulation_data.json")
     refreshMapLayout();
   })
   .catch((err) => {
-    alert(
+    tamAppAlert(
       "Impossible de charger simulation_data.json. Lancez d'abord build_simulator_data.py",
     );
     console.error(err);

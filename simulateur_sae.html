@@ -112,6 +112,125 @@
         border-radius: 10px;
         overflow: hidden;
       }
+      /* Rail arrêts mission (bord droit) : pastilles + barre progression % ; mode « explore » au scroll. */
+      .tam-stop-rail {
+        position: absolute;
+        right: max(6px, env(safe-area-inset-right, 0px));
+        top: max(8px, env(safe-area-inset-top, 0px));
+        bottom: calc(max(8px, env(safe-area-inset-bottom, 0px)) + 108px);
+        z-index: 1050;
+        display: flex;
+        flex-direction: row-reverse;
+        align-items: stretch;
+        gap: 5px;
+        width: 30px;
+        max-height: 100%;
+        pointer-events: auto;
+        transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .tam-stop-rail.tam-stop-rail--explore {
+        width: min(220px, 46vw);
+      }
+      .tam-stop-rail__track {
+        flex: 0 0 7px;
+        width: 7px;
+        border-radius: 5px;
+        background: rgba(15, 23, 42, 0.12);
+        position: relative;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .tam-stop-rail__fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 0%;
+        border-radius: inherit;
+        background: linear-gradient(
+          180deg,
+          rgba(0, 92, 169, 0.35),
+          rgba(15, 125, 47, 0.55)
+        );
+        transition: height 0.35s ease-out;
+        pointer-events: none;
+      }
+      .tam-stop-rail__scroll {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        padding: 2px 0 2px 2px;
+        pointer-events: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+      }
+      .tam-stop-rail__pill {
+        flex: 0 0 auto;
+        box-sizing: border-box;
+        width: 12px;
+        height: 12px;
+        min-width: 12px;
+        min-height: 12px;
+        padding: 0;
+        margin: 0;
+        border: 1px solid rgba(27, 31, 36, 0.28);
+        border-radius: 50%;
+        background: #cbd5e1;
+        cursor: pointer;
+        display: block;
+        text-align: left;
+        transition:
+          width 0.22s ease,
+          min-height 0.22s ease,
+          min-width 0.22s ease,
+          border-radius 0.22s ease,
+          background 0.15s ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tam-stop-rail__pill:hover {
+        background: #94a3b8;
+      }
+      .tam-stop-rail__pill:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 2px;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__pill {
+        width: 100%;
+        min-width: 0;
+        min-height: 28px;
+        height: auto;
+        border-radius: 12px 5px 5px 12px;
+        padding: 5px 7px;
+        align-self: stretch;
+        background: rgba(255, 255, 255, 0.96);
+      }
+      .tam-stop-rail__pillLabel {
+        display: none;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.25;
+        color: #1b1f24;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__pillLabel {
+        display: block;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .tam-stop-rail,
+        .tam-stop-rail__fill,
+        .tam-stop-rail__pill {
+          transition: none;
+        }
+      }
       /* Au-dessus du HUD mission (~1100) et du récap (~1250) : reste visible tant que non enregistré. */
       .tam-unsaved-deviation-banner {
         position: absolute;
@@ -1623,6 +1742,18 @@
             </div>
           </div>
           <div id="map"></div>
+          <aside
+            id="tamStopRail"
+            class="tam-stop-rail"
+            role="navigation"
+            aria-label="Arrêts de la mission sur la ligne"
+            hidden
+          >
+            <div class="tam-stop-rail__track" aria-hidden="true">
+              <div class="tam-stop-rail__fill" id="tamStopRailProgressFill"></div>
+            </div>
+            <div class="tam-stop-rail__scroll" id="tamStopRailScroll"></div>
+          </aside>
           <div
             id="mapMissionHud"
             class="map-mission-hud map-mission-hud--inactive"
