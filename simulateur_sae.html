@@ -144,6 +144,8 @@
         min-height: 0;
         box-sizing: border-box;
         touch-action: pan-y;
+        display: flex;
+        flex-direction: column;
       }
       .tam-stop-rail__trackBg {
         position: absolute;
@@ -174,7 +176,9 @@
       .tam-stop-rail__scroll {
         position: relative;
         z-index: 1;
-        height: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
         max-height: 100%;
         box-sizing: border-box;
         overflow-x: hidden;
@@ -275,6 +279,36 @@
         .tam-stop-rail__pill.tam-stop-rail__pill--past
         .tam-stop-rail__pillLabel {
         color: #14532d;
+      }
+      /*
+       * Hors zone scrollée : fermeture fiable sur lignes longues (Chrome mobile),
+       * où le gesture « tap » sur la liste peut être annulé (touchcancel) ou confondu avec le défilement.
+       */
+      .tam-stop-rail__shrink {
+        display: none;
+        position: relative;
+        z-index: 2;
+        flex: 0 0 auto;
+        margin: 0 6px 6px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(27, 31, 36, 0.22);
+        background: rgba(248, 250, 252, 0.98);
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: #1b1f24;
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(0, 92, 169, 0.2);
+        text-align: center;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__shrink {
+        display: block;
+      }
+      .tam-stop-rail__shrink:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 2px;
       }
       @media (prefers-reduced-motion: reduce) {
         .tam-stop-rail,
@@ -1809,6 +1843,14 @@
                 ></div>
               </div>
               <div class="tam-stop-rail__scroll" id="tamStopRailScroll"></div>
+              <button
+                type="button"
+                id="tamStopRailShrink"
+                class="tam-stop-rail__shrink"
+                aria-label="Réduire la liste des arrêts"
+              >
+                Réduire
+              </button>
             </div>
           </aside>
           <div

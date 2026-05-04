@@ -1944,6 +1944,7 @@ function updateTamStopRailCompactSpacing() {
 
 function ensureTamStopRailWired() {
   const { scroll, root, inner } = getTamStopRailEls();
+  const shrink = document.getElementById("tamStopRailShrink");
   if (!scroll || !root || !inner || inner.dataset.tamRailWired) return;
   inner.dataset.tamRailWired = "1";
   if (typeof ResizeObserver !== "undefined") {
@@ -1996,13 +1997,8 @@ function ensureTamStopRailWired() {
     },
     { capture: true, passive: true },
   );
-  root.addEventListener(
-    "touchcancel",
-    () => {
-      resetRailExploreTouchTrace();
-    },
-    { capture: true, passive: true },
-  );
+  /* Ne pas réinitialiser le trace sur `touchcancel` : sur zone scrollable, Chrome envoie souvent
+   * touchcancel avant touchend ; vider l’état ici empêchait alors la fermeture au tap. */
   root.addEventListener(
     "touchend",
     (ev) => {
@@ -2029,6 +2025,13 @@ function ensureTamStopRailWired() {
     { capture: true, passive: false },
   );
 
+  if (shrink) {
+    shrink.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      tamStopRailSuppressInnerClickUntil = 0;
+      setTamStopRailExploreOpen(false);
+    });
+  }
   inner.addEventListener("click", () => {
     if (performance.now() < tamStopRailSuppressInnerClickUntil) {
       tamStopRailSuppressInnerClickUntil = 0;
