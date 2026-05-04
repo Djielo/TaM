@@ -7,8 +7,6 @@ let tamStopRailBuiltFor = "";
 /** Dernier indice guidage pour lequel on a appliqué l’auto-scroll (mode compact uniquement). */
 let tamStopRailLastAutoSnapK = null;
 let tamStopRailSnapRaf = 0;
-/** Évite d’ouvrir le mode explore sur un `scrollTop` appliqué par le simulateur. */
-let tamStopRailProgrammaticScroll = false;
 /** Après fermeture tactile par `touchend`, évite le double effet du `click` synthétique. */
 let tamStopRailSuppressInnerClickUntil = 0;
 /** Un seul `map.on('click')` pour réduire la liste au clic sur la carte. */
@@ -1860,11 +1858,7 @@ function snapTamStopRailScrollToLastPastCore() {
   }
   const clamped = Math.min(maxScroll, Math.max(0, Math.round(target)));
   if (Math.abs(scroll.scrollTop - clamped) < 2) return;
-  tamStopRailProgrammaticScroll = true;
   scroll.scrollTop = clamped;
-  requestAnimationFrame(() => {
-    tamStopRailProgrammaticScroll = false;
-  });
 }
 
 function snapTamStopRailScrollToLastPastImpl() {
@@ -2081,17 +2075,14 @@ function ensureTamStopRailWired() {
     const isOpen = root.classList.contains("tam-stop-rail--explore");
     setTamStopRailExploreOpen(!isOpen);
   });
-  scroll.addEventListener(
-    "scroll",
-    () => {
-      if (tamStopRailProgrammaticScroll) return;
-      openExplore();
-    },
-    { passive: true },
-  );
+  /* Ne pas appeler openExplore() sur « scroll » : en mode liste ouverte chaque défilement (doigt)
+   * et chaque recalcul de layout (pastille franchie → hauteur) relançait setTamStopRailExploreOpen(true),
+   * ce qui provoquait des sauts de scroll et des fermetures tactiles capricieuses. La barre repliée
+   * est en overflow-y: hidden ; l’ouverture au rouet souris reste sur « wheel ». */
   scroll.addEventListener(
     "wheel",
     () => {
+      if (root.classList.contains("tam-stop-rail--explore")) return;
       openExplore();
     },
     { passive: true },
