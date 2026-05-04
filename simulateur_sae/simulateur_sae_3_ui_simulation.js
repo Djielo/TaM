@@ -9,6 +9,10 @@ let tamStopRailLastAutoSnapK = null;
 let tamStopRailSnapRaf = 0;
 /** Évite d’ouvrir le mode explore sur un `scrollTop` appliqué par le simulateur. */
 let tamStopRailProgrammaticScroll = false;
+/** Après fermeture tactile par `touchend`, évite le double effet du `click` synthétique. */
+let tamStopRailSuppressInnerClickUntil = 0;
+
+const TAM_STOP_RAIL_TAP_MOVE_MAX_PX = 14;
 
 async function previewSelectedMission() {
   const p = selectedPattern();
@@ -1953,8 +1957,68 @@ function ensureTamStopRailWired() {
   const openExplore = () => {
     setTamStopRailExploreOpen(true);
   };
-  /* Pas de touchstart : il ouvrait puis le click synthétique refermait aussitôt. */
+
+  let railExploreTouchCx = -1;
+  let railExploreTouchCy = -1;
+  let railExploreTouchMovedBeyondTap = false;
+  inner.addEventListener(
+    "touchstart",
+    (ev) => {
+      railExploreTouchMovedBeyondTap = false;
+      if (ev.touches.length !== 1) return;
+      const t = ev.touches[0];
+      railExploreTouchCx = t.clientX;
+      railExploreTouchCy = t.clientY;
+    },
+    { capture: true, passive: true },
+  );
+  inner.addEventListener(
+    "touchmove",
+    (ev) => {
+      if (
+        railExploreTouchCx < 0 ||
+        ev.touches.length !== 1
+      ) {
+        return;
+      }
+      const t = ev.touches[0];
+      if (
+        Math.abs(t.clientX - railExploreTouchCx) >
+          TAM_STOP_RAIL_TAP_MOVE_MAX_PX ||
+        Math.abs(t.clientY - railExploreTouchCy) >
+          TAM_STOP_RAIL_TAP_MOVE_MAX_PX
+      ) {
+        railExploreTouchMovedBeyondTap = true;
+      }
+    },
+    { capture: true, passive: true },
+  );
+  inner.addEventListener(
+    "touchend",
+    (ev) => {
+      if (
+        ev.changedTouches.length !== 1 ||
+        railExploreTouchMovedBeyondTap
+      ) {
+        railExploreTouchCx = -1;
+        return;
+      }
+      if (!root.classList.contains("tam-stop-rail--explore")) {
+        railExploreTouchCx = -1;
+        return;
+      }
+      setTamStopRailExploreOpen(false);
+      tamStopRailSuppressInnerClickUntil = performance.now() + 450;
+      railExploreTouchCx = -1;
+    },
+    { capture: true, passive: true },
+  );
+
   inner.addEventListener("click", () => {
+    if (performance.now() < tamStopRailSuppressInnerClickUntil) {
+      tamStopRailSuppressInnerClickUntil = 0;
+      return;
+    }
     const isOpen = root.classList.contains("tam-stop-rail--explore");
     setTamStopRailExploreOpen(!isOpen);
   });
