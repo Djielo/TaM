@@ -1963,66 +1963,95 @@ function ensureTamStopRailWired() {
   let railExploreTouchSy = 0;
   let railExploreTouchTracing = false;
   let railExploreTouchMaxDistSq = 0;
+  /** Identifiant Touch du doigt suivi (évite les incohérences si plusieurs touchers). */
+  let railExploreTouchId = null;
 
   function resetRailExploreTouchTrace() {
     railExploreTouchTracing = false;
     railExploreTouchMaxDistSq = 0;
+    railExploreTouchId = null;
   }
 
-  root.addEventListener(
-    "touchstart",
-    (ev) => {
-      resetRailExploreTouchTrace();
-      if (ev.touches.length !== 1) return;
-      const t = ev.touches[0];
-      railExploreTouchSx = t.clientX;
-      railExploreTouchSy = t.clientY;
-      railExploreTouchTracing = true;
-      railExploreTouchMaxDistSq = 0;
-    },
-    { capture: true, passive: true },
-  );
-  root.addEventListener(
-    "touchmove",
-    (ev) => {
-      if (!railExploreTouchTracing || ev.touches.length !== 1) return;
-      const t = ev.touches[0];
-      const dx = t.clientX - railExploreTouchSx;
-      const dy = t.clientY - railExploreTouchSy;
-      const dsq = dx * dx + dy * dy;
-      if (dsq > railExploreTouchMaxDistSq) {
-        railExploreTouchMaxDistSq = dsq;
+  function tamTouchListFind(tl, id) {
+    for (let i = 0; i < tl.length; i++) {
+      if (tl[i].identifier === id) {
+        return tl[i];
       }
-    },
-    { capture: true, passive: true },
-  );
-  /* Ne pas réinitialiser le trace sur `touchcancel` : sur zone scrollable, Chrome envoie souvent
-   * touchcancel avant touchend ; vider l’état ici empêchait alors la fermeture au tap. */
-  root.addEventListener(
-    "touchend",
-    (ev) => {
-      if (!railExploreTouchTracing || ev.changedTouches.length !== 1) {
+    }
+    return null;
+  }
+
+  function wireTamStopRailExploreTouchGesture(el) {
+    el.addEventListener(
+      "touchstart",
+      (ev) => {
         resetRailExploreTouchTrace();
-        return;
-      }
-      const t = ev.changedTouches[0];
-      const dx = t.clientX - railExploreTouchSx;
-      const dy = t.clientY - railExploreTouchSy;
-      const dsq = dx * dx + dy * dy;
-      const peak = Math.max(dsq, railExploreTouchMaxDistSq);
-      resetRailExploreTouchTrace();
+        if (ev.touches.length !== 1) return;
+        const t = ev.touches[0];
+        railExploreTouchId = t.identifier;
+        railExploreTouchSx = t.clientX;
+        railExploreTouchSy = t.clientY;
+        railExploreTouchTracing = true;
+        railExploreTouchMaxDistSq = 0;
+      },
+      { capture: true, passive: true },
+    );
+    el.addEventListener(
+      "touchmove",
+      (ev) => {
+        if (
+          !railExploreTouchTracing ||
+          railExploreTouchId === null ||
+          ev.touches.length !== 1
+        ) {
+          return;
+        }
+        const t = tamTouchListFind(ev.touches, railExploreTouchId);
+        if (!t) return;
+        const dx = t.clientX - railExploreTouchSx;
+        const dy = t.clientY - railExploreTouchSy;
+        const dsq = dx * dx + dy * dy;
+        if (dsq > railExploreTouchMaxDistSq) {
+          railExploreTouchMaxDistSq = dsq;
+        }
+      },
+      { capture: true, passive: true },
+    );
+    /* Ne pas réinitialiser le trace sur `touchcancel` : sur zone scrollable, Chrome envoie souvent
+     * touchcancel avant touchend ; vider l’état ici empêchait alors la fermeture au tap. */
+    el.addEventListener(
+      "touchend",
+      (ev) => {
+        if (!railExploreTouchTracing || railExploreTouchId === null) {
+          resetRailExploreTouchTrace();
+          return;
+        }
+        const t = tamTouchListFind(ev.changedTouches, railExploreTouchId);
+        if (!t) {
+          resetRailExploreTouchTrace();
+          return;
+        }
+        const dx = t.clientX - railExploreTouchSx;
+        const dy = t.clientY - railExploreTouchSy;
+        const dsq = dx * dx + dy * dy;
+        const peak = Math.max(dsq, railExploreTouchMaxDistSq);
+        resetRailExploreTouchTrace();
 
-      if (!root.classList.contains("tam-stop-rail--explore")) {
-        return;
-      }
-      if (peak > TAM_STOP_RAIL_TAP_MOVE_MAX_SQ) return;
+        if (!root.classList.contains("tam-stop-rail--explore")) {
+          return;
+        }
+        if (peak > TAM_STOP_RAIL_TAP_MOVE_MAX_SQ) return;
 
-      ev.preventDefault();
-      setTamStopRailExploreOpen(false);
-      tamStopRailSuppressInnerClickUntil = performance.now() + 500;
-    },
-    { capture: true, passive: false },
-  );
+        ev.preventDefault();
+        setTamStopRailExploreOpen(false);
+        tamStopRailSuppressInnerClickUntil = performance.now() + 500;
+      },
+      { capture: true, passive: false },
+    );
+  }
+
+  wireTamStopRailExploreTouchGesture(root);
+  wireTamStopRailExploreTouchGesture(scroll);
 
   inner.addEventListener("click", () => {
     if (performance.now() < tamStopRailSuppressInnerClickUntil) {

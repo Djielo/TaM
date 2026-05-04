@@ -133,6 +133,8 @@
         pointer-events: auto;
         transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
         touch-action: pan-y;
+        /* Évite le chaînage du défilement vers la carte / la page (Chrome mobile, liste longue). */
+        overscroll-behavior: contain;
       }
       .tam-stop-rail.tam-stop-rail--explore {
         width: min(240px, 55vw);
@@ -194,6 +196,7 @@
         justify-content: flex-start;
         gap: 6px;
         overflow-y: auto;
+        overscroll-behavior: contain;
       }
       .tam-stop-rail__pill {
         flex: 0 0 auto;
