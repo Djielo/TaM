@@ -371,6 +371,10 @@ let lastGpsLatLng = null;
 let lastGpsHeadingDeg = null;
 /** Vitesse mini (m/s) pour faire confiance au `heading` GPS : en dessous, cap souvent bruité à l’arrêt (contrairement aux apps type Maps qui le figent ou suivent la route). */
 const GPS_HEADING_MIN_SPEED_MS = 0.5;
+/** Si le GPS est plus loin que ça (perpendiculaire au tracé), on n’affiche plus le curseur « collé » à la ligne (écart type ~précision GPS). */
+const GPS_SNAP_CROSS_TRACK_MAX_M = 10;
+/** Dernière distance latérale GPS → polyligne mission (m), mode réel uniquement ; `null` si inactif. */
+let lastGpsCrossTrackM = null;
 
 function setGpsStatus(msg) {
   if (gpsStatusEl) {
@@ -385,6 +389,7 @@ function stopGpsTracking() {
   gpsWatchId = null;
   lastGpsLatLng = null;
   lastGpsHeadingDeg = null;
+  lastGpsCrossTrackM = null;
   if (typeof resetGpsUnsavedDeviationMovementWarn === "function") {
     resetGpsUnsavedDeviationMovementWarn();
   }
@@ -409,7 +414,15 @@ function applyGpsPositionToMission(pos) {
     speedKnown && speedMs >= GPS_HEADING_MIN_SPEED_MS;
   lastGpsHeadingDeg =
     Number.isFinite(gpsHeading) && speedHighEnough ? gpsHeading : null;
-  const projected = distanceAlongPathForLatLng(lat, lon);
+  let projected;
+  if (typeof projectLatLngOntoActivePath === "function") {
+    const pr = projectLatLngOntoActivePath(lat, lon);
+    projected = pr.alongMeters;
+    lastGpsCrossTrackM = pr.crossTrackMeters;
+  } else {
+    projected = distanceAlongPathForLatLng(lat, lon);
+    lastGpsCrossTrackM = 0;
+  }
   let nextDistance = Math.max(0, Math.min(pathTotalMeters, projected));
   // Evite un retour en arriere trop brusque quand le GPS saute.
   if (nextDistance + 15 < distanceAlongPathMeters) {

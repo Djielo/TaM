@@ -957,13 +957,14 @@ function rebuildPathMetrics(coords) {
 }
 
 /**
- * Projete un point sur la polyligne : distance (m) depuis le départ du tracé.
+ * Projete un point sur la polyligne active.
+ * @returns {{ alongMeters: number, crossTrackMeters: number }} distance curviligne depuis le départ et écart latéral (m) au segment le plus proche.
  */
-function distanceAlongPathForLatLng(lat, lng) {
+function projectLatLngOntoActivePath(lat, lng) {
   const coords = activeCoordinates;
   const cum = pathCumMeters;
   if (!coords || coords.length < 2 || !cum.length) {
-    return 0;
+    return { alongMeters: 0, crossTrackMeters: Infinity };
   }
   const s = L.latLng(lat, lng);
   let best = 0;
@@ -993,7 +994,12 @@ function distanceAlongPathForLatLng(lat, lng) {
       best = cum[i] + t * segLenM;
     }
   }
-  return best;
+  return { alongMeters: best, crossTrackMeters: bestD };
+}
+
+/** Projete un point sur la polyligne : distance (m) depuis le départ du tracé. */
+function distanceAlongPathForLatLng(lat, lng) {
+  return projectLatLngOntoActivePath(lat, lng).alongMeters;
 }
 
 function normalizeStopMeters(raw, total) {
@@ -1153,9 +1159,17 @@ function updateMapNavigation(opt) {
   const d = distanceAlongPathMeters;
   const useRealGpsPosition =
     driveMode === DRIVE_MODE.REAL && Array.isArray(lastGpsLatLng);
-  const pos = useRealGpsPosition
-    ? lastGpsLatLng
-    : pointAtDistanceMeters(d);
+  const maxSnap =
+    typeof GPS_SNAP_CROSS_TRACK_MAX_M === "number"
+      ? GPS_SNAP_CROSS_TRACK_MAX_M
+      : 10;
+  const gpsFarFromLine =
+    useRealGpsPosition &&
+    lastGpsCrossTrackM != null &&
+    Number.isFinite(lastGpsCrossTrackM) &&
+    lastGpsCrossTrackM > maxSnap;
+  /* GPS réel : coller au tracé seulement si l’écart latéral ≤ seuil ; sinon position brute (hors ligne). */
+  const pos = gpsFarFromLine ? lastGpsLatLng : pointAtDistanceMeters(d);
   const brg = useRealGpsPosition
     ? lastGpsHeadingDeg != null
       ? lastGpsHeadingDeg
