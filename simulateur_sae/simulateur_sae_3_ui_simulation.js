@@ -794,14 +794,44 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
     );
     return;
   }
-  const lines = [`Arrêt : ${stopName}`, `Ligne : ${lineLabel}`, ""];
+  const dlg = document.getElementById("appMessageDialog");
+  const titleEl = document.getElementById("appMessageDialogTitle");
+  const bodyEl = document.getElementById("appMessageDialogBody");
+  if (dlg && typeof dlg.showModal === "function" && titleEl && bodyEl) {
+    titleEl.textContent = TAM_APP_DIALOG_TITLE;
+    bodyEl.innerHTML = "";
+
+    const badge = document.createElement("span");
+    badge.textContent = lineLabel;
+    applyLineColorStyling(badge, routeItem, "contextPill");
+    badge.style.display = "inline-flex";
+    badge.style.alignItems = "center";
+    badge.style.justifyContent = "center";
+    badge.style.padding = "3px 10px";
+    badge.style.marginBottom = "8px";
+    bodyEl.appendChild(badge);
+
+    const stopLine = document.createElement("p");
+    stopLine.style.margin = "0 0 6px";
+    stopLine.innerHTML = `<strong>Arrêt :</strong> ${stopName}`;
+    bodyEl.appendChild(stopLine);
+
+    for (const it of info) {
+      const sensLabel = it.dirKey === "1" ? "Sens 2" : "Sens 1";
+      const p = document.createElement("p");
+      p.style.margin = "0 0 6px";
+      p.innerHTML = `<strong>${sensLabel} :</strong> ${it.labels.join(" / ")}`;
+      bodyEl.appendChild(p);
+    }
+
+    dlg.returnValue = "";
+    dlg.showModal();
+    return;
+  }
+  const lines = [`Ligne : ${lineLabel}`, `Arrêt : ${stopName}`, ""];
   for (const it of info) {
     const sensLabel = it.dirKey === "1" ? "Sens 2" : "Sens 1";
-    lines.push(`${sensLabel}`);
-    for (const headsign of it.labels) {
-      lines.push(`- ${headsign}`);
-    }
-    lines.push("");
+    lines.push(`${sensLabel} : ${it.labels.join(" / ")}`);
   }
   showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
 }
@@ -860,24 +890,38 @@ function showTabbedCorrespondenceDialog(title, subtitle, entries) {
       buttons[i].setAttribute("aria-selected", i === idx ? "true" : "false");
     }
     panel.innerHTML = "";
-    const t = document.createElement("p");
-    t.className = "app-message-tab-panel-title";
-    t.textContent = `Ligne ${entry.lineLabel}`;
-    panel.appendChild(t);
-    const ul = document.createElement("ul");
-    ul.className = "app-message-tab-panel-lines";
+    const lineBadge = document.createElement("span");
+    lineBadge.textContent = entry.lineLabel;
+    if (entry.routeItem) {
+      applyLineColorStyling(lineBadge, entry.routeItem, "contextPill");
+    }
+    lineBadge.style.display = "inline-flex";
+    lineBadge.style.alignItems = "center";
+    lineBadge.style.justifyContent = "center";
+    lineBadge.style.margin = "0 0 6px";
+    panel.appendChild(lineBadge);
+    if (entry.stopName) {
+      const stopP = document.createElement("p");
+      stopP.style.margin = "0 0 6px";
+      stopP.innerHTML = `<strong>Arrêt :</strong> ${entry.stopName}`;
+      panel.appendChild(stopP);
+    }
+    const lines = document.createElement("div");
+    lines.className = "app-message-tab-panel-lines";
     if (!entry.details.length) {
-      const li = document.createElement("li");
-      li.textContent = "Sens indisponible";
-      ul.appendChild(li);
+      const p = document.createElement("p");
+      p.style.margin = "0 0 4px";
+      p.textContent = "Sens indisponible";
+      lines.appendChild(p);
     } else {
       for (const d of entry.details) {
-        const li = document.createElement("li");
-        li.textContent = `${d.sensLabel} : ${d.headsigns.join(" / ")}`;
-        ul.appendChild(li);
+        const p = document.createElement("p");
+        p.style.margin = "0 0 4px";
+        p.innerHTML = `<strong>${d.sensLabel} :</strong> ${d.headsigns.join(" / ")}`;
+        lines.appendChild(p);
       }
     }
-    panel.appendChild(ul);
+    panel.appendChild(lines);
   }
 
   entries.forEach((entry, idx) => {
@@ -982,13 +1026,14 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
     return {
       lineLabel: displayLineLabel(item),
       routeItem: item,
+      stopName,
       details: info.map((it) => ({
         sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
         headsigns: it.labels,
       })),
     };
   });
-  if (showTabbedCorrespondenceDialog(title, `Arrêt : ${stopName}`, entries)) {
+  if (showTabbedCorrespondenceDialog(title, "", entries)) {
     return;
   }
   const lines = [title, `Arrêt : ${stopName}`, ""];
@@ -1098,29 +1143,36 @@ function showStopAreaHubPopup(stopObj) {
         entry._buttonEl.setAttribute("aria-selected", "true");
       }
       sharedPanel.innerHTML = "";
-      const sectionTitle = document.createElement("p");
-      sectionTitle.className = "app-message-tab-panel-title";
-      sectionTitle.style.marginBottom = "4px";
-      sectionTitle.textContent = secStopName;
-      sharedPanel.appendChild(sectionTitle);
-      const lineTitle = document.createElement("p");
-      lineTitle.className = "app-message-tab-panel-title";
-      lineTitle.textContent = `Ligne ${entry.lineLabel}`;
-      sharedPanel.appendChild(lineTitle);
-      const ul = document.createElement("ul");
-      ul.className = "app-message-tab-panel-lines";
+      const lineBadge = document.createElement("span");
+      lineBadge.textContent = entry.lineLabel;
+      if (entry.routeItem) {
+        applyLineColorStyling(lineBadge, entry.routeItem, "contextPill");
+      }
+      lineBadge.style.display = "inline-flex";
+      lineBadge.style.alignItems = "center";
+      lineBadge.style.justifyContent = "center";
+      lineBadge.style.margin = "0 0 6px";
+      sharedPanel.appendChild(lineBadge);
+      const stopP = document.createElement("p");
+      stopP.style.margin = "0 0 6px";
+      stopP.innerHTML = `<strong>Arrêt :</strong> ${secStopName}`;
+      sharedPanel.appendChild(stopP);
+      const lines = document.createElement("div");
+      lines.className = "app-message-tab-panel-lines";
       if (!entry.details.length) {
-        const li = document.createElement("li");
-        li.textContent = "Sens indisponible";
-        ul.appendChild(li);
+        const p = document.createElement("p");
+        p.style.margin = "0 0 4px";
+        p.textContent = "Sens indisponible";
+        lines.appendChild(p);
       } else {
         for (const d of entry.details) {
-          const li = document.createElement("li");
-          li.textContent = `${d.sensLabel} : ${d.headsigns.join(" / ")}`;
-          ul.appendChild(li);
+          const p = document.createElement("p");
+          p.style.margin = "0 0 4px";
+          p.innerHTML = `<strong>${d.sensLabel} :</strong> ${d.headsigns.join(" / ")}`;
+          lines.appendChild(p);
         }
       }
-      sharedPanel.appendChild(ul);
+      sharedPanel.appendChild(lines);
     }
 
     let firstEntry = null;
