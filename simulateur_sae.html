@@ -1,0 +1,2095 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Simulateur SAE TAM</title>
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background: #f3f5f8;
+        color: #1b1f24;
+      }
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      }
+      .card--header {
+        padding-bottom: 4px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+        font-weight: 600;
+      }
+      select,
+      button,
+      input[type="text"],
+      input[type="date"] {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        font-size: 14px;
+        background: #fff;
+      }
+      .grow {
+        flex: 1 1 220px;
+      }
+      button {
+        cursor: pointer;
+        background: #005ca9;
+        border: 0;
+        color: #fff;
+        font-weight: 600;
+        transition:
+          transform 90ms ease,
+          filter 120ms ease,
+          box-shadow 120ms ease,
+          background-color 120ms ease;
+      }
+      button.secondary {
+        background: #4a5563;
+      }
+      button:active {
+        transform: translateY(1px) scale(0.985);
+        filter: brightness(0.92);
+      }
+      #savedDeviationSelect,
+      #duplicateFromDeviationSelect,
+      #duplicateTargetVariantSelect {
+        font-size: 10px !important;
+        padding: 7px;
+        line-height: 1.2;
+      }
+      #savedDeviationSelect option,
+      #duplicateFromDeviationSelect option,
+      #duplicateTargetVariantSelect option {
+        font-size: 10px !important;
+      }
+      /* Évite le débordement à droite des champs vs boutons/listes (flex + dates natives). */
+      .panel-section.panel-ops .row > .grow {
+        min-width: 0;
+      }
+      #savedDeviationValidFrom,
+      #savedDeviationValidTo {
+        max-width: 100%;
+        min-width: 0;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .panel-section button.active {
+        background: #0f7d2f;
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
+      }
+      .map-wrap {
+        position: relative;
+        isolation: isolate;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      /*
+       * Rail arrêts : pastilles sur la piste (remplissage = % parcours).
+       * z-index > HUD (1100) pour le tactile.
+       * Même « right » que .map-mission-hud__nextStrip / __rail (marge bord appareil).
+       * Marge verticale haut = marge entre bas du rail et haut de la pastille « Prochain arrêt »
+       * (aligné sur le stack HUD : safe-bottom + 30 + 44 + 8 + hauteur pastille estimée + même inset que le haut).
+       */
+      .tam-stop-rail {
+        position: absolute;
+        right: max(6px, env(safe-area-inset-right, 0px));
+        top: max(6px, env(safe-area-inset-top, 0px));
+        bottom: calc(
+          max(6px, env(safe-area-inset-bottom, 0px)) + 30px + 44px + 8px +
+            56px + max(6px, env(safe-area-inset-top, 0px))
+        );
+        z-index: 1220;
+        width: 34px;
+        max-height: 100%;
+        pointer-events: auto;
+        transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+        touch-action: pan-y;
+        /* Évite le chaînage du défilement vers la carte / la page (Chrome mobile, liste longue). */
+        overscroll-behavior: contain;
+      }
+      .tam-stop-rail.tam-stop-rail--explore {
+        width: min(300px, 69vw);
+      }
+      .tam-stop-rail__inner {
+        position: relative;
+        height: 100%;
+        width: 100%;
+        min-height: 0;
+        box-sizing: border-box;
+        touch-action: pan-y;
+      }
+      .tam-stop-rail__trackBg {
+        position: absolute;
+        inset: 0;
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.14);
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .tam-stop-rail__fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 0%;
+        border-radius: inherit;
+        background: linear-gradient(
+          180deg,
+          rgba(0, 92, 169, 0.42),
+          rgba(15, 125, 47, 0.62)
+        );
+        transition:
+          bottom 0.35s ease-out,
+          height 0.35s ease-out;
+        pointer-events: none;
+      }
+      .tam-stop-rail__scroll {
+        position: relative;
+        z-index: 1;
+        height: 100%;
+        max-height: 100%;
+        box-sizing: border-box;
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0;
+        overflow-y: hidden;
+        padding: 5px 4px;
+        pointer-events: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        touch-action: pan-y;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__scroll {
+        justify-content: flex-start;
+        gap: 2px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+      .tam-stop-rail__pill {
+        flex: 0 0 auto;
+        box-sizing: border-box;
+        width: 12px;
+        height: 12px;
+        min-width: 12px;
+        min-height: 12px;
+        padding: 0;
+        margin: 0;
+        border: 2px solid rgba(27, 31, 36, 0.45);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+        cursor: pointer;
+        display: block;
+        text-align: left;
+        transition:
+          width 0.22s ease,
+          min-height 0.22s ease,
+          min-width 0.22s ease,
+          border-radius 0.22s ease,
+          background 0.15s ease;
+        -webkit-tap-highlight-color: rgba(0, 92, 169, 0.25);
+      }
+      .tam-stop-rail:not(.tam-stop-rail--explore) .tam-stop-rail__pill {
+        width: var(--tam-rail-pill, 12px);
+        height: var(--tam-rail-pill, 12px);
+        min-width: var(--tam-rail-pill, 12px);
+        min-height: var(--tam-rail-pill, 12px);
+      }
+      .tam-stop-rail__pill:hover {
+        background: #f1f5f9;
+      }
+      .tam-stop-rail__pill.tam-stop-rail__pill--past {
+        background: rgba(15, 125, 47, 0.45);
+        border-color: rgba(10, 95, 40, 0.88);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+      }
+      .tam-stop-rail__pill.tam-stop-rail__pill--past:hover {
+        background: rgba(15, 125, 47, 0.58);
+      }
+      .tam-stop-rail__pill:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 2px;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__pill {
+        width: calc(100% - 4px);
+        min-width: 0;
+        min-height: 28px;
+        height: auto;
+        border-radius: 10px;
+        padding: 5px 7px;
+        align-self: stretch;
+        background: rgba(255, 255, 255, 0.98);
+      }
+      .tam-stop-rail__pillMain {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        width: 100%;
+      }
+      .tam-stop-rail__pillLabel {
+        display: none;
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.25;
+        color: #1b1f24;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__pillLabel {
+        display: block;
+      }
+      .tam-stop-rail__correspondences {
+        display: none;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 3px;
+        overflow: visible;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__correspondences {
+        display: inline-flex;
+      }
+      .tam-stop-rail__correspondenceBadge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        max-width: 44px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+        pointer-events: auto;
+        touch-action: manipulation;
+      }
+      .tam-stop-rail__correspondenceBadge--more {
+        background: #e2e8f0;
+        color: #334155;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .tam-stop-rail__correspondenceBadge--hub {
+        background: #ede9fe;
+        color: #4c1d95;
+        border: 1px solid #c4b5fd;
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__pill.tam-stop-rail__pill--past {
+        background: rgba(220, 252, 231, 0.98);
+        border-color: #0f7d2f;
+      }
+      .tam-stop-rail--explore
+        .tam-stop-rail__pill.tam-stop-rail__pill--past:hover {
+        background: rgba(187, 247, 208, 0.99);
+      }
+      .tam-stop-rail--explore
+        .tam-stop-rail__pill.tam-stop-rail__pill--past
+        .tam-stop-rail__pillLabel {
+        color: #14532d;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .tam-stop-rail,
+        .tam-stop-rail__fill,
+        .tam-stop-rail__pill {
+          transition: none;
+        }
+      }
+      /* Au-dessus du HUD mission (~1100) et du récap (~1250) : reste visible tant que non enregistré. */
+      .tam-unsaved-deviation-banner {
+        position: absolute;
+        left: max(8px, env(safe-area-inset-left, 0px));
+        right: max(8px, env(safe-area-inset-right, 0px));
+        top: max(8px, env(safe-area-inset-top, 0px));
+        z-index: 1320;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #fff3e0;
+        border: 1px solid #e65100;
+        color: #4a2000;
+        font-size: 13px;
+        line-height: 1.45;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+        pointer-events: none;
+      }
+      .tam-unsaved-deviation-banner strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #bf360c;
+        font-size: 13px;
+      }
+      /* Calque tuiles / trace sous le HUD (contrôles Leaflet ~1000). */
+      #map {
+        position: relative;
+        z-index: 0;
+        height: 420px;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .stats {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .mono {
+        font-family: Consolas, monospace;
+      }
+      .note {
+        font-size: 12px;
+        color: #4a5563;
+        line-height: 1.45;
+        margin: 4px 0 0 0;
+      }
+      /* Modales HTML (remplacent alert / confirm / prompt natifs : pas d’en-tête « localhost » ni case Chrome). */
+      .app-message-dialog,
+      .app-confirm-dialog,
+      .app-prompt-dialog {
+        border: none;
+        border-radius: 10px;
+        padding: 0;
+        max-width: min(92vw, 460px);
+        background: #fff;
+        color: #1b1f24;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.28);
+      }
+      .app-message-dialog {
+        width: min(92vw, 560px);
+        max-width: min(92vw, 560px);
+      }
+      .app-message-dialog::backdrop,
+      .app-confirm-dialog::backdrop,
+      .app-prompt-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.45);
+      }
+      .app-message-dialog__inner {
+        padding: 16px 18px 14px;
+      }
+      .app-message-dialog__title {
+        margin: 0 0 10px;
+        font-size: 17px;
+        font-weight: 700;
+        color: #005ca9;
+        line-height: 1.25;
+      }
+      .app-message-dialog__body {
+        margin: 0 0 16px;
+        font-size: 14px;
+        line-height: 1.5;
+        white-space: pre-line;
+      }
+      .app-message-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 6px;
+        margin: 0 0 10px;
+        width: 100%;
+      }
+      .app-message-tab {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        min-width: 42px;
+        max-width: 42px;
+        height: 30px;
+        padding: 0 8px;
+        border-radius: 4px;
+        border: 1px solid #bbc4cf;
+        background: #f8fafc;
+        color: #1b1f24;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .app-message-tab.active {
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.38);
+      }
+      .app-message-tab-panel {
+        margin: 0;
+        padding: 8px 9px;
+        border-radius: 8px;
+        border: 1px solid #d7dde4;
+        background: #f8fafc;
+      }
+      .app-message-tab-panel-title {
+        margin: 0 0 6px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .app-message-tab-panel-lines {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .app-message-dialog__actions {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .app-message-dialog__ok {
+        width: auto;
+        min-width: 88px;
+        padding: 10px 20px;
+      }
+      .app-message-dialog__actions--split {
+        justify-content: flex-end;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .app-message-dialog__actions--split button {
+        width: auto;
+        min-width: 100px;
+      }
+      .app-prompt-dialog__input {
+        width: 100%;
+        margin: 0 0 14px;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      /* Mode saisie arrêt non desservi : tooltips toujours visibles (Chrome tactile sans survol). */
+      .leaflet-tooltip.tam-stop-edit-tooltip {
+        font-size: 11px;
+        padding: 4px 8px;
+        max-width: 240px;
+        white-space: normal;
+        line-height: 1.25;
+      }
+      .row-voice {
+        align-items: flex-end;
+      }
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 40px;
+      }
+      .checkbox-row input[type="checkbox"] {
+        width: auto;
+      }
+      .burger-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .mission-context-bar {
+        display: block;
+        max-width: 100%;
+        margin: 0 0 0 0;
+        font-size: 14px;
+        line-height: 1.35;
+        min-height: 1.4em;
+      }
+      .mission-context-bar[hidden] {
+        display: none !important;
+      }
+      .mission-context-scroll {
+        max-width: 100%;
+        overflow-x: hidden;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        border-radius: 6px;
+        outline: none;
+      }
+      .mission-context-scroll--pan {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        box-shadow: inset 0 0 0 1px rgba(0, 92, 169, 0.22);
+        padding: 1px 0;
+        cursor: grab;
+      }
+      .mission-context-scroll--pan:active {
+        cursor: grabbing;
+      }
+      .mission-context-row-inner {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        width: 100%;
+        min-width: 0;
+      }
+      .mission-context-scroll--pan .mission-context-row-inner {
+        width: max-content;
+        min-width: 100%;
+      }
+      .mission-context-pill {
+        flex: 0 0 auto;
+      }
+      .mission-context-dest {
+        flex: 1 1 auto;
+        min-width: 0;
+        color: #1b1f24;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mission-context-scroll--pan .mission-context-dest {
+        flex: 0 0 auto;
+        min-width: 0;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      .title-inline {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+      .header-actions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .burger-btn {
+        width: auto;
+        padding: 8px 12px;
+        font-size: 14px;
+        background: #2f3a47;
+        border-radius: 8px;
+      }
+      .recap-toggle-btn {
+        width: auto;
+        padding: 8px 10px;
+        font-size: 13px;
+        background: #4a5563;
+        border-radius: 8px;
+      }
+      .recap-toggle-btn.active {
+        background: #005ca9;
+      }
+      .control-panel {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(9, 15, 22, 0.45);
+        z-index: 3000;
+        padding: 12px;
+        overflow: auto;
+      }
+      .control-panel.open {
+        display: block;
+      }
+      .panel-sheet {
+        max-width: 760px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.58);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+        border-radius: 12px;
+        border: 1px solid rgba(215, 221, 228, 0.9);
+        padding: 10px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+      }
+      .panel-head {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .panel-head button {
+        background: #4a5563;
+        width: auto;
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+      .panel-head button.active {
+        background: #005ca9;
+      }
+      details.help-item {
+        margin-bottom: 8px;
+        border: 1px solid #ccd3db;
+        border-radius: 8px;
+        padding: 0 10px;
+        background: rgba(255, 255, 255, 0.92);
+      }
+      details.help-item summary {
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        padding: 10px 4px;
+        color: #1b1f24;
+      }
+      details.help-item .help-item-body {
+        padding: 0 4px 12px;
+        font-size: 13px;
+        line-height: 1.48;
+        color: #2d3748;
+      }
+      details.help-item .help-item-body ul {
+        margin: 6px 0 0 1.1em;
+        padding: 0;
+      }
+      details.help-item .help-item-body li {
+        margin-bottom: 6px;
+      }
+      details.help-item .help-item-body strong {
+        color: #1b1f24;
+      }
+      .help-intro {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #4a5563;
+        margin: 0 0 10px;
+      }
+      .panel-ops-subtabs {
+        gap: 6px;
+      }
+      .panel-ops-subtabs button {
+        flex: 1 1 0;
+        min-width: 0;
+        background: #4a5563;
+        width: auto;
+        padding: 8px 6px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .panel-ops-subtabs button.active {
+        background: #005ca9;
+      }
+      .panel-section {
+        display: none;
+      }
+      .panel-section.show {
+        display: flex;
+      }
+      .map-recap {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: calc(100% - 56px);
+        max-width: 560px;
+        max-height: calc(100% - 56px);
+        overflow: auto;
+        z-index: 1250;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid #d7dde4;
+        border-radius: 8px;
+        padding: 8px 10px;
+        display: none;
+      }
+      .map-recap.show {
+        display: block;
+      }
+      /* Commandes mission sur la carte — au-dessus des couches Leaflet (contrôle ~1000). */
+      .map-mission-hud {
+        /* Hauteur commune rail + bouton replier (carré) ; boutons internes carrés plus compacts */
+        --map-hud-h: 44px;
+        --map-hud-btn: 36px;
+        --map-hud-clear-attrib: 30px;
+        position: absolute;
+        inset: 0;
+        z-index: 1100;
+        pointer-events: none;
+      }
+      .map-mission-hud.map-mission-hud--inactive {
+        display: none;
+      }
+      /*
+       * Rail : toggle toujours au même endroit (premier enfant + row-reverse → bord droit).
+       * Le bandeau occupe toute la largeur à gauche du toggle ; son contenu est centré dans cette zone.
+       */
+      .map-mission-hud__rail {
+        pointer-events: auto;
+        position: absolute;
+        right: max(6px, env(safe-area-inset-right, 0px));
+        bottom: calc(
+          max(6px, env(safe-area-inset-bottom, 0px)) +
+            var(--map-hud-clear-attrib)
+        );
+        left: max(6px, env(safe-area-inset-left, 0px));
+        display: flex;
+        flex-direction: row-reverse;
+        align-items: center;
+        gap: 6px;
+        height: var(--map-hud-h);
+        max-width: calc(100vw - 12px);
+      }
+      .map-mission-hud__toggle {
+        flex: 0 0 var(--map-hud-h);
+        width: var(--map-hud-h);
+        height: var(--map-hud-h);
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid #bbc4cf;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+        color: #005ca9;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        cursor: pointer;
+        transition:
+          transform 0.15s ease,
+          filter 0.15s ease;
+      }
+      .map-mission-hud__toggle:active {
+        transform: scale(0.96);
+        filter: brightness(0.94);
+      }
+      .map-mission-hud__toggle svg {
+        display: block;
+        width: 18px;
+        height: 18px;
+      }
+      .map-mission-hud__stripWrap {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition:
+          opacity 0.2s ease,
+          transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+          max-width 0.22s ease;
+      }
+      .map-mission-hud.map-mission-hud--collapsed .map-mission-hud__stripWrap {
+        flex: 0 1 0;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      .map-mission-hud:not(.map-mission-hud--collapsed)
+        .map-mission-hud__stripWrap {
+        opacity: 1;
+        visibility: visible;
+      }
+      .map-mission-hud__inner {
+        box-sizing: border-box;
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        height: var(--map-hud-h);
+        width: max-content;
+        max-width: 100%;
+        min-width: 0;
+        padding: 0 9px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid #ccd3db;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      .map-mission-hud__inner::-webkit-scrollbar {
+        display: none;
+      }
+      .map-mission-hud__btn {
+        flex: 0 0 var(--map-hud-btn);
+        box-sizing: border-box;
+        width: var(--map-hud-btn);
+        min-width: var(--map-hud-btn);
+        height: var(--map-hud-btn);
+        padding: 0;
+        border-radius: 9px;
+        border: 1px solid #bbc4cf;
+        background: #f8fafc;
+        color: #1b1f24;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .map-mission-hud__btn:active {
+        transform: translateY(1px);
+        filter: brightness(0.96);
+      }
+      .map-mission-hud__btn--primary {
+        background: #005ca9;
+        border-color: #004a8c;
+        color: #fff;
+      }
+      .map-mission-hud__btn--speed {
+        flex-basis: var(--map-hud-btn);
+        min-width: var(--map-hud-btn);
+        width: var(--map-hud-btn);
+        font-size: 12px;
+        letter-spacing: -0.03em;
+      }
+      /* Voix : glyphe seul (pas de carré plein largeur) pour ne pas élargir la barre */
+      .map-mission-hud__voice-icon {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 0;
+        height: var(--map-hud-btn);
+        padding: 0 1px;
+        margin: 0;
+        border: none;
+        background: transparent;
+        box-shadow: none;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .map-mission-hud__voice-icon:active {
+        opacity: 0.82;
+        transform: scale(0.94);
+      }
+      .map-mission-hud__voice-icon--on {
+        color: #005ca9;
+      }
+      .map-mission-hud__voice-icon--off {
+        color: #64748b;
+      }
+      .map-mission-hud__voice-icon svg {
+        display: block;
+        width: 20px;
+        height: 20px;
+      }
+      .map-mission-hud__btn svg {
+        display: block;
+        width: 18px;
+        height: 18px;
+      }
+      .map-mission-hud__heading {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin: 0;
+        padding: 0 6px;
+        height: var(--map-hud-btn);
+        max-height: var(--map-hud-btn);
+        border-radius: 9px;
+        border: 1px solid #ccd3db;
+        background: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        color: #1b1f24;
+        cursor: pointer;
+        user-select: none;
+        flex: 0 0 auto;
+        min-width: min-content;
+      }
+      .map-mission-hud__heading input {
+        width: auto;
+        margin: 0;
+        cursor: pointer;
+      }
+      /* Cap / Nord courts : pas de plafond artificiel ; défilement du bandeau si besoin */
+      #mapHudHeadingCaption {
+        display: inline-block;
+        white-space: nowrap;
+        vertical-align: middle;
+      }
+      /* Incrustation prochain arrêt (audio coupé / éviter le récap plein écran) */
+      .map-mission-hud__nextStrip {
+        pointer-events: auto;
+        position: absolute;
+        right: max(6px, env(safe-area-inset-right, 0px));
+        bottom: calc(
+          max(6px, env(safe-area-inset-bottom, 0px)) +
+            var(--map-hud-clear-attrib) + var(--map-hud-h) + 8px
+        );
+        z-index: 1;
+        max-width: min(260px, calc(100vw - 24px));
+        padding: 7px 10px 8px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #ccd3db;
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+        text-align: left;
+        overflow: hidden;
+        --map-hud-next-fill-pct: 0;
+      }
+      /* Remplissage horizontal : progression entre arrêt courant et prochain (distance le long du tracé) */
+      .map-mission-hud__nextStrip::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        width: 100%;
+        transform: scaleX(calc(var(--map-hud-next-fill-pct, 0) / 100));
+        transform-origin: left center;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          rgba(0, 92, 169, 0.07),
+          rgba(0, 92, 169, 0.2)
+        );
+        pointer-events: none;
+        transition: transform 0.45s ease-out;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .map-mission-hud__nextStrip::before {
+          transition: none;
+        }
+      }
+      .map-mission-hud__nextStrip-kicker {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #5c6570;
+        margin: 0 0 3px;
+        position: relative;
+        z-index: 1;
+      }
+      .map-mission-hud__nextStrip-name {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+        color: #1b1f24;
+        position: relative;
+        z-index: 1;
+        line-height: 1.25;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        line-clamp: 2;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      /* Vehicule (triangle) : pointe = avant; en mode nord fixe, on tourne le triangle. */
+      .nav-vehicle {
+        background: transparent;
+        border: none;
+      }
+      .nav-triangle {
+        width: 0;
+        height: 0;
+        margin: 0 auto;
+        border-left: 9px solid transparent;
+        border-right: 9px solid transparent;
+        border-bottom: 22px solid #e53935;
+        filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+      }
+      @media (max-width: 900px) {
+        html,
+        body {
+          height: 100%;
+        }
+        .container {
+          max-width: 100%;
+          padding: 8px 8px 10px;
+          min-height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .container > .card:first-child {
+          flex: 0 0 auto;
+          margin-bottom: 0;
+        }
+        .container > .card:last-child {
+          flex: 1 1 auto;
+          min-height: 0;
+          display: flex;
+          margin-bottom: 18px;
+        }
+        .container > .card:last-child .map-wrap {
+          flex: 1 1 auto;
+          min-height: 0;
+        }
+        .title-inline {
+          font-size: 18px;
+        }
+        #map {
+          height: 100%;
+          min-height: 0;
+          max-height: none;
+        }
+        .map-recap {
+          font-size: 13px;
+          width: calc(100% - 44px);
+          max-height: calc(100% - 44px);
+        }
+      }
+      .line-select-dual {
+        position: relative;
+      }
+      /* Le menu <select> natif sur mobile n’affiche presque jamais les couleurs des
+         <option> : on affiche un sélecteur HTML (pastilles) avec les mêmes teintes
+         qu’en simulation bureau. */
+      @media (max-width: 900px) {
+        .line-select-native {
+          position: absolute !important;
+          width: 1px !important;
+          height: 1px !important;
+          padding: 0 !important;
+          margin: -1px !important;
+          overflow: hidden !important;
+          clip: rect(0, 0, 0, 0) !important;
+          clip-path: inset(50%) !important;
+          border: 0 !important;
+          white-space: nowrap !important;
+          pointer-events: none;
+        }
+        .line-select-custom {
+          display: block;
+        }
+        .line-select-trigger {
+          position: relative;
+          width: 100%;
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          border-radius: 8px;
+          border: 1px solid #bbc4cf;
+          padding: 10px 12px;
+          font-size: 16px;
+          background: #fff;
+          color: #1b1f24;
+          font-weight: 600;
+          text-align: left;
+          box-sizing: border-box;
+        }
+        .line-select-caret {
+          flex-shrink: 0;
+          opacity: 0.7;
+        }
+        .line-select-listbox[hidden] {
+          display: none !important;
+        }
+        .line-select-listbox {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: calc(100% + 4px);
+          z-index: 5000;
+          max-height: min(50vh, 360px);
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          background: rgba(255, 255, 255, 0.98);
+          border: 1px solid #c5cdd6;
+          border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+          padding: 8px 10px 10px;
+        }
+        .line-pick-sep {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #64748b;
+          font-weight: 700;
+          padding: 8px 4px 4px;
+          margin: 0;
+        }
+        .line-pick-sep:first-child {
+          padding-top: 0;
+        }
+        .line-pick-row {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 12px 14px;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          border-radius: 8px;
+          margin: 0 0 6px 0;
+          font-size: 16px;
+          line-height: 1.2;
+          cursor: pointer;
+          background: #e8ecf1;
+          color: #1b1f24;
+          font-weight: 600;
+          box-sizing: border-box;
+        }
+        .line-pick-row:active {
+          filter: brightness(0.95);
+        }
+      }
+      @media (min-width: 901px) {
+        .line-select-custom {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card card--header">
+        <div class="burger-row">
+          <h2 class="title-inline">SAE TAM</h2>
+          <div class="header-actions">
+            <button id="recapToggleBtn" type="button" class="recap-toggle-btn">
+              Récap
+            </button>
+            <button id="burgerMenuBtn" type="button" class="burger-btn">
+              ☰ Menu
+            </button>
+          </div>
+        </div>
+        <div
+          id="missionContextBar"
+          class="mission-context-bar"
+          role="status"
+          aria-live="polite"
+          hidden
+        >
+          <div
+            class="mission-context-scroll"
+            id="missionContextScroll"
+            role="group"
+            tabindex="0"
+            title="Appui long, puis defiler sur le cote pour lire la direction."
+            aria-label="Ligne et direction, appui long pour defiler le texte"
+          >
+            <div class="mission-context-row-inner">
+              <span id="missionContextPill" class="mission-context-pill"></span
+              ><span
+                id="missionContextDest"
+                class="mission-context-dest"
+              ></span>
+            </div>
+          </div>
+        </div>
+        <div id="controlPanel" class="control-panel">
+          <div class="panel-sheet">
+            <div class="panel-head">
+              <button id="missionTabBtn" type="button">Ligne</button>
+              <button id="opsTabBtn" type="button">Déviation</button>
+              <button id="voiceTabBtn" type="button">Audio</button>
+              <button id="helpTabBtn" type="button">Aide</button>
+              <button
+                id="closeMenuBtn"
+                type="button"
+                class="secondary"
+                style="margin-left: auto"
+              >
+                Fermer
+              </button>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow line-field">
+                <label for="lineSelect">1) Ligne</label>
+                <div class="line-select-dual" id="lineSelectDual">
+                  <select id="lineSelect" class="line-select-native"></select>
+                  <div class="line-select-custom" id="lineSelectCustom">
+                    <button
+                      type="button"
+                      class="line-select-trigger"
+                      id="lineSelectTrigger"
+                      aria-haspopup="listbox"
+                      aria-expanded="false"
+                      aria-controls="lineSelectListbox"
+                    >
+                      <span
+                        id="lineSelectTriggerLabel"
+                        class="line-select-trigger-txt"
+                        >—</span
+                      >
+                      <span class="line-select-caret" aria-hidden="true"
+                        >▾</span
+                      >
+                    </button>
+                    <div
+                      class="line-select-listbox"
+                      id="lineSelectListbox"
+                      role="listbox"
+                      hidden
+                    ></div>
+                  </div>
+                </div>
+              </div>
+              <div class="grow" id="headsignField">
+                <label for="headsignSelect">2) Terminus / sens</label>
+                <select id="headsignSelect"></select>
+              </div>
+              <div class="grow" id="variantField">
+                <label for="variantSelect">3) Variante</label>
+                <select id="variantSelect"></select>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow">
+                <label for="driveModeSelect"
+                  >Choisir le mode de conduite (Réel ou Simu)</label
+                >
+                <select id="driveModeSelect">
+                  <option value="simulation">Simulation (avance auto)</option>
+                  <option value="real">Réel GPS (position téléphone)</option>
+                </select>
+              </div>
+              <div class="grow">
+                <p class="note" id="gpsStatus" style="margin: 0">
+                  GPS inactif.
+                </p>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow">
+                <button id="startBtn">Démarrer simulation</button>
+              </div>
+              <div class="grow">
+                <button id="pauseBtn" class="secondary">
+                  Pause / Reprendre
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow">
+                <button id="prevBtn" class="secondary">Arrêt précédent</button>
+              </div>
+              <div class="grow">
+                <button id="nextBtn" class="secondary">Arrêt suivant</button>
+              </div>
+              <div class="grow">
+                <label for="speedSelect">Vitesse</label>
+                <select id="speedSelect">
+                  <option value="1">x1</option>
+                  <option value="2">x2</option>
+                  <option value="4">x4</option>
+                  <option value="10">x10</option>
+                </select>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops panel-ops-subtabs">
+              <button
+                type="button"
+                class="secondary ops-subtab-btn"
+                data-ops-subtab="dev"
+              >
+                Planifiée
+              </button>
+              <button
+                type="button"
+                class="secondary ops-subtab-btn"
+                data-ops-subtab="devtemp"
+              >
+                Temporaire
+              </button>
+              <button
+                type="button"
+                class="secondary ops-subtab-btn"
+                data-ops-subtab="rec"
+              >
+                Enregistrée / Dupliquée
+              </button>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
+              <div class="grow">
+                <button id="manualDrawStartBtn" class="secondary" type="button">
+                  Tracer la déviation planifiée
+                </button>
+              </div>
+              <div class="grow">
+                <button id="manualDrawUndoBtn" class="secondary" type="button">
+                  Retirer le dernier point
+                </button>
+              </div>
+              <div class="grow">
+                <button id="manualDrawSaveBtn" class="secondary" type="button">
+                  Valider le tracé de la déviation planifiée
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="devtemp">
+              <div class="grow">
+                <button
+                  id="tempManualDrawStartBtn"
+                  class="secondary"
+                  type="button"
+                >
+                  Tracer la déviation temporaire
+                </button>
+              </div>
+              <div class="grow">
+                <button
+                  id="tempManualDrawUndoBtn"
+                  class="secondary"
+                  type="button"
+                >
+                  Retirer le dernier point
+                </button>
+              </div>
+              <div class="grow">
+                <button
+                  id="tempManualDrawSaveBtn"
+                  class="secondary"
+                  type="button"
+                >
+                  Valider le tracé de la déviation temporaire
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
+              <div class="grow">
+                <button id="nonServedBtn" class="secondary" type="button">
+                  Saisir arrêt non desservi
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
+              <div class="grow">
+                <button id="provisionalStopBtn" class="secondary" type="button">
+                  Saisir arrêts provisoires
+                </button>
+              </div>
+              <div class="grow">
+                <button id="provisionalUndoBtn" class="secondary" type="button">
+                  Retirer dernier arrêt provisoire
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="devtemp">
+              <div class="grow">
+                <button
+                  id="temporarySaveDeviationBtn"
+                  class="secondary"
+                  type="button"
+                >
+                  Enregistrer la déviation temporaire
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev">
+              <div class="grow">
+                <button id="saveDeviationBtn" class="secondary" type="button">
+                  Enregistrer la déviation planifiée
+                </button>
+                <p
+                  class="note"
+                  style="margin: 6px 0 0; color: #c62828; font-weight: 400"
+                >
+                  Après avoir cliqué sur
+                  <strong
+                    >«&nbsp;Enregistrer la déviation planifiée&nbsp;»</strong
+                  >,<br />
+                  allez sur
+                  <strong>«&nbsp;Enregistrée / Dupliquée&nbsp;»</strong> pour
+                  changer les dates.
+                </p>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
+              <div class="grow">
+                <label for="manualTraceSegmentSelect"
+                  >Déviation à supprimer</label
+                >
+                <select id="manualTraceSegmentSelect" disabled></select>
+                <p
+                  class="note"
+                  style="margin: 6px 0 0; color: #c62828; font-weight: 400"
+                >
+                  <strong>Conseil :</strong> Allez sur la carte et sélectionnez
+                  la déviation à supprimer. Revenez ici, votre déviation sera
+                  sélectionnée. Vous n’aurez plus qu’à cliquer sur le bouton
+                  <strong
+                    >«&nbsp;Supprimer la déviation sélectionnée&nbsp;»</strong
+                  >.<br />
+                  <strong>Attention :</strong> Utilisez le bouton
+                  <strong>«&nbsp;Supprimer toutes les déviations&nbsp;»</strong>
+                  avec prudence car il supprimera toutes déviations de cette
+                  variante.
+                </p>
+              </div>
+              <div class="grow">
+                <button
+                  id="manualTraceRemoveSegmentBtn"
+                  class="secondary"
+                  type="button"
+                  title="Supprime la déviation sélectionnée ; les arrêts non desservis et provisoires sont conservés."
+                >
+                  Supprimer la déviation sélectionnée
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
+              <div class="grow">
+                <button
+                  id="manualTraceClearBtn"
+                  class="secondary"
+                  type="button"
+                  title="Supprime toutes les déviations tracées (y compris après plusieurs validations)."
+                >
+                  Supprimer toutes les déviations
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="devtemp">
+              <div class="grow">
+                <button id="returnInitialBtn" class="secondary" type="button">
+                  Rétablir le mode exploitation du début de mission
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="dev devtemp">
+              <div class="grow">
+                <button id="returnBaseBtn" class="secondary" type="button">
+                  Revenir au Mode base
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
+              <div class="grow">
+                <p
+                  id="savedDeviationStaleNote"
+                  class="note"
+                  style="margin: 0 0 4px; color: #c62828; font-weight: 400"
+                  hidden
+                ></p>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
+              <div class="grow">
+                <label for="savedDeviationSelect"
+                  >Déviations enregistrées (stockage navigateur)</label
+                >
+                <select id="savedDeviationSelect"></select>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
+              <div class="grow">
+                <label for="savedDeviationValidFrom"
+                  >Valide du (optionnel)</label
+                >
+                <input type="date" id="savedDeviationValidFrom" />
+              </div>
+              <div class="grow">
+                <label for="savedDeviationValidTo">au (optionnel)</label>
+                <input type="date" id="savedDeviationValidTo" />
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
+              <div class="grow">
+                <button id="updateDeviationBtn" class="secondary" type="button">
+                  MàJ des dates de l’entrée sélectionnée
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
+              <div class="grow">
+                <button id="loadDeviationBtn" class="secondary" type="button">
+                  Charger la sélection
+                </button>
+              </div>
+              <div class="grow">
+                <button id="deleteDeviationBtn" class="secondary" type="button">
+                  Supprimer la sélection
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-ops" data-ops-sub="rec">
+              <div class="grow">
+                <p
+                  class="note"
+                  style="margin: 0; color: #c62828; font-weight: 400"
+                >
+                  <strong>Duplication de variantes</strong> — pour dupliquer
+                  vers une autre variante (même ligne et sens), choisissez une
+                  <strong>fiche source</strong> et la
+                  <strong>variante cible</strong>, puis confirmez.
+                </p>
+              </div>
+            </div>
+            <div
+              class="row panel-section panel-ops"
+              id="duplicatePanelRow"
+              data-ops-sub="rec"
+            >
+              <div class="grow">
+                <label for="duplicateFromDeviationSelect">Fiche source</label>
+                <select id="duplicateFromDeviationSelect"></select>
+              </div>
+              <div class="grow">
+                <label for="duplicateTargetVariantSelect"
+                  >Variante cible (même ligne / sens)</label
+                >
+                <select id="duplicateTargetVariantSelect"></select>
+              </div>
+              <div class="grow">
+                <button
+                  id="duplicateDeviationBtn"
+                  class="secondary"
+                  type="button"
+                >
+                  Confirmer la duplication
+                </button>
+              </div>
+            </div>
+            <div class="row panel-section panel-mission">
+              <div class="grow checkbox-row">
+                <input
+                  type="checkbox"
+                  id="headingUp"
+                  checked
+                  title="La carte tourne, le triangle pointe en haut (comme un GPS)"
+                />
+                <label for="headingUp" style="margin: 0; font-weight: 600"
+                  >Cap en haut (carte qui tourne, comme en conduite
+                  réelle)</label
+                >
+              </div>
+              <div class="grow">
+                <p class="note" style="margin: 0">
+                  Désactivez pour le mode classique (nord en haut, le triangle
+                  tourne sur la carte).
+                </p>
+              </div>
+            </div>
+            <div class="row row-voice panel-section panel-audio">
+              <div class="grow checkbox-row">
+                <input
+                  type="checkbox"
+                  id="voiceEnabled"
+                  title="Annonces vocales"
+                />
+                <label for="voiceEnabled" style="margin: 0; font-weight: 600"
+                  >Annonces « prochain arrêt »</label
+                >
+              </div>
+              <div class="grow">
+                <label for="voiceMode">Quand annoncer</label>
+                <select id="voiceMode" disabled>
+                  <option value="depart">
+                    Au passage d'un arrêt (on annonce le suivant)
+                  </option>
+                  <option value="mid">À mi-parcours entre deux arrêts</option>
+                  <option value="both">Les deux</option>
+                </select>
+              </div>
+            </div>
+            <div class="row row-voice panel-section panel-audio">
+              <div class="grow">
+                <label for="voiceSelect">Voix (navigateur / système)</label>
+                <select id="voiceSelect"></select>
+              </div>
+              <div class="grow">
+                <button type="button" class="secondary" id="voiceTest">
+                  Tester la voix
+                </button>
+              </div>
+            </div>
+            <p class="note panel-section panel-audio" id="voiceNote">
+              La qualité dépend de votre navigateur et des voix installées sur
+              l'appareil. Utilisez « Tester la voix » : si le résultat ne vous
+              convient pas, laissez l'option désactivée. Aucun service cloud :
+              tout reste en local.
+            </p>
+            <div class="row panel-section panel-help">
+              <div class="grow">
+                <p class="help-intro">
+                  Ouverture rapide&nbsp;: cliquez (ou touchez) un intitulé pour
+                  afficher ou masquer l’explication. Les boutons cités
+                  correspondent au menu du simulateur (onglets
+                  <strong>Ligne</strong>, <strong>Déviation</strong>,
+                  <strong>Audio</strong>).
+                </p>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez suivre une ligne sans créer de
+                    déviation&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Ouvrez l’onglet <strong>Ligne</strong>, choisissez
+                        <strong>1)&nbsp;Ligne</strong>, puis
+                        <strong>2)&nbsp;Terminus / sens</strong>, puis
+                        <strong>3)&nbsp;Variante</strong>.
+                      </li>
+                      <li>
+                        Sélectionnez
+                        <strong>Simulation (avance auto)</strong> ou
+                        <strong>Réel GPS (position téléphone)</strong>.
+                      </li>
+                      <li>
+                        Appuyez sur <strong>Démarrer simulation</strong> (le
+                        libellé peut indiquer le mode réel lorsque celui‑ci est
+                        choisi).
+                      </li>
+                      <li>
+                        En simulation, la liste <strong>Vitesse</strong> permet
+                        d’accélérer le parcours (×1, ×2, ×4 ou ×10). Utilisez
+                        <strong>Pause / Reprendre</strong> et les boutons
+                        d’arrêts si besoin.
+                      </li>
+                      <li>
+                        L’option <strong>Cap en haut</strong> se trouve toujours
+                        sous <strong>Ligne</strong> dans ce menu (carte orientée
+                        comme un GPS ou nord fixe selon votre choix).
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez créer une déviation planifiée&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Dans <strong>Ligne</strong>, vérifiez que la ligne, le
+                        sens et la variante désirés sont bien sélectionnés.
+                      </li>
+                      <li>
+                        Passez à <strong>Déviation</strong> puis au sous‑onglet
+                        <strong>Planifiée</strong>&nbsp;: il s’affiche actif
+                        (surbrillance verte), comme pour
+                        <strong>Saisir arrêt non desservi</strong> ou
+                        <strong>Saisir arrêts provisoires</strong>.
+                      </li>
+                      <li>
+                        <strong>Commencer par le tracé</strong>&nbsp;: cliquez
+                        sur
+                        <strong>Tracer la déviation planifiée</strong>&nbsp;;
+                        vous ajoutez les points sur la carte et, si besoin, vous
+                        retirez le dernier point avec le bouton
+                        <strong>Retirer le dernier point</strong> dans le
+                        sous‑onglet <strong>Planifiée</strong> (répétable autant
+                        que nécessaire, tant qu’il subsiste un point et tant
+                        qu’on n’a pas cliqué sur
+                        <strong>Enregistrer la déviation planifiée</strong>).
+                        Puis
+                        <strong
+                          >Valider le tracé de la déviation planifiée</strong
+                        >
+                        pour enregistrer le tronçon sur la carte. Sans
+                        validation,
+                        <strong>Quitter le tracé (carte)</strong> supprime tout
+                        le brouillon de points.
+                      </li>
+                      <li>
+                        Si la <strong>déviation</strong> l’exige, utilisez
+                        ensuite <strong>Saisir arrêt non desservi</strong> et/ou
+                        <strong>Saisir arrêts provisoires</strong> (et
+                        <strong>Retirer dernier arrêt provisoire</strong> si
+                        nécessaire).
+                      </li>
+                      <li>
+                        Une fois votre déviation prête, sous
+                        <strong>Planifiée</strong>, utilisez
+                        <strong>Enregistrer la déviation planifiée</strong> pour
+                        créer une <strong>déviation enregistrée</strong>, que
+                        vous retrouvez dans le sous‑onglet
+                        <strong>Enregistrée / Dupliquée</strong>.
+                      </li>
+                      <li>
+                        Les parties de tracé à retirer se gèrent via
+                        <strong>Déviation à supprimer</strong> et les boutons
+                        <strong>Supprimer la déviation sélectionnée</strong> ou
+                        <strong>Supprimer toutes les déviations</strong>.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez utiliser une déviation temporaire&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Depuis l’onglet <strong>Déviation</strong>, cliquez sur
+                        <strong>Temporaire</strong>.
+                      </li>
+                      <li>
+                        Vous retrouvez
+                        <strong>les mêmes types d’actions</strong> que sous
+                        <strong>Planifiée</strong>, avec les intitulés adaptés :
+                        <strong>Tracer la déviation temporaire</strong>,
+                        <strong>Retirer le dernier point</strong>,
+                        <strong
+                          >Valider le tracé de la déviation temporaire</strong
+                        >, <strong>Saisir arrêt non desservi</strong>,
+                        <strong>Saisir arrêts provisoires</strong>,
+                        <strong>Retirer dernier arrêt provisoire</strong>, ainsi
+                        que la gestion du tracé via
+                        <strong>Déviation à supprimer</strong> / suppression de
+                        tronçons.
+                      </li>
+                      <li>
+                        Sous <strong>Temporaire</strong>, aucun clic préalable
+                        de « création » n’est requis : au
+                        <strong>premier</strong> usage du tracé, des arrêts (non
+                        desservis ou provisoires) ou des suppressions de tronçon
+                        sur cette page, une
+                        <strong>session de déviation temporaire</strong> s’ouvre
+                        tout seule&nbsp;; les libellés diffèrent de la déviation
+                        <strong>planifiée</strong> pour lever toute confusion.
+                      </li>
+                      <li>
+                        <strong>Enregistrer la déviation temporaire</strong>
+                        sauvegarde une fiche locale <em>et</em> referme la
+                        session (sélecteurs de ligne de nouveau libres) tout en
+                        conservant l’état sur la carte comme mode d’exploitation
+                        courant&nbsp;; les dates se gèrent ensuite sous
+                        <strong>Enregistrée / Dupliquée</strong>, distinct de la
+                        chaîne <strong>planifiée</strong>.
+                      </li>
+                      <li>
+                        Tant que vous n’avez pas
+                        <strong>validé le tracé</strong>,
+                        <strong>Quitter le tracé (carte)</strong> sous
+                        Temporaire ou Planifiée supprime uniquement les
+                        <strong>points en brouillon</strong>, sans garder ni
+                        valider une déviation.
+                      </li>
+                      <li>
+                        <strong
+                          >Rétablir le mode exploitation du début de
+                          mission</strong
+                        >
+                        (sous-onglet <strong>Temporaire</strong> seulement)
+                        ramène à l’état au moment où la session Temporaire a
+                        démarré ou la fiche chargée servait de référence — y
+                        compris tracés déjà <strong>fusionnés</strong> sur la
+                        carte, marquages d’arrêts non desservis et arrêts
+                        provisoires depuis cette base. Pour un retour ligne
+                        pure, voir <strong>Revenir au Mode base</strong> sous
+                        Planifiée / Temporaire.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez enregistrer des dates ou dupliquer entre
+                    variantes&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Sous <strong>Déviation</strong>, ouvrez
+                        <strong>Enregistrée / Dupliquée</strong> pour voir les
+                        fiches du <strong>stockage navigateur</strong>.
+                      </li>
+                      <li>
+                        Une fois une déviation créée depuis
+                        <strong>Planifiée</strong>, le texte d’aide sous
+                        <strong>Enregistrer la déviation planifiée</strong> vous
+                        rappelle où saisir les
+                        <strong>périodes de validité</strong>.
+                      </li>
+                      <li>
+                        Renseignez <strong>Valide du</strong> /
+                        <strong>au</strong> puis, après avoir choisi une entrée
+                        dans la liste,
+                        <strong>MàJ des dates de l’entrée sélectionnée</strong>.
+                      </li>
+                      <li>
+                        <strong>Charger la sélection</strong> rapporte une fiche
+                        sur la carte&nbsp;;
+                        <strong>Supprimer la sélection</strong> efface une fiche
+                        locale.
+                      </li>
+                      <li>
+                        En bas de cet onglet, la duplication entre variantes
+                        passe par
+                        <strong>Fiche source</strong>,
+                        <strong>Variante cible</strong> et
+                        <strong>Confirmer la duplication</strong>.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+                <details class="help-item">
+                  <summary>
+                    Vous souhaitez activer les annonces ou la voix&nbsp;?
+                  </summary>
+                  <div class="help-item-body">
+                    <ul>
+                      <li>
+                        Utilisez l’onglet <strong>Audio</strong> pour activer
+                        les annonces « prochain arrêt », le moment où elles sont
+                        lues et la voix utilisée par le navigateur.
+                      </li>
+                      <li>
+                        Pour vérifier le rendu, servez‑vous du bouton
+                        <strong>Tester la voix</strong>.
+                      </li>
+                    </ul>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="map-wrap">
+          <div
+            id="tamUnsavedDeviationBanner"
+            class="tam-unsaved-deviation-banner"
+            role="alert"
+            aria-live="polite"
+            hidden
+          >
+            <strong>Déviation non enregistrée</strong>
+            <span id="tamUnsavedDeviationBannerDetail"></span>
+          </div>
+          <div id="mapRecap" class="map-recap">
+            <div class="stats">
+              <div><b>Ligne:</b> <span id="missionName">-</span></div>
+              <div>
+                <b>Mode actif:</b>
+                <span id="modeActive" class="mono">BASE</span>
+              </div>
+              <div>
+                <b>Statut déviation:</b>
+                <span id="modeStatus">Aucune déviation active.</span>
+              </div>
+              <div>
+                <b>Fiche sélectionnée (liste):</b>
+                <span id="recapDeviationLabel">—</span>
+              </div>
+              <div>
+                <b>Déviation en cours :</b>
+                <span id="recapDeviationPeriod">—</span>
+              </div>
+              <div><b>Arrêt courant:</b> <span id="currentStop">-</span></div>
+              <div><b>Prochain arrêt:</b> <span id="nextStop">-</span></div>
+              <div>
+                <b>Progression:</b>
+                <span id="progressPct" class="mono">0%</span>
+              </div>
+              <div>
+                <b>Tronçon guide :</b>
+                <span id="segmentGuideInfo" class="mono">-</span>
+              </div>
+            </div>
+          </div>
+          <div id="map"></div>
+          <aside
+            id="tamStopRail"
+            class="tam-stop-rail"
+            role="navigation"
+            aria-label="Arrêts de la mission sur la ligne"
+            hidden
+          >
+            <div class="tam-stop-rail__inner" id="tamStopRailInner">
+              <div class="tam-stop-rail__trackBg" aria-hidden="true">
+                <div
+                  class="tam-stop-rail__fill"
+                  id="tamStopRailProgressFill"
+                ></div>
+              </div>
+              <div class="tam-stop-rail__scroll" id="tamStopRailScroll"></div>
+            </div>
+          </aside>
+          <div
+            id="mapMissionHud"
+            class="map-mission-hud map-mission-hud--inactive"
+            aria-hidden="true"
+          >
+            <div
+              class="map-mission-hud__nextStrip"
+              role="status"
+              aria-live="polite"
+              aria-label="Prochain arrêt annoncé"
+            >
+              <p class="map-mission-hud__nextStrip-kicker">Prochain arrêt</p>
+              <p
+                id="mapHudNextStopLine"
+                class="map-mission-hud__nextStrip-name"
+              >
+                —
+              </p>
+            </div>
+            <div class="map-mission-hud__rail">
+              <button
+                type="button"
+                id="mapMissionHudToggleBtn"
+                class="map-mission-hud__toggle"
+                aria-label="Afficher ou masquer les commandes"
+                title="Afficher les commandes"
+              ></button>
+              <div class="map-mission-hud__stripWrap">
+                <div
+                  class="map-mission-hud__inner"
+                  role="toolbar"
+                  aria-label="Commandes mission"
+                >
+                  <button
+                    type="button"
+                    id="mapHudVoiceBtn"
+                    class="map-mission-hud__voice-icon map-mission-hud__voice-icon--on"
+                    aria-label="Annonces vocales"
+                    aria-pressed="true"
+                    title="Annonces vocales"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapHudPauseBtn"
+                    class="map-mission-hud__btn map-mission-hud__btn--primary"
+                    aria-label="Pause ou reprendre"
+                    title="Pause / Reprendre"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapHudPrevBtn"
+                    class="map-mission-hud__btn"
+                    aria-label="Arrêt précédent"
+                    title="Arrêt précédent"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapHudNextBtn"
+                    class="map-mission-hud__btn"
+                    aria-label="Arrêt suivant"
+                    title="Arrêt suivant"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapHudSpeedBtn"
+                    class="map-mission-hud__btn map-mission-hud__btn--speed"
+                    aria-label="Vitesse ×1"
+                    title="Vitesse (clic pour ×1, ×2, ×4, ×10)"
+                  >
+                    ×1
+                  </button>
+                  <label class="map-mission-hud__heading">
+                    <input type="checkbox" id="mapHudHeadingUp" />
+                    <span id="mapHudHeadingCaption">Cap</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <dialog
+      id="appMessageDialog"
+      class="app-message-dialog"
+      aria-labelledby="appMessageDialogTitle"
+    >
+      <div class="app-message-dialog__inner">
+        <h2 id="appMessageDialogTitle" class="app-message-dialog__title"></h2>
+        <div id="appMessageDialogBody" class="app-message-dialog__body"></div>
+        <form method="dialog" class="app-message-dialog__actions">
+          <button type="submit" class="app-message-dialog__ok">OK</button>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog
+      id="appConfirmDialog"
+      class="app-confirm-dialog"
+      aria-labelledby="appConfirmDialogTitle"
+      aria-describedby="appConfirmDialogBody"
+    >
+      <div class="app-message-dialog__inner">
+        <h2 id="appConfirmDialogTitle" class="app-message-dialog__title"></h2>
+        <p id="appConfirmDialogBody" class="app-message-dialog__body"></p>
+        <div
+          class="app-message-dialog__actions app-message-dialog__actions--split"
+        >
+          <button
+            type="button"
+            id="appConfirmDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            id="appConfirmDialogOk"
+            class="app-message-dialog__ok"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog
+      id="appPromptDialog"
+      class="app-prompt-dialog"
+      aria-labelledby="appPromptDialogTitle"
+      aria-describedby="appPromptDialogMessage"
+    >
+      <div class="app-message-dialog__inner">
+        <h2 id="appPromptDialogTitle" class="app-message-dialog__title"></h2>
+        <p id="appPromptDialogMessage" class="app-message-dialog__body"></p>
+        <input
+          type="text"
+          id="appPromptDialogInput"
+          class="app-prompt-dialog__input"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div
+          class="app-message-dialog__actions app-message-dialog__actions--split"
+        >
+          <button
+            type="button"
+            id="appPromptDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            id="appPromptDialogOk"
+            class="app-message-dialog__ok"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="vendor/leaflet/leaflet.js"></script>
+    <script src="vendor/leaflet/leaflet-rotate.js"></script>
+    <script src="guidage_troncons_arrets.js"></script>
+    <script src="simulateur_sae/simulateur_sae_1_state_mission.js"></script>
+    <script src="simulateur_sae/simulateur_sae_2_deviations.js"></script>
+    <script src="simulateur_sae/simulateur_sae_3_ui_simulation.js"></script>
+  </body>
+</html>
