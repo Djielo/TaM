@@ -808,10 +808,12 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
 
 function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
   if (!(el instanceof HTMLElement)) return;
+  let holdTriggered = false;
   const openPopup = (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
     tamStopRailSuppressInnerClickUntil = performance.now() + 700;
+    holdTriggered = true;
     showCorrespondenceDirectionPopup(stopObj, routeItem);
   };
 
@@ -831,6 +833,7 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
     "touchstart",
     (ev) => {
       ev.stopPropagation();
+      holdTriggered = false;
       clearHold();
       holdTimer = setTimeout(() => {
         holdTimer = null;
@@ -844,8 +847,12 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
     (ev) => {
       clearHold();
       ev.stopPropagation();
+      if (holdTriggered) {
+        ev.preventDefault();
+        holdTriggered = false;
+      }
     },
-    { passive: true },
+    { passive: false },
   );
   el.addEventListener(
     "touchmove",
@@ -856,8 +863,10 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
   );
   el.addEventListener(
     "touchcancel",
-    () => {
+    (ev) => {
       clearHold();
+      holdTriggered = false;
+      ev.stopPropagation();
     },
     { passive: true },
   );
@@ -2169,6 +2178,21 @@ function ensureTamStopRailWired() {
   const { scroll, root, inner } = getTamStopRailEls();
   if (!scroll || !root || !inner || inner.dataset.tamRailWired) return;
   inner.dataset.tamRailWired = "1";
+  function touchEventTargetsCorrespondenceBadge(ev) {
+    const path = typeof ev.composedPath === "function" ? ev.composedPath() : [];
+    for (const node of path) {
+      if (
+        node instanceof Element &&
+        node.closest(".tam-stop-rail__correspondenceBadge")
+      ) {
+        return true;
+      }
+    }
+    return (
+      ev.target instanceof Element &&
+      !!ev.target.closest(".tam-stop-rail__correspondenceBadge")
+    );
+  }
   if (typeof ResizeObserver !== "undefined") {
     const ro = new ResizeObserver(() => {
       const r = getTamStopRailEls().root;
@@ -2206,10 +2230,7 @@ function ensureTamStopRailWired() {
 
   function onRailExploreTouchStart(ev) {
     resetRailExploreTouchTrace();
-    if (
-      ev.target instanceof Element &&
-      ev.target.closest(".tam-stop-rail__correspondenceBadge")
-    ) {
+    if (touchEventTargetsCorrespondenceBadge(ev)) {
       return;
     }
     if (ev.touches.length !== 1) return;
@@ -2242,10 +2263,7 @@ function ensureTamStopRailWired() {
   /* Un seul suivi sur root (évite un double reset touchstart root + scroll). Touchend en double
    * sur root et scroll pour garder le relâchement fiable sur liste longue. */
   function onRailExploreTouchEnd(ev) {
-    if (
-      ev.target instanceof Element &&
-      ev.target.closest(".tam-stop-rail__correspondenceBadge")
-    ) {
+    if (touchEventTargetsCorrespondenceBadge(ev)) {
       resetRailExploreTouchTrace();
       return;
     }
