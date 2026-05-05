@@ -811,6 +811,7 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
   const openPopup = (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
+    tamStopRailSuppressInnerClickUntil = performance.now() + 700;
     showCorrespondenceDirectionPopup(stopObj, routeItem);
   };
 
@@ -2205,6 +2206,12 @@ function ensureTamStopRailWired() {
 
   function onRailExploreTouchStart(ev) {
     resetRailExploreTouchTrace();
+    if (
+      ev.target instanceof Element &&
+      ev.target.closest(".tam-stop-rail__correspondenceBadge")
+    ) {
+      return;
+    }
     if (ev.touches.length !== 1) return;
     const t = ev.touches[0];
     railExploreTouchId = t.identifier;
@@ -2235,6 +2242,13 @@ function ensureTamStopRailWired() {
   /* Un seul suivi sur root (évite un double reset touchstart root + scroll). Touchend en double
    * sur root et scroll pour garder le relâchement fiable sur liste longue. */
   function onRailExploreTouchEnd(ev) {
+    if (
+      ev.target instanceof Element &&
+      ev.target.closest(".tam-stop-rail__correspondenceBadge")
+    ) {
+      resetRailExploreTouchTrace();
+      return;
+    }
     if (!railExploreTouchTracing || railExploreTouchId === null) {
       resetRailExploreTouchTrace();
       return;
