@@ -848,7 +848,67 @@ function showTabbedCorrespondenceDialog(title, subtitle, entries) {
   const tabs = document.createElement("div");
   tabs.className = "app-message-tabs";
   tabs.setAttribute("role", "tablist");
-  tabs.style.gridTemplateColumns = `repeat(${entries.length}, minmax(0, 1fr))`;
+  const panel = document.createElement("div");
+  panel.className = "app-message-tab-panel";
+  panel.setAttribute("role", "tabpanel");
+
+  const buttons = [];
+  function renderEntry(idx) {
+    const entry = entries[idx];
+    for (let i = 0; i < buttons.length; i++) {
+      buttons[i].classList.toggle("active", i === idx);
+      buttons[i].setAttribute("aria-selected", i === idx ? "true" : "false");
+    }
+    panel.innerHTML = "";
+    const t = document.createElement("p");
+    t.className = "app-message-tab-panel-title";
+    t.textContent = `Ligne ${entry.lineLabel}`;
+    panel.appendChild(t);
+    const ul = document.createElement("ul");
+    ul.className = "app-message-tab-panel-lines";
+    if (!entry.details.length) {
+      const li = document.createElement("li");
+      li.textContent = "Sens indisponible";
+      ul.appendChild(li);
+    } else {
+      for (const d of entry.details) {
+        const li = document.createElement("li");
+        li.textContent = `${d.sensLabel} : ${d.headsigns.join(" / ")}`;
+        ul.appendChild(li);
+      }
+    }
+    panel.appendChild(ul);
+  }
+
+  entries.forEach((entry, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "app-message-tab";
+    btn.setAttribute("role", "tab");
+    btn.textContent = entry.lineLabel;
+    if (entry.routeItem) {
+      applyLineColorStyling(btn, entry.routeItem, "contextPill");
+    }
+    btn.addEventListener("click", () => {
+      renderEntry(idx);
+    });
+    buttons.push(btn);
+    tabs.appendChild(btn);
+  });
+
+  bodyEl.appendChild(tabs);
+  bodyEl.appendChild(panel);
+  renderEntry(0);
+  dlg.returnValue = "";
+  dlg.showModal();
+  return true;
+}
+
+function buildTabbedPanelBlock(entries) {
+  const wrap = document.createElement("div");
+  const tabs = document.createElement("div");
+  tabs.className = "app-message-tabs";
+  tabs.setAttribute("role", "tablist");
   const panel = document.createElement("div");
   panel.className = "app-message-tab-panel";
   panel.setAttribute("role", "tabpanel");
@@ -897,19 +957,15 @@ function showTabbedCorrespondenceDialog(title, subtitle, entries) {
       btn.style.padding = "6px 8px";
       btn.style.borderRadius = "7px";
     }
-    btn.addEventListener("click", () => {
-      renderEntry(idx);
-    });
+    btn.addEventListener("click", () => renderEntry(idx));
     buttons.push(btn);
     tabs.appendChild(btn);
   });
 
-  bodyEl.appendChild(tabs);
-  bodyEl.appendChild(panel);
+  wrap.appendChild(tabs);
+  wrap.appendChild(panel);
   renderEntry(0);
-  dlg.returnValue = "";
-  dlg.showModal();
-  return true;
+  return wrap;
 }
 
 function showCorrespondenceListPopup(stopObj, routeItems, title) {
@@ -945,7 +1001,7 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
 
 function getStopAreaHubKey(stopObj) {
   const nameKey = normalizeStopName(stopObj?.stop_name || stopObj?.name || "");
-  if (nameKey.includes("gare saint roch")) {
+  if (/\bgare\s+saint[-\s]*roch\b/.test(nameKey)) {
     return "saint-roch";
   }
   return "";
@@ -954,16 +1010,16 @@ function getStopAreaHubKey(stopObj) {
 function isStopInHubByKey(stopObj, hubKey) {
   if (hubKey !== "saint-roch") return false;
   const nameKey = normalizeStopName(stopObj?.stop_name || stopObj?.name || "");
-  return nameKey.includes("gare saint roch");
+  return /\bgare\s+saint[-\s]*roch\b/.test(nameKey);
 }
 
 function hubStopNameOrder(a, b) {
   const pa = normalizeStopName(a);
   const pb = normalizeStopName(b);
   const rank = (v) => {
-    if (v === "gare saint roch") return 0;
-    if (v.includes("republique")) return 1;
-    if (v.includes("pont de sete")) return 2;
+    if (v.includes("republique")) return 0;
+    if (v.includes("pont de sete")) return 1;
+    if (v === "gare saint roch") return 2;
     return 9;
   };
   const ra = rank(pa);
@@ -1022,27 +1078,110 @@ function showStopAreaHubPopup(stopObj) {
     );
     return;
   }
-  const entries = [];
-  for (const sec of summary.sections) {
-    for (const item of sec.lines) {
-      const lineLabel = `${displayLineLabel(item)} — ${sec.stopName}`;
-      const info = buildCorrespondenceDirectionInfo(
-        { stop_name: sec.stopName },
-        item,
-      );
-      entries.push({
-        lineLabel,
-        routeItem: item,
-        details: info.map((it) => ({
-          sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
-          headsigns: it.labels,
-        })),
-      });
+  const dlg = document.getElementById("appMessageDialog");
+  const titleEl = document.getElementById("appMessageDialogTitle");
+  const bodyEl = document.getElementById("appMessageDialogBody");
+  if (dlg && typeof dlg.showModal === "function" && titleEl && bodyEl) {
+    titleEl.textContent = summary.title;
+    bodyEl.innerHTML = "";
+    const sharedPanel = document.createElement("div");
+    sharedPanel.className = "app-message-tab-panel";
+    sharedPanel.style.marginTop = "10px";
+    const allButtons = [];
+    function renderSharedDetail(secStopName, entry) {
+      for (const btn of allButtons) {
+        btn.classList.remove("active");
+        btn.setAttribute("aria-selected", "false");
+      }
+      if (entry._buttonEl) {
+        entry._buttonEl.classList.add("active");
+        entry._buttonEl.setAttribute("aria-selected", "true");
+      }
+      sharedPanel.innerHTML = "";
+      const sectionTitle = document.createElement("p");
+      sectionTitle.className = "app-message-tab-panel-title";
+      sectionTitle.style.marginBottom = "4px";
+      sectionTitle.textContent = secStopName;
+      sharedPanel.appendChild(sectionTitle);
+      const lineTitle = document.createElement("p");
+      lineTitle.className = "app-message-tab-panel-title";
+      lineTitle.textContent = `Ligne ${entry.lineLabel}`;
+      sharedPanel.appendChild(lineTitle);
+      const ul = document.createElement("ul");
+      ul.className = "app-message-tab-panel-lines";
+      if (!entry.details.length) {
+        const li = document.createElement("li");
+        li.textContent = "Sens indisponible";
+        ul.appendChild(li);
+      } else {
+        for (const d of entry.details) {
+          const li = document.createElement("li");
+          li.textContent = `${d.sensLabel} : ${d.headsigns.join(" / ")}`;
+          ul.appendChild(li);
+        }
+      }
+      sharedPanel.appendChild(ul);
     }
-  }
-  if (
-    showTabbedCorrespondenceDialog(summary.title, "Détail du pôle", entries)
-  ) {
+
+    let firstEntry = null;
+    for (const sec of summary.sections) {
+      const h = document.createElement("p");
+      h.className = "app-message-tab-panel-title";
+      h.style.marginTop = bodyEl.children.length ? "10px" : "0";
+      h.textContent = sec.stopName;
+      bodyEl.appendChild(h);
+      if (!sec.lines.length) {
+        const empty = document.createElement("p");
+        empty.style.margin = "0 0 8px";
+        empty.textContent = "Aucune ligne";
+        bodyEl.appendChild(empty);
+        continue;
+      }
+      const entries = sec.lines.map((item) => {
+        const info = buildCorrespondenceDirectionInfo(
+          { stop_name: sec.stopName },
+          item,
+        );
+        return {
+          lineLabel: displayLineLabel(item),
+          routeItem: item,
+          details: info.map((it) => ({
+            sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
+            headsigns: it.labels,
+          })),
+        };
+      });
+      const tabs = document.createElement("div");
+      tabs.className = "app-message-tabs";
+      tabs.setAttribute("role", "tablist");
+      tabs.style.gridTemplateColumns = `repeat(${entries.length}, minmax(0, 1fr))`;
+      for (const entry of entries) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "app-message-tab";
+        btn.setAttribute("role", "tab");
+        btn.textContent = entry.lineLabel;
+        if (entry.routeItem) {
+          applyLineColorStyling(btn, entry.routeItem, "contextPill");
+        }
+        entry._buttonEl = btn;
+        allButtons.push(btn);
+        btn.addEventListener("click", () => {
+          renderSharedDetail(sec.stopName, entry);
+        });
+        tabs.appendChild(btn);
+        if (!firstEntry) {
+          firstEntry = { secStopName: sec.stopName, entry };
+        }
+      }
+      bodyEl.appendChild(tabs);
+    }
+    bodyEl.appendChild(sharedPanel);
+    if (firstEntry) {
+      renderSharedDetail(firstEntry.secStopName, firstEntry.entry);
+    }
+    dlg.returnValue = "";
+    dlg.showModal();
     return;
   }
   const lines = [summary.title, ""];
