@@ -79,6 +79,7 @@ const STOP_TTS_OVERRIDES = Object.freeze({
  * Appliquées après les overrides spécifiques.
  */
 const STOP_TTS_REGEX_OVERRIDES = Object.freeze([
+  [/\bMas\b/gi, "Masse"],
   [/\bSt\b/gi, "Saint"],
   [/\bSte\b/gi, "Sainte"],
   [/\b1er\b/gi, "premier"],
