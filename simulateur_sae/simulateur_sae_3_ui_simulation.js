@@ -68,10 +68,8 @@ function normalizeStopName(s) {
  * Clé = nom d'arrêt normalisé (`normalizeStopName`), valeur = texte à prononcer.
  */
 const STOP_TTS_OVERRIDES = Object.freeze({
-  [normalizeStopName("Le Grand M")]: "Le Grant aime",
+  [normalizeStopName("Le Grand M")]: "Le Grand t'aime",
   [normalizeStopName("CNRS - Zoo de Lunaret")]: "C N R S - Zoo de Lunaret",
-  [normalizeStopName("Mas Drevon")]: "Masse Drevon",
-  [normalizeStopName("Mas de Bagnères")]: "Masse de Bagnères",
 });
 
 /**
