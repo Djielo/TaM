@@ -311,6 +311,16 @@
         font-weight: 700;
         line-height: 1.1;
       }
+      .tam-stop-rail__correspondenceBadge--hub {
+        background: #ede9fe;
+        color: #4c1d95;
+        border: 1px solid #c4b5fd;
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
       .tam-stop-rail--explore .tam-stop-rail__pill.tam-stop-rail__pill--past {
         background: rgba(220, 252, 231, 0.98);
         border-color: #0f7d2f;
@@ -407,6 +417,48 @@
         font-size: 14px;
         line-height: 1.5;
         white-space: pre-line;
+      }
+      .app-message-tabs {
+        display: grid;
+        gap: 6px;
+        margin: 0 0 10px;
+        width: 100%;
+      }
+      .app-message-tab {
+        width: 100%;
+        min-width: 0;
+        padding: 6px 9px;
+        border-radius: 7px;
+        border: 1px solid #bbc4cf;
+        background: #f8fafc;
+        color: #1b1f24;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .app-message-tab.active {
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.38);
+      }
+      .app-message-tab-panel {
+        margin: 0;
+        padding: 8px 9px;
+        border-radius: 8px;
+        border: 1px solid #d7dde4;
+        background: #f8fafc;
+      }
+      .app-message-tab-panel-title {
+        margin: 0 0 6px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .app-message-tab-panel-lines {
+        margin: 0;
+        padding-left: 1.1em;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .app-message-tab-panel-lines li {
+        margin-bottom: 4px;
       }
       .app-message-dialog__actions {
         margin: 0;
@@ -1949,7 +2001,7 @@
     >
       <div class="app-message-dialog__inner">
         <h2 id="appMessageDialogTitle" class="app-message-dialog__title"></h2>
-        <p id="appMessageDialogBody" class="app-message-dialog__body"></p>
+        <div id="appMessageDialogBody" class="app-message-dialog__body"></div>
         <form method="dialog" class="app-message-dialog__actions">
           <button type="submit" class="app-message-dialog__ok">OK</button>
         </form>

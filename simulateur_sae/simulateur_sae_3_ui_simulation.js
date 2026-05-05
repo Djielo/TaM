@@ -806,7 +806,262 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
 }
 
-function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
+function appendLineDirectionDetails(lines, stopObj, routeItem) {
+  const lineLabel = displayLineLabel(routeItem);
+  const info = buildCorrespondenceDirectionInfo(stopObj, routeItem);
+  lines.push(`- ${lineLabel}`);
+  if (!info.length) {
+    lines.push("  Sens indisponible");
+    return;
+  }
+  for (const it of info) {
+    const sensLabel = it.dirKey === "1" ? "Sens 2" : "Sens 1";
+    lines.push(`  ${sensLabel}`);
+    for (const headsign of it.labels) {
+      lines.push(`   • ${headsign}`);
+    }
+  }
+}
+
+function showTabbedCorrespondenceDialog(title, subtitle, entries) {
+  const dlg = document.getElementById("appMessageDialog");
+  const titleEl = document.getElementById("appMessageDialogTitle");
+  const bodyEl = document.getElementById("appMessageDialogBody");
+  if (
+    !dlg ||
+    typeof dlg.showModal !== "function" ||
+    !titleEl ||
+    !bodyEl ||
+    !entries?.length
+  ) {
+    return false;
+  }
+  titleEl.textContent = title || TAM_APP_DIALOG_TITLE;
+  bodyEl.innerHTML = "";
+  if (subtitle) {
+    const sub = document.createElement("p");
+    sub.style.margin = "0 0 8px";
+    sub.textContent = subtitle;
+    bodyEl.appendChild(sub);
+  }
+
+  const tabs = document.createElement("div");
+  tabs.className = "app-message-tabs";
+  tabs.setAttribute("role", "tablist");
+  tabs.style.gridTemplateColumns = `repeat(${entries.length}, minmax(0, 1fr))`;
+  const panel = document.createElement("div");
+  panel.className = "app-message-tab-panel";
+  panel.setAttribute("role", "tabpanel");
+
+  const buttons = [];
+  function renderEntry(idx) {
+    const entry = entries[idx];
+    for (let i = 0; i < buttons.length; i++) {
+      buttons[i].classList.toggle("active", i === idx);
+      buttons[i].setAttribute("aria-selected", i === idx ? "true" : "false");
+    }
+    panel.innerHTML = "";
+    const t = document.createElement("p");
+    t.className = "app-message-tab-panel-title";
+    t.textContent = `Ligne ${entry.lineLabel}`;
+    panel.appendChild(t);
+    const ul = document.createElement("ul");
+    ul.className = "app-message-tab-panel-lines";
+    if (!entry.details.length) {
+      const li = document.createElement("li");
+      li.textContent = "Sens indisponible";
+      ul.appendChild(li);
+    } else {
+      for (const d of entry.details) {
+        const li = document.createElement("li");
+        li.textContent = `${d.sensLabel} : ${d.headsigns.join(" / ")}`;
+        ul.appendChild(li);
+      }
+    }
+    panel.appendChild(ul);
+  }
+
+  entries.forEach((entry, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "app-message-tab";
+    btn.setAttribute("role", "tab");
+    btn.textContent = entry.lineLabel;
+    if (entry.routeItem) {
+      applyLineColorStyling(btn, entry.routeItem, "contextPill");
+      btn.style.display = "inline-flex";
+      btn.style.alignItems = "center";
+      btn.style.justifyContent = "center";
+      btn.style.width = "100%";
+      btn.style.minWidth = "0";
+      btn.style.padding = "6px 8px";
+      btn.style.borderRadius = "7px";
+    }
+    btn.addEventListener("click", () => {
+      renderEntry(idx);
+    });
+    buttons.push(btn);
+    tabs.appendChild(btn);
+  });
+
+  bodyEl.appendChild(tabs);
+  bodyEl.appendChild(panel);
+  renderEntry(0);
+  dlg.returnValue = "";
+  dlg.showModal();
+  return true;
+}
+
+function showCorrespondenceListPopup(stopObj, routeItems, title) {
+  const stopName = String(stopObj?.stop_name || stopObj?.name || "Arrêt").trim();
+  if (!routeItems?.length) {
+    showAppMessageDialog(
+      TAM_APP_DIALOG_TITLE,
+      `${title}\n\nAucune ligne supplémentaire pour ${stopName}.`,
+    );
+    return;
+  }
+  const entries = routeItems.map((item) => {
+    const info = buildCorrespondenceDirectionInfo(stopObj, item);
+    return {
+      lineLabel: displayLineLabel(item),
+      routeItem: item,
+      details: info.map((it) => ({
+        sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
+        headsigns: it.labels,
+      })),
+    };
+  });
+  if (showTabbedCorrespondenceDialog(title, `Arrêt : ${stopName}`, entries)) {
+    return;
+  }
+  const lines = [title, `Arrêt : ${stopName}`, ""];
+  for (const item of routeItems) {
+    appendLineDirectionDetails(lines, stopObj, item);
+    lines.push("");
+  }
+  showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
+}
+
+function getStopAreaHubKey(stopObj) {
+  const nameKey = normalizeStopName(stopObj?.stop_name || stopObj?.name || "");
+  if (nameKey.includes("gare saint roch")) {
+    return "saint-roch";
+  }
+  return "";
+}
+
+function isStopInHubByKey(stopObj, hubKey) {
+  if (hubKey !== "saint-roch") return false;
+  const nameKey = normalizeStopName(stopObj?.stop_name || stopObj?.name || "");
+  return nameKey.includes("gare saint roch");
+}
+
+function hubStopNameOrder(a, b) {
+  const pa = normalizeStopName(a);
+  const pb = normalizeStopName(b);
+  const rank = (v) => {
+    if (v === "gare saint roch") return 0;
+    if (v.includes("republique")) return 1;
+    if (v.includes("pont de sete")) return 2;
+    return 9;
+  };
+  const ra = rank(pa);
+  const rb = rank(pb);
+  if (ra !== rb) return ra - rb;
+  return a.localeCompare(b, "fr");
+}
+
+function buildStopAreaHubSummary(stopObj) {
+  const hubKey = getStopAreaHubKey(stopObj);
+  if (!hubKey) return null;
+  const byStopName = new Map();
+  const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  const currentRouteCode = String(currentPattern?.route_short_name || "").trim();
+  for (const p of patterns) {
+    const routeCode = String(p?.route_short_name || "").trim();
+    if (!routeCode || routeCode === currentRouteCode) continue;
+    const routeItem = {
+      route_short_name: routeCode,
+      route_type: String(p?.route_type || ""),
+      route_color: String(p?.route_color || ""),
+    };
+    const stops = Array.isArray(p?.stops) ? p.stops : [];
+    for (const st of stops) {
+      if (!isStopInHubByKey(st, hubKey)) continue;
+      const nm = String(st?.stop_name || st?.name || "").trim();
+      if (!nm) continue;
+      if (!byStopName.has(nm)) {
+        byStopName.set(nm, new Map());
+      }
+      const byCode = byStopName.get(nm);
+      if (!byCode.has(routeCode)) {
+        byCode.set(routeCode, routeItem);
+      }
+    }
+  }
+  if (!byStopName.size) return null;
+  const sections = [...byStopName.entries()]
+    .map(([stopName, byCode]) => ({
+      stopName,
+      lines: sortLineItemsForDisplay([...byCode.values()]),
+    }))
+    .sort((a, b) => hubStopNameOrder(a.stopName, b.stopName));
+  return {
+    title: "Correspondances pôle Saint-Roch",
+    sections,
+  };
+}
+
+function showStopAreaHubPopup(stopObj) {
+  const summary = buildStopAreaHubSummary(stopObj);
+  if (!summary || !summary.sections.length) {
+    showAppMessageDialog(
+      TAM_APP_DIALOG_TITLE,
+      "Aucune correspondance de pôle supplémentaire disponible.",
+    );
+    return;
+  }
+  const entries = [];
+  for (const sec of summary.sections) {
+    for (const item of sec.lines) {
+      const lineLabel = `${displayLineLabel(item)} — ${sec.stopName}`;
+      const info = buildCorrespondenceDirectionInfo(
+        { stop_name: sec.stopName },
+        item,
+      );
+      entries.push({
+        lineLabel,
+        routeItem: item,
+        details: info.map((it) => ({
+          sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
+          headsigns: it.labels,
+        })),
+      });
+    }
+  }
+  if (
+    showTabbedCorrespondenceDialog(summary.title, "Détail du pôle", entries)
+  ) {
+    return;
+  }
+  const lines = [summary.title, ""];
+  for (const sec of summary.sections) {
+    lines.push(sec.stopName);
+    if (!sec.lines.length) {
+      lines.push("- Aucune ligne");
+      lines.push("");
+      continue;
+    }
+    for (const item of sec.lines) {
+      appendLineDirectionDetails(lines, { stop_name: sec.stopName }, item);
+    }
+    lines.push("");
+  }
+  showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
+}
+
+function wireStopRailInfoBadgeInteractions(el, onOpen) {
   if (!(el instanceof HTMLElement)) return;
   let holdTriggered = false;
   const openPopup = (ev) => {
@@ -814,7 +1069,7 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
     ev.stopPropagation();
     tamStopRailSuppressInnerClickUntil = performance.now() + 700;
     holdTriggered = true;
-    showCorrespondenceDirectionPopup(stopObj, routeItem);
+    onOpen(ev);
   };
 
   let holdTimer = null;
@@ -870,6 +1125,12 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
     },
     { passive: true },
   );
+}
+
+function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
+  wireStopRailInfoBadgeInteractions(el, () => {
+    showCorrespondenceDirectionPopup(stopObj, routeItem);
+  });
 }
 
 function updateLines() {
@@ -2532,7 +2793,11 @@ function refreshStopRail() {
     if (correspondences.length) {
       const corrWrap = document.createElement("span");
       corrWrap.className = "tam-stop-rail__correspondences";
-      const shown = correspondences.slice(0, 4);
+      const showCompactWithMore = correspondences.length > 3;
+      const shown = showCompactWithMore
+        ? correspondences.slice(0, 2)
+        : correspondences;
+      const hidden = showCompactWithMore ? correspondences.slice(2) : [];
       for (const lineItem of shown) {
         const badge = document.createElement("span");
         badge.className = "tam-stop-rail__correspondenceBadge";
@@ -2541,13 +2806,30 @@ function refreshStopRail() {
         wireCorrespondenceBadgeInteractions(badge, st, lineItem);
         corrWrap.appendChild(badge);
       }
-      const hiddenCount = correspondences.length - shown.length;
+      const hiddenCount = hidden.length;
       if (hiddenCount > 0) {
         const more = document.createElement("span");
         more.className =
           "tam-stop-rail__correspondenceBadge tam-stop-rail__correspondenceBadge--more";
         more.textContent = `+${hiddenCount}`;
+        wireStopRailInfoBadgeInteractions(more, () => {
+          showCorrespondenceListPopup(
+            st,
+            correspondences,
+            "Correspondances de l’arrêt",
+          );
+        });
         corrWrap.appendChild(more);
+      }
+      if (getStopAreaHubKey(st)) {
+        const hub = document.createElement("span");
+        hub.className =
+          "tam-stop-rail__correspondenceBadge tam-stop-rail__correspondenceBadge--hub";
+        hub.textContent = "Pôle";
+        wireStopRailInfoBadgeInteractions(hub, () => {
+          showStopAreaHubPopup(st);
+        });
+        corrWrap.appendChild(hub);
       }
       main.appendChild(corrWrap);
       const corrTxt = correspondences.map((x) => displayLineLabel(x)).join(", ");
