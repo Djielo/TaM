@@ -742,6 +742,126 @@ function styleStopCorrespondenceBadge(el, routeItem) {
   el.style.lineHeight = "1.1";
 }
 
+function stopMatchesPatternStop(stopObj, patternStop) {
+  const aId = String(stopObj?.stop_id || "").trim();
+  const bId = String(patternStop?.stop_id || "").trim();
+  if (aId && bId && aId === bId) return true;
+  const aName = normalizeStopName(stopObj?.stop_name || stopObj?.name || "");
+  const bName = normalizeStopName(
+    patternStop?.stop_name || patternStop?.name || "",
+  );
+  return !!aName && !!bName && aName === bName;
+}
+
+function buildCorrespondenceDirectionInfo(stopObj, routeItem) {
+  const routeCode = String(routeItem?.route_short_name || "").trim();
+  if (!routeCode) return [];
+  const byDir = new Map();
+  const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  for (const p of patterns) {
+    if (String(p?.route_short_name || "").trim() !== routeCode) continue;
+    const stops = Array.isArray(p?.stops) ? p.stops : [];
+    if (!stops.some((s) => stopMatchesPatternStop(stopObj, s))) continue;
+    const dirRaw = String(p?.direction_id ?? "").trim();
+    const dirKey = dirRaw === "1" ? "1" : "0";
+    if (!byDir.has(dirKey)) {
+      byDir.set(dirKey, new Set());
+    }
+    const headsign = String(p?.headsign || "").trim();
+    if (headsign) {
+      byDir.get(dirKey).add(headsign);
+    }
+  }
+  const out = [];
+  for (const dirKey of ["0", "1"]) {
+    if (!byDir.has(dirKey)) continue;
+    out.push({
+      dirKey,
+      labels: [...byDir.get(dirKey)].sort((a, b) => a.localeCompare(b, "fr")),
+    });
+  }
+  return out;
+}
+
+function showCorrespondenceDirectionPopup(stopObj, routeItem) {
+  const lineLabel = displayLineLabel(routeItem);
+  const stopName = String(stopObj?.stop_name || stopObj?.name || "Arrêt").trim();
+  const info = buildCorrespondenceDirectionInfo(stopObj, routeItem);
+  if (!info.length) {
+    showAppMessageDialog(
+      TAM_APP_DIALOG_TITLE,
+      `Correspondance ${lineLabel}\n\nAucune direction disponible pour cet arrêt.`,
+    );
+    return;
+  }
+  const lines = [`Arrêt : ${stopName}`, `Ligne : ${lineLabel}`, ""];
+  for (const it of info) {
+    const sensLabel = it.dirKey === "1" ? "Sens 2" : "Sens 1";
+    lines.push(`${sensLabel}`);
+    for (const headsign of it.labels) {
+      lines.push(`- ${headsign}`);
+    }
+    lines.push("");
+  }
+  showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
+}
+
+function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
+  if (!(el instanceof HTMLElement)) return;
+  const openPopup = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    showCorrespondenceDirectionPopup(stopObj, routeItem);
+  };
+
+  let holdTimer = null;
+  const clearHold = () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+  };
+
+  el.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+  });
+  el.addEventListener("contextmenu", openPopup);
+  el.addEventListener(
+    "touchstart",
+    (ev) => {
+      ev.stopPropagation();
+      clearHold();
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        openPopup(ev);
+      }, 500);
+    },
+    { passive: true },
+  );
+  el.addEventListener(
+    "touchend",
+    (ev) => {
+      clearHold();
+      ev.stopPropagation();
+    },
+    { passive: true },
+  );
+  el.addEventListener(
+    "touchmove",
+    () => {
+      clearHold();
+    },
+    { passive: true },
+  );
+  el.addEventListener(
+    "touchcancel",
+    () => {
+      clearHold();
+    },
+    { passive: true },
+  );
+}
+
 function updateLines() {
   const byCode = new Map();
   for (const p of data.patterns) {
@@ -2386,6 +2506,7 @@ function refreshStopRail() {
         badge.className = "tam-stop-rail__correspondenceBadge";
         badge.textContent = displayLineLabel(lineItem);
         styleStopCorrespondenceBadge(badge, lineItem);
+        wireCorrespondenceBadgeInteractions(badge, st, lineItem);
         corrWrap.appendChild(badge);
       }
       const hiddenCount = correspondences.length - shown.length;
