@@ -60,10 +60,39 @@ function normalizeText(s) {
 }
 
 function normalizeStopName(s) {
-  return normalizeText(s)
-    .replace(/['’]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeText(s).replace(/['’]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Corrections de prononciation locales pour le TTS navigateur.
+ * Clé = nom d'arrêt normalisé (`normalizeStopName`), valeur = texte à prononcer.
+ */
+const STOP_TTS_OVERRIDES = Object.freeze({
+  [normalizeStopName("Le Grand M")]: "Le Grant aime",
+  [normalizeStopName("CNRS - Zoo de Lunaret")]: "C N R S - Zoo de Lunaret",
+  [normalizeStopName("Mas Drevon")]: "Masse Drevon",
+  [normalizeStopName("Mas de Bagnères")]: "Masse de Bagnères",
+});
+
+/**
+ * Corrections génériques de lecture (abréviations / formes courantes GTFS).
+ * Appliquées après les overrides spécifiques.
+ */
+const STOP_TTS_REGEX_OVERRIDES = Object.freeze([
+  [/\bSt\b/gi, "Saint"],
+  [/\bSte\b/gi, "Sainte"],
+  [/\b1er\b/gi, "premier"],
+]);
+
+function getStopSpeechName(stopName) {
+  const raw = String(stopName || "").trim();
+  if (!raw) return raw;
+  const key = normalizeStopName(raw);
+  let out = STOP_TTS_OVERRIDES[key] || raw;
+  for (const [rx, repl] of STOP_TTS_REGEX_OVERRIDES) {
+    out = out.replace(rx, repl);
+  }
+  return out;
 }
 
 function recomputeSkippedStopsForCurrentMission() {
@@ -97,8 +126,7 @@ function recomputeSkippedStopsForCurrentMission() {
   const overrides = opsState.manualStopOverrides || {};
   for (const st of currentPattern.stops) {
     const sid = String(st?.stop_id || "");
-    if (!sid || !Object.prototype.hasOwnProperty.call(overrides, sid))
-      continue;
+    if (!sid || !Object.prototype.hasOwnProperty.call(overrides, sid)) continue;
     if (overrides[sid]) skippedStopIdSet.add(sid);
     else skippedStopIdSet.delete(sid);
   }
@@ -178,9 +206,7 @@ function mergedEntryIsServedForGuide(e) {
 }
 
 function getServedMergedEntriesRaw() {
-  return collectMergedGuideEntriesRaw().filter(
-    mergedEntryIsServedForGuide,
-  );
+  return collectMergedGuideEntriesRaw().filter(mergedEntryIsServedForGuide);
 }
 
 function buildServedGuideSnapshotNormalized() {
@@ -244,9 +270,7 @@ function getCurrentAndNextServedGuideSlots(d) {
     }
     const curr = servedGuideSnapshot[pos];
     const next =
-      servedGuideSnapshot[
-        Math.min(pos + 1, servedGuideSnapshot.length - 1)
-      ];
+      servedGuideSnapshot[Math.min(pos + 1, servedGuideSnapshot.length - 1)];
     return { curr, next };
   }
   const served = getServedStopIndices();
@@ -298,10 +322,7 @@ function drawProvisionalStopsOverlay() {
     return;
   }
   const p = getMapVisualProfile();
-  const r = Math.max(
-    p.stopRadius + 1,
-    (p.stopRadius + p.skippedRadius) / 2,
-  );
+  const r = Math.max(p.stopRadius + 1, (p.stopRadius + p.skippedRadius) / 2);
   for (const ps of opsState.provisionalStops) {
     const lat = Number(ps.lat);
     const lon = Number(ps.lon);
@@ -367,8 +388,7 @@ function drawAllStopsOverlay() {
     });
     const nonServedPickMode =
       opsState.manualActive && opsState.nonServedEditActive;
-    const focusThisStop =
-      nonServedPickMode && nonServedEditFocusStopId === sid;
+    const focusThisStop = nonServedPickMode && nonServedEditFocusStopId === sid;
     marker
       .bindTooltip(
         isSkipped
@@ -394,8 +414,7 @@ function drawAllStopsOverlay() {
       });
     }
     marker.on("click", (ev) => {
-      if (!(opsState.manualActive && opsState.nonServedEditActive))
-        return;
+      if (!(opsState.manualActive && opsState.nonServedEditActive)) return;
       if (typeof L !== "undefined" && L.DomEvent?.stopPropagation) {
         L.DomEvent.stopPropagation(ev);
       } else if (ev?.originalEvent?.stopPropagation) {
@@ -426,8 +445,7 @@ async function applyTraceForOpsMode(mode, opts) {
   const ratio = Math.max(0, Math.min(1, oldD / oldTotal));
   let coords =
     mode === OPS_MODE.MANUEL
-      ? opsState.modeCoordinates[OPS_MODE.MANUEL] ||
-        opsState.baseCoordinates
+      ? opsState.modeCoordinates[OPS_MODE.MANUEL] || opsState.baseCoordinates
       : opsState.baseCoordinates;
   if (!coords || coords.length < 2) return;
   activeCoordinates = coords;
@@ -436,10 +454,7 @@ async function applyTraceForOpsMode(mode, opts) {
   stopMetersAlong = buildStopMetersAlong(currentPattern);
   rebuildActiveGuideStops();
   fullLine.setLatLngs(activeCoordinates);
-  const newD = Math.min(
-    pathTotalMeters,
-    Math.max(0, ratio * pathTotalMeters),
-  );
+  const newD = Math.min(pathTotalMeters, Math.max(0, ratio * pathTotalMeters));
   distanceAlongPathMeters = newD;
   redrawDoneLineAtDistance(distanceAlongPathMeters);
   updateMapNavigation({
@@ -518,8 +533,7 @@ function lineLabelContrastTextColor(item) {
  */
 function applyLineColorStyling(el, item, context) {
   const bg =
-    forcedLineColor(item?.route_short_name) ||
-    lineColorHex(item?.route_color);
+    forcedLineColor(item?.route_short_name) || lineColorHex(item?.route_color);
   if (bg) {
     const tx = lineLabelContrastTextColor(item);
     el.style.backgroundColor = bg;
@@ -593,9 +607,7 @@ function applyLineThemeToMissionSubselects(item) {
     return;
   }
   const payload =
-    item && item.route_short_name != null
-      ? item
-      : { route_short_name: "" };
+    item && item.route_short_name != null ? item : { route_short_name: "" };
   applyLineColorStyling(headsignSelect, payload, "missionSelect");
   applyLineColorStyling(variantSelect, payload, "missionSelect");
   const hf = document.getElementById("headsignField");
@@ -620,9 +632,7 @@ function forcedLineColor(code) {
 function isTramDisplayLine(item) {
   const code = String(item.route_short_name || "");
   const n = Number(code);
-  return (
-    item.route_type === "0" && Number.isInteger(n) && n >= 1 && n <= 5
-  );
+  return item.route_type === "0" && Number.isInteger(n) && n >= 1 && n <= 5;
 }
 
 function linePriority(item) {
@@ -707,9 +717,13 @@ function ensureTamStopRailCorrespondenceCache() {
 
 function getStopCorrespondenceLines(stopObj) {
   const cache = ensureTamStopRailCorrespondenceCache();
-  const currentRouteCode = String(currentPattern?.route_short_name || "").trim();
+  const currentRouteCode = String(
+    currentPattern?.route_short_name || "",
+  ).trim();
   const stopId = String(stopObj?.stop_id || "").trim();
-  const stopNameKey = normalizeStopName(stopObj?.stop_name || stopObj?.name || "");
+  const stopNameKey = normalizeStopName(
+    stopObj?.stop_name || stopObj?.name || "",
+  );
   const merged = new Map();
   if (stopId) {
     const byId = cache.get(`id:${stopId}`) || [];
@@ -785,7 +799,9 @@ function buildCorrespondenceDirectionInfo(stopObj, routeItem) {
 
 function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   const lineLabel = displayLineLabel(routeItem);
-  const stopName = String(stopObj?.stop_name || stopObj?.name || "Arrêt").trim();
+  const stopName = String(
+    stopObj?.stop_name || stopObj?.name || "Arrêt",
+  ).trim();
   const info = buildCorrespondenceDirectionInfo(stopObj, routeItem);
   if (!info.length) {
     showAppMessageDialog(
@@ -1013,7 +1029,9 @@ function buildTabbedPanelBlock(entries) {
 }
 
 function showCorrespondenceListPopup(stopObj, routeItems, title) {
-  const stopName = String(stopObj?.stop_name || stopObj?.name || "Arrêt").trim();
+  const stopName = String(
+    stopObj?.stop_name || stopObj?.name || "Arrêt",
+  ).trim();
   if (!routeItems?.length) {
     showAppMessageDialog(
       TAM_APP_DIALOG_TITLE,
@@ -1078,7 +1096,9 @@ function buildStopAreaHubSummary(stopObj) {
   if (!hubKey) return null;
   const byStopName = new Map();
   const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
-  const currentRouteCode = String(currentPattern?.route_short_name || "").trim();
+  const currentRouteCode = String(
+    currentPattern?.route_short_name || "",
+  ).trim();
   for (const p of patterns) {
     const routeCode = String(p?.route_short_name || "").trim();
     if (!routeCode || routeCode === currentRouteCode) continue;
@@ -1353,9 +1373,7 @@ function updateLines() {
   lineOptionLookup = [];
   const groups = {
     tram: lineOptions.filter(isTramDisplayLine),
-    navette: lineOptions.filter(
-      (x) => String(x.route_short_name) === "A",
-    ),
+    navette: lineOptions.filter((x) => String(x.route_short_name) === "A"),
     bus: lineOptions.filter(
       (x) => !isTramDisplayLine(x) && String(x.route_short_name) !== "A",
     ),
@@ -1456,14 +1474,9 @@ function setLineListboxOpen(open) {
   }
   lineListboxOpen = open;
   lineSelectListbox.hidden = !open;
-  lineSelectTrigger.setAttribute(
-    "aria-expanded",
-    open ? "true" : "false",
-  );
+  lineSelectTrigger.setAttribute("aria-expanded", open ? "true" : "false");
   const v = String(lineSelect.value);
-  for (const row of lineSelectListbox.querySelectorAll(
-    ".line-pick-row",
-  )) {
+  for (const row of lineSelectListbox.querySelectorAll(".line-pick-row")) {
     const ok = row.getAttribute("data-line-idx") === v;
     row.setAttribute("aria-selected", ok ? "true" : "false");
   }
@@ -1525,8 +1538,7 @@ function updateHeadsigns() {
 
 function updateVariants() {
   const selected =
-    headsignSelect.options[headsignSelect.selectedIndex]?.textContent ||
-    "";
+    headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
   const [left, right] = selected.split("->").map((s) => s.trim());
   const directionId = left.replace("Sens ", "").trim();
   const headsign = right || "";
@@ -1569,9 +1581,7 @@ function updateMissionContextBar() {
   }
   if (typeof data === "undefined" || !data || !lineOptionLookup.length) {
     if (missionContextScroll) {
-      missionContextScroll.classList.remove(
-        "mission-context-scroll--pan",
-      );
+      missionContextScroll.classList.remove("mission-context-scroll--pan");
       missionContextScroll.scrollLeft = 0;
     }
     missionContextBar.hidden = true;
@@ -1581,9 +1591,7 @@ function updateMissionContextBar() {
   const item = lineOptionLookup[Number(val)];
   if (!item) {
     if (missionContextScroll) {
-      missionContextScroll.classList.remove(
-        "mission-context-scroll--pan",
-      );
+      missionContextScroll.classList.remove("mission-context-scroll--pan");
       missionContextScroll.scrollLeft = 0;
     }
     missionContextBar.hidden = true;
@@ -1597,8 +1605,7 @@ function updateMissionContextBar() {
   missionContextPill.textContent = displayLineLabel(item);
   applyLineColorStyling(missionContextPill, item, "contextPill");
   const headOpt =
-    headsignSelect.options[headsignSelect.selectedIndex]?.textContent ||
-    "";
+    headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
   const dest = parseHeadsignForContextBar(headOpt);
   if (dest) {
     missionContextDest.textContent = "\u00a0\u2014\u00a0" + dest;
@@ -1712,10 +1719,7 @@ function normalizeStopMeters(raw, total) {
   for (let i = 1; i < raw.length; i++) {
     const remaining = raw.length - 1 - i;
     const maxAllowed = Math.max(0, total - remaining * eps);
-    const candidate = Math.min(
-      maxAllowed,
-      Math.max(out[i - 1] + eps, raw[i]),
-    );
+    const candidate = Math.min(maxAllowed, Math.max(out[i - 1] + eps, raw[i]));
     out[i] = Math.max(out[i - 1], candidate);
   }
   out[out.length - 1] = total;
@@ -1792,11 +1796,7 @@ function pathWindowBetweenMeters(d0, d1) {
 
 function trimActivePathToPatternStops(pattern) {
   const stops = pattern?.stops || [];
-  if (
-    !stops.length ||
-    activeCoordinates.length < 2 ||
-    pathTotalMeters <= 0
-  ) {
+  if (!stops.length || activeCoordinates.length < 2 || pathTotalMeters <= 0) {
     return;
   }
   const first = stops[0];
@@ -1820,8 +1820,7 @@ function bearingBetweenPoints(p1, p2) {
   const Δλ = ((p2[1] - p1[1]) * Math.PI) / 180;
   const y = Math.sin(Δλ) * Math.cos(φ2);
   const x =
-    Math.cos(φ1) * Math.sin(φ2) -
-    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
@@ -1973,11 +1972,7 @@ function voiceHeuristicScore(v) {
   let s = 0;
   if (n.includes("neural")) s += 90;
   if (n.includes("natural")) s += 55;
-  if (
-    n.includes("premium") ||
-    n.includes("enhanced") ||
-    n.includes("hd ")
-  )
+  if (n.includes("premium") || n.includes("enhanced") || n.includes("hd "))
     s += 45;
   if (n.includes("google")) s += 40;
   if (
@@ -1987,18 +1982,10 @@ function voiceHeuristicScore(v) {
     n.includes("paul ")
   )
     s += 35;
-  if (
-    n.includes("apple") ||
-    n.includes("amelie") ||
-    n.includes("thomas ")
-  )
+  if (n.includes("apple") || n.includes("amelie") || n.includes("thomas "))
     s += 25;
   if (n.includes("samantha")) s += 15;
-  if (
-    n.includes("pico") ||
-    n.includes("espeak") ||
-    n.includes("festival ")
-  )
+  if (n.includes("pico") || n.includes("espeak") || n.includes("festival "))
     s -= 80;
   return s;
 }
@@ -2041,7 +2028,8 @@ function speakProchainArret(nom, forTest) {
   } catch (e) {
     // ignore
   }
-  const u = new SpeechSynthesisUtterance(`Prochain arrêt, ${nom}.`);
+  const spokenName = getStopSpeechName(nom);
+  const u = new SpeechSynthesisUtterance(`Prochain arrêt, ${spokenName}.`);
   if (voice) {
     u.voice = voice;
     u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
@@ -2056,11 +2044,7 @@ function speakProchainArret(nom, forTest) {
 }
 
 function resyncVoixForPosition(d) {
-  if (
-    !stopMetersAlong.length ||
-    !currentPattern ||
-    !currentPattern.stops
-  ) {
+  if (!stopMetersAlong.length || !currentPattern || !currentPattern.stops) {
     return;
   }
   // Recalcule l'historique d'annonces depuis la position courante.
@@ -2089,8 +2073,7 @@ function resyncVoixForPosition(d) {
     if (d > (stopMetersAlong[i] || 0) + 0.5) {
       voixAnnounced.add(`d${i}_${j}`);
     }
-    const mid =
-      ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
+    const mid = ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
     if (d > mid + 0.5) {
       voixAnnounced.add(`m${i}_${j}`);
     }
@@ -2121,21 +2104,13 @@ function maybeAnnounceProchainArret(prev, curr) {
       const tDep = i.meters || 0;
       const tMid = ((i.meters || 0) + (j.meters || 0)) / 2;
       if (mode === "depart" || mode === "both") {
-        if (
-          prev < tDep &&
-          curr >= tDep &&
-          !voixAnnounced.has(`dgp_${p}`)
-        ) {
+        if (prev < tDep && curr >= tDep && !voixAnnounced.has(`dgp_${p}`)) {
           voixAnnounced.add(`dgp_${p}`);
           speakProchainArret(nextName);
         }
       }
       if (mode === "mid" || mode === "both") {
-        if (
-          prev < tMid &&
-          curr >= tMid &&
-          !voixAnnounced.has(`mgp_${p}`)
-        ) {
+        if (prev < tMid && curr >= tMid && !voixAnnounced.has(`mgp_${p}`)) {
           voixAnnounced.add(`mgp_${p}`);
           speakProchainArret(nextName);
         }
@@ -2156,8 +2131,7 @@ function maybeAnnounceProchainArret(prev, curr) {
       }
     }
     if (mode === "mid" || mode === "both") {
-      const t =
-        ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
+      const t = ((stopMetersAlong[i] || 0) + (stopMetersAlong[j] || 0)) / 2;
       if (prev < t && curr >= t && !voixAnnounced.has(`m${i}_${j}`)) {
         voixAnnounced.add(`m${i}_${j}`);
         speakProchainArret(nextName);
@@ -2232,9 +2206,7 @@ function jumpServedStop(delta) {
     updateStopToStopOverlay();
     updateStats();
     if (voiceEnabledEl.checked) {
-      const slots = getCurrentAndNextServedGuideSlots(
-        distanceAlongPathMeters,
-      );
+      const slots = getCurrentAndNextServedGuideSlots(distanceAlongPathMeters);
       if (
         slots.next &&
         slots.curr &&
@@ -2251,18 +2223,13 @@ function jumpServedStop(delta) {
 
   let idx = served[0] || 0;
   for (let p = 0; p < served.length; p++) {
-    if (
-      (stopMetersAlong[served[p]] || 0) <=
-      distanceAlongPathMeters + 0.5
-    ) {
+    if ((stopMetersAlong[served[p]] || 0) <= distanceAlongPathMeters + 0.5) {
       idx = served[p];
     }
   }
   const pos = Math.max(0, served.indexOf(idx));
   const nextPos =
-    delta < 0
-      ? Math.max(pos - 1, 0)
-      : Math.min(pos + 1, served.length - 1);
+    delta < 0 ? Math.max(pos - 1, 0) : Math.min(pos + 1, served.length - 1);
   idx = served[nextPos] ?? idx;
 
   distanceAlongPathMeters = stopMetersAlong[idx];
@@ -2275,9 +2242,7 @@ function jumpServedStop(delta) {
   updateStats();
 
   if (voiceEnabledEl.checked) {
-    const slots = getCurrentAndNextServedGuideSlots(
-      distanceAlongPathMeters,
-    );
+    const slots = getCurrentAndNextServedGuideSlots(distanceAlongPathMeters);
     if (
       slots.next &&
       slots.curr &&
@@ -2351,10 +2316,8 @@ function getNetworkGeometryByLine(features, pattern) {
     const first = coords[0];
     const last = coords[coords.length - 1];
 
-    const directScore =
-      pointDistance(start, first) + pointDistance(end, last);
-    const reverseScore =
-      pointDistance(start, last) + pointDistance(end, first);
+    const directScore = pointDistance(start, first) + pointDistance(end, last);
+    const reverseScore = pointDistance(start, last) + pointDistance(end, first);
 
     if (directScore < bestScore) {
       bestScore = directScore;
@@ -2377,17 +2340,11 @@ function getNetworkGeometryByLine(features, pattern) {
 }
 
 function getBusNetworkGeometry(pattern) {
-  return getNetworkGeometryByLine(
-    data?.bus_network_features || [],
-    pattern,
-  );
+  return getNetworkGeometryByLine(data?.bus_network_features || [], pattern);
 }
 
 function getTramNetworkGeometry(pattern) {
-  return getNetworkGeometryByLine(
-    data?.tram_network_features || [],
-    pattern,
-  );
+  return getNetworkGeometryByLine(data?.tram_network_features || [], pattern);
 }
 
 function updateStopToStopOverlay() {
@@ -2452,10 +2409,7 @@ async function setMission(pattern, opts) {
     traceSource = `Réseau bus 3M (${busGeom.nom_ligne || "ligne"})`;
   } else {
     activeCoordinates = await fetchRoadGeometry(pattern);
-    if (
-      activeCoordinates.length &&
-      activeCoordinates !== pattern.coordinates
-    ) {
+    if (activeCoordinates.length && activeCoordinates !== pattern.coordinates) {
       traceSource = "OSRM routier";
     } else {
       traceSource = "GTFS arrêt → arrêt";
@@ -2863,10 +2817,7 @@ function tamStopRailProgressFillHeightPct(d) {
   }
   /** Mesure DOM indisponible : repli comportement ancien (~proportional au trajet global). */
   if (totalHeightPct <= 1e-4 && z0 == null) {
-    return Math.min(
-      100,
-      Math.max(0, (dc / pathTotalMeters) * 100),
-    );
+    return Math.min(100, Math.max(0, (dc / pathTotalMeters) * 100));
   }
 
   return totalHeightPct;
@@ -2919,8 +2870,7 @@ function refreshStopRail() {
   if (!root || !scroll) return;
   ensureTamStopRailWired();
   const hud = document.getElementById("mapMissionHud");
-  const hudLive =
-    !!hud && !hud.classList.contains("map-mission-hud--inactive");
+  const hudLive = !!hud && !hud.classList.contains("map-mission-hud--inactive");
 
   if (!currentPattern?.stops?.length || pathTotalMeters <= 0) {
     tamStopRailBuiltFor = "";
@@ -3023,8 +2973,13 @@ function refreshStopRail() {
         corrWrap.appendChild(hub);
       }
       main.appendChild(corrWrap);
-      const corrTxt = correspondences.map((x) => displayLineLabel(x)).join(", ");
-      btn.setAttribute("aria-label", `Arrêt : ${name}. Correspondances : ${corrTxt}`);
+      const corrTxt = correspondences
+        .map((x) => displayLineLabel(x))
+        .join(", ");
+      btn.setAttribute(
+        "aria-label",
+        `Arrêt : ${name}. Correspondances : ${corrTxt}`,
+      );
     }
     btn.appendChild(main);
     scroll.appendChild(btn);
@@ -3063,9 +3018,7 @@ function updateStats() {
   }
 
   const pct =
-    pathTotalMeters > 0
-      ? ((d / pathTotalMeters) * 100).toFixed(1)
-      : "0.0";
+    pathTotalMeters > 0 ? ((d / pathTotalMeters) * 100).toFixed(1) : "0.0";
   progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
     BASE_METERS_PER_SECOND * speed * 3.6,
   )} km/h sim.`;
@@ -3106,8 +3059,7 @@ function cycleMapHudSpeed() {
   if (!speedSelect) return;
   const cur = Number(speedSelect.value) || 1;
   const idx = MAP_HUD_SPEED_SEQUENCE.indexOf(cur);
-  const nextIdx =
-    idx === -1 ? 0 : (idx + 1) % MAP_HUD_SPEED_SEQUENCE.length;
+  const nextIdx = idx === -1 ? 0 : (idx + 1) % MAP_HUD_SPEED_SEQUENCE.length;
   speedSelect.value = String(MAP_HUD_SPEED_SEQUENCE[nextIdx]);
   speedSelect.dispatchEvent(new Event("change", { bubbles: true }));
 }
@@ -3493,9 +3445,7 @@ async function removeManualDeviationSegmentsFromSelectedIndex() {
     return;
   }
   fillMissingManualSegmentBaseAnchors(opsState.manualProfile);
-  const chainArr = manualProfileToVisualChainArray(
-    opsState.manualProfile,
-  );
+  const chainArr = manualProfileToVisualChainArray(opsState.manualProfile);
   const n = chainArr.length;
   if (!n || !manualTraceSegmentSelectEl) return;
   const idx = parseInt(manualTraceSegmentSelectEl.value || "0", 10);
@@ -3631,12 +3581,9 @@ function onManualDrawStartClick(ev) {
   if (manualDrawActive) {
     /** Même logique Temporaire / Planifiée : sans « Valider le tracé », quitter efface le brouillon (comme si le tracé n’avait pas été commencé). */
     stopManualDrawMode();
-    const endedTemp = tryDismissTemporaryDeviationIfUnchanged(
-      "quit_trace_draft",
-    );
-    const endedPlan = tryDismissPlannedDeviationIfUnchanged(
-      "quit_trace_draft",
-    );
+    const endedTemp =
+      tryDismissTemporaryDeviationIfUnchanged("quit_trace_draft");
+    const endedPlan = tryDismissPlannedDeviationIfUnchanged("quit_trace_draft");
     let msg =
       "Brouillon de tracé annulé : les points sur la carte ont été retirés sans validation.";
     if (endedTemp && endedPlan) {
@@ -3665,10 +3612,7 @@ function onManualDrawStartClick(ev) {
   closeControlPanel();
 }
 manualDrawStartBtn?.addEventListener("click", onManualDrawStartClick);
-tempManualDrawStartBtn?.addEventListener(
-  "click",
-  onManualDrawStartClick,
-);
+tempManualDrawStartBtn?.addEventListener("click", onManualDrawStartClick);
 
 function onManualDrawUndoClick() {
   if (!manualDrawActive || !manualDraftPoints.length) {
@@ -3681,7 +3625,10 @@ manualDrawUndoBtn?.addEventListener("click", onManualDrawUndoClick);
 tempManualDrawUndoBtn?.addEventListener("click", onManualDrawUndoClick);
 
 manualTraceClearBtn?.addEventListener("click", () => {
-  if (isTempDeviationSubtabActive() && !ensureTemporaryDeviationSessionIfOnSubtab()) {
+  if (
+    isTempDeviationSubtabActive() &&
+    !ensureTemporaryDeviationSessionIfOnSubtab()
+  ) {
     return;
   }
   void clearManualDeviationTraceKeepingStops(false).catch((e) =>
@@ -3694,7 +3641,10 @@ manualTraceSegmentSelectEl?.addEventListener("change", () => {
 });
 
 manualTraceRemoveSegmentBtn?.addEventListener("click", () => {
-  if (isTempDeviationSubtabActive() && !ensureTemporaryDeviationSessionIfOnSubtab()) {
+  if (
+    isTempDeviationSubtabActive() &&
+    !ensureTemporaryDeviationSessionIfOnSubtab()
+  ) {
     return;
   }
   void removeManualDeviationSegmentsFromSelectedIndex().catch((e) =>
@@ -3749,11 +3699,13 @@ async function onManualDrawSaveClick(validatedFromToolbar) {
     unlockPlannedSaveAfterRecordedTemporaryDeviation();
   }
 }
-manualDrawSaveBtn?.addEventListener("click", () =>
-  void onManualDrawSaveClick("plan"),
+manualDrawSaveBtn?.addEventListener(
+  "click",
+  () => void onManualDrawSaveClick("plan"),
 );
-tempManualDrawSaveBtn?.addEventListener("click", () =>
-  void onManualDrawSaveClick("temp"),
+tempManualDrawSaveBtn?.addEventListener(
+  "click",
+  () => void onManualDrawSaveClick("temp"),
 );
 
 returnInitialBtn.addEventListener("click", () => {
@@ -3950,10 +3902,7 @@ function initVocalUI() {
 
 function saveVocalPrefs() {
   try {
-    localStorage.setItem(
-      LS_KEY_ENABLED,
-      voiceEnabledEl.checked ? "1" : "0",
-    );
+    localStorage.setItem(LS_KEY_ENABLED, voiceEnabledEl.checked ? "1" : "0");
     localStorage.setItem(LS_KEY_MODE, voiceModeEl.value);
     localStorage.setItem(LS_KEY_VOICE, voiceSelectEl.value);
   } catch (e) {
