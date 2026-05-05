@@ -11,6 +11,8 @@ let tamStopRailSnapRaf = 0;
 let tamStopRailSuppressInnerClickUntil = 0;
 /** Un seul `map.on('click')` pour réduire la liste au clic sur la carte. */
 let tamStopRailMapCloseWired = false;
+/** Cache des correspondances par arrêt (clé stop_id et nom normalisé). */
+let tamStopRailCorrespondenceByStop = null;
 
 /** Au-delà : le geste n’est pas un « tap » (défilement, etc.). */
 const TAM_STOP_RAIL_TAP_MOVE_MAX_SQ = 28 * 28;
@@ -634,6 +636,110 @@ function displayLineLabel(item) {
   const code = String(item.route_short_name);
   if (isTramDisplayLine(item)) return `T${code}`;
   return code;
+}
+
+function sortLineItemsForDisplay(items) {
+  return [...items].sort((a, b) => {
+    const pa = linePriority(a);
+    const pb = linePriority(b);
+    if (pa !== pb) return pa - pb;
+    const aCode = String(a.route_short_name || "");
+    const bCode = String(b.route_short_name || "");
+    if (/^\d+$/.test(aCode) && /^\d+$/.test(bCode)) {
+      return Number(aCode) - Number(bCode);
+    }
+    return aCode.localeCompare(bCode, "fr");
+  });
+}
+
+function addStopCorrespondenceEntry(store, key, routeItem) {
+  if (!key) return;
+  if (!store.has(key)) {
+    store.set(key, new Map());
+  }
+  const byCode = store.get(key);
+  const code = String(routeItem.route_short_name || "").trim();
+  if (!code) return;
+  const existing = byCode.get(code);
+  if (!existing) {
+    byCode.set(code, routeItem);
+    return;
+  }
+  if (!existing.route_color && routeItem.route_color) {
+    byCode.set(code, routeItem);
+  }
+}
+
+function ensureTamStopRailCorrespondenceCache() {
+  if (tamStopRailCorrespondenceByStop) {
+    return tamStopRailCorrespondenceByStop;
+  }
+  const store = new Map();
+  const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  for (const p of patterns) {
+    const routeCode = String(p?.route_short_name || "").trim();
+    if (!routeCode) continue;
+    const routeItem = {
+      route_short_name: routeCode,
+      route_type: String(p?.route_type || ""),
+      route_color: String(p?.route_color || ""),
+    };
+    const stops = Array.isArray(p?.stops) ? p.stops : [];
+    for (const st of stops) {
+      const stopId = String(st?.stop_id || "").trim();
+      const stopNameKey = normalizeStopName(st?.stop_name || st?.name || "");
+      if (stopId) {
+        addStopCorrespondenceEntry(store, `id:${stopId}`, routeItem);
+      }
+      if (stopNameKey) {
+        addStopCorrespondenceEntry(store, `name:${stopNameKey}`, routeItem);
+      }
+    }
+  }
+
+  const out = new Map();
+  for (const [key, byCode] of store.entries()) {
+    out.set(key, sortLineItemsForDisplay([...byCode.values()]));
+  }
+  tamStopRailCorrespondenceByStop = out;
+  return tamStopRailCorrespondenceByStop;
+}
+
+function getStopCorrespondenceLines(stopObj) {
+  const cache = ensureTamStopRailCorrespondenceCache();
+  const currentRouteCode = String(currentPattern?.route_short_name || "").trim();
+  const stopId = String(stopObj?.stop_id || "").trim();
+  const stopNameKey = normalizeStopName(stopObj?.stop_name || stopObj?.name || "");
+  const merged = new Map();
+  if (stopId) {
+    const byId = cache.get(`id:${stopId}`) || [];
+    for (const item of byId) {
+      merged.set(String(item.route_short_name || ""), item);
+    }
+  }
+  if (stopNameKey) {
+    const byName = cache.get(`name:${stopNameKey}`) || [];
+    for (const item of byName) {
+      const code = String(item.route_short_name || "");
+      if (!merged.has(code)) {
+        merged.set(code, item);
+      }
+    }
+  }
+  const filtered = [...merged.values()].filter((item) => {
+    const code = String(item?.route_short_name || "").trim();
+    return code && code !== currentRouteCode;
+  });
+  return sortLineItemsForDisplay(filtered);
+}
+
+function styleStopCorrespondenceBadge(el, routeItem) {
+  applyLineColorStyling(el, routeItem, "contextPill");
+  el.style.padding = "1px 5px";
+  el.style.borderRadius = "4px";
+  el.style.fontSize = "10px";
+  el.style.fontWeight = "700";
+  el.style.lineHeight = "1.1";
 }
 
 function updateLines() {
@@ -2249,6 +2355,7 @@ function refreshStopRail() {
   }
   tamStopRailBuiltFor = sig;
   tamStopRailLastAutoSnapK = null;
+  tamStopRailCorrespondenceByStop = null;
   root.hidden = false;
   setTamStopRailExploreOpen(false);
   scroll.innerHTML = "";
@@ -2263,10 +2370,37 @@ function refreshStopRail() {
     btn.className = "tam-stop-rail__pill";
     btn.dataset.tamStopIdx = String(i);
     btn.setAttribute("aria-label", `Arrêt : ${name}`);
+    const main = document.createElement("span");
+    main.className = "tam-stop-rail__pillMain";
     const span = document.createElement("span");
     span.className = "tam-stop-rail__pillLabel";
     span.textContent = name;
-    btn.appendChild(span);
+    main.appendChild(span);
+    const correspondences = getStopCorrespondenceLines(st);
+    if (correspondences.length) {
+      const corrWrap = document.createElement("span");
+      corrWrap.className = "tam-stop-rail__correspondences";
+      const shown = correspondences.slice(0, 4);
+      for (const lineItem of shown) {
+        const badge = document.createElement("span");
+        badge.className = "tam-stop-rail__correspondenceBadge";
+        badge.textContent = displayLineLabel(lineItem);
+        styleStopCorrespondenceBadge(badge, lineItem);
+        corrWrap.appendChild(badge);
+      }
+      const hiddenCount = correspondences.length - shown.length;
+      if (hiddenCount > 0) {
+        const more = document.createElement("span");
+        more.className =
+          "tam-stop-rail__correspondenceBadge tam-stop-rail__correspondenceBadge--more";
+        more.textContent = `+${hiddenCount}`;
+        corrWrap.appendChild(more);
+      }
+      main.appendChild(corrWrap);
+      const corrTxt = correspondences.map((x) => displayLineLabel(x)).join(", ");
+      btn.setAttribute("aria-label", `Arrêt : ${name}. Correspondances : ${corrTxt}`);
+    }
+    btn.appendChild(main);
     scroll.appendChild(btn);
   }
   updateTamStopRailProgressFill();
