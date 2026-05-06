@@ -24,8 +24,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Générer simulation_data.json (Open Data)
-        run: python scripts/refresh_simulation_opendata.py
+      - name: Générer simulation_data.json (Open Data) — avec secours
+        run: |
+          set -e
+          if python scripts/refresh_simulation_opendata.py; then
+            echo "OK: simulation_data.json régénéré."
+            exit 0
+          fi
+          echo "Échec Open Data : reprise du dernier JSON publié sur gh-pages."
+          curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/simulation_data.json" -o simulation_data.json
+          test -f simulation_data.json
 
       - name: Préparer le site statique
         run: |

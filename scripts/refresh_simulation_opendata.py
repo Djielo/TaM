@@ -16,6 +16,8 @@ import csv
 import os
 import shutil
 import tempfile
+import time
+from urllib.error import URLError
 import urllib.request
 import zipfile
 
@@ -35,8 +37,23 @@ NETWORK_GEOJSON_FILES = (
 REQUIRED_MERGE_FILENAMES = ("routes.txt", "trips.txt", "stop_times.txt", "stops.txt")
 
 
-def download(url: str, dest_path: str) -> None:
-    urllib.request.urlretrieve(url, dest_path)  # noqa: S310 (téléchargement stdlib)
+def download(url: str, dest_path: str, *, timeout: int = 60, retries: int = 3) -> None:
+    """Téléchargement robuste (UA + timeout + retries) pour CI."""
+    last_err: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "tam-sim-refresh/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                blob = resp.read()
+            with open(dest_path, "wb") as handle:
+                handle.write(blob)
+            return
+        except (URLError, OSError, TimeoutError) as exc:
+            last_err = exc
+            wait = min(2**attempt, 10)
+            print(f"Téléchargement en échec (tentative {attempt}/{retries}) : {url} ({exc})")
+            time.sleep(wait)
+    raise RuntimeError(f"Échec téléchargement après {retries} tentatives : {url}") from last_err
 
 
 def unzip_to_dir(zip_path: str, directory: str) -> None:
