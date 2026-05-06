@@ -886,9 +886,8 @@ async function refreshCorrespondencePopupArrivals(stopObj, routeItem, targetEl) 
 
 function resolveRealtimeStopIdForRoute(stopObj, routeItem) {
   const direct = String(stopObj?.stop_id || "").trim();
-  if (direct) return direct;
   const routeCode = String(routeItem?.route_short_name || "").trim();
-  if (!routeCode) return "";
+  if (!routeCode) return direct;
   const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
   for (const p of patterns) {
     if (String(p?.route_short_name || "").trim() !== routeCode) continue;
@@ -899,7 +898,7 @@ function resolveRealtimeStopIdForRoute(stopObj, routeItem) {
       }
     }
   }
-  return "";
+  return direct;
 }
 
 function appendLineDirectionDetails(lines, stopObj, routeItem) {

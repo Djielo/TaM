@@ -197,7 +197,10 @@ def collect_arrivals(stop_id: str, route: str | None, limit: int) -> dict:
     deduped = []
     seen = set()
     for item in arrivals:
-        key = (item["route_id"], item["trip_id"], item["epoch"])
+        # Certains arrêts de pôle exposent deux trip_ids au même timestamp
+        # (ex. deux sens/terminus sur la même ligne). Pour l’affichage voyageur,
+        # un même passage ligne + heure ne doit apparaître qu’une seule fois.
+        key = (item["route_id"], item["epoch"])
         if key in seen:
             continue
         seen.add(key)
