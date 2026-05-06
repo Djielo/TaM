@@ -13,6 +13,8 @@ let tamStopRailSuppressInnerClickUntil = 0;
 let tamStopRailMapCloseWired = false;
 /** Cache des correspondances par arrêt (clé stop_id et nom normalisé). */
 let tamStopRailCorrespondenceByStop = null;
+/** Temps de parcours issus du GTFS (voyage représentatif du pattern) pour le rail. */
+let tamStopRailGtfsSchedule = { ok: false, legSec: [], cumArriveSec: [] };
 /** Cache court des ETA temps réel pour les badges de correspondance du rail. */
 const TAM_REALTIME_API_BASE = "https://tam-sae-jielo.duckdns.org";
 const TAM_STOP_RAIL_ARRIVALS_CACHE_MS = 20_000;
@@ -2854,6 +2856,113 @@ function ensureTamStopRailWired() {
   );
 }
 
+/** Parse `HH:MM:SS` ou `H:MM:SS` GTFS (durées au-delà de 24 h possibles) en secondes depuis minuit « service ». */
+function gtfsClockToSeconds(clockStr) {
+  if (clockStr == null || clockStr === "") return null;
+  const parts = String(clockStr).trim().split(":");
+  if (parts.length < 2) return null;
+  const h = Number(parts[0]);
+  const mi = Number(parts[1]);
+  const se = Number(parts.length >= 3 ? parts[2] : 0);
+  if (![h, mi, se].every((x) => Number.isFinite(x))) return null;
+  return (h * 60 + mi) * 60 + se;
+}
+
+function tamStopBoardSeconds(stop) {
+  const d = gtfsClockToSeconds(stop?.departure_time);
+  const a = gtfsClockToSeconds(stop?.arrival_time);
+  return d != null ? d : a;
+}
+
+function tamStopAlignSeconds(stop) {
+  const a = gtfsClockToSeconds(stop?.arrival_time);
+  const d = gtfsClockToSeconds(stop?.departure_time);
+  return a != null ? a : d;
+}
+
+/** Entre deux arrêts successifs : différence horaires GTFS, avec repli si données absentes. */
+function buildTamStopRailGtfsSchedule(stops) {
+  const n = stops?.length || 0;
+  if (n < 2) {
+    return { ok: false, legSec: [], cumArriveSec: [] };
+  }
+  const legSec = [];
+  for (let i = 0; i < n - 1; i++) {
+    const dep = tamStopBoardSeconds(stops[i]);
+    const arr = tamStopAlignSeconds(stops[i + 1]);
+    let diff = dep != null && arr != null ? arr - dep : null;
+    if (diff == null || !Number.isFinite(diff) || diff < 30) {
+      diff = 120;
+    }
+    legSec.push(diff);
+  }
+  const cumArriveSec = [0];
+  for (let i = 0; i < legSec.length; i++) {
+    cumArriveSec.push(cumArriveSec[i] + legSec[i]);
+  }
+  return { ok: true, legSec, cumArriveSec };
+}
+
+/** Avancée « horloge GTFS » interpolée selon la distance sur le tracé (pour le voyage type). */
+function tamStopRailScheduleElapsedSec(d, model) {
+  const stops = currentPattern?.stops;
+  const m = stopMetersAlong;
+  if (
+    !model?.ok ||
+    !stops?.length ||
+    !m?.length ||
+    model.cumArriveSec.length !== stops.length
+  ) {
+    return 0;
+  }
+  const n = stops.length;
+  const k = currentStopIndexForDistance(d);
+  if (n < 2 || k >= n - 1) {
+    return model.cumArriveSec[n - 1] || 0;
+  }
+  const m0 = m[k] ?? 0;
+  const m1 = m[k + 1] ?? pathTotalMeters;
+  const spanM = Math.max(m1 - m0, 1e-6);
+  const frac = Math.min(1, Math.max(0, (d - m0) / spanM));
+  const leg = model.legSec[k] ?? 0;
+  return (model.cumArriveSec[k] ?? 0) + frac * leg;
+}
+
+/** Met à jour les libellés « X min » à droite du nom d’arrêt (mode rail étendu). */
+function updateTamStopRailScheduleEtas() {
+  const { scroll, root } = getTamStopRailEls();
+  if (!scroll || !root || root.hidden) return;
+  const model = tamStopRailGtfsSchedule;
+  const stops = currentPattern?.stops;
+  if (!model?.ok || !stops?.length || stops.length < 2) {
+    for (const btn of scroll.children) {
+      if (!(btn instanceof HTMLElement)) continue;
+      const eta = btn.querySelector(".tam-stop-rail__pillEta");
+      if (eta) eta.textContent = "";
+    }
+    return;
+  }
+  const d = distanceAlongPathMeters;
+  const k = currentStopIndexForDistance(d);
+  const elapsed = tamStopRailScheduleElapsedSec(d, model);
+  const cum = model.cumArriveSec;
+  for (const btn of scroll.children) {
+    if (!(btn instanceof HTMLElement)) continue;
+    if (!btn.classList.contains("tam-stop-rail__pill")) continue;
+    const eta = btn.querySelector(".tam-stop-rail__pillEta");
+    if (!eta) continue;
+    const i = Number(btn.dataset.tamStopIdx);
+    if (!Number.isFinite(i)) continue;
+    if (i <= k) {
+      eta.textContent = "";
+      continue;
+    }
+    const remainSec = Math.max(0, (cum[i] ?? 0) - elapsed);
+    const mins = Math.max(1, Math.round(remainSec / 60));
+    eta.textContent = `${mins} min`;
+  }
+}
+
 /**
  * Remplissage cumulatif du rail depuis le bas :
  * - au départ, la hauteur atteint immédiatement le haut de la 1re pastille (départ franchi),
@@ -2943,6 +3052,7 @@ function updateTamStopRailPillPastStates() {
     const past = complete || i <= k;
     btn.classList.toggle("tam-stop-rail__pill--past", past);
   }
+  updateTamStopRailScheduleEtas();
 }
 
 function updateTamStopRailProgressFill() {
@@ -2975,6 +3085,7 @@ function refreshStopRail() {
 
   if (!currentPattern?.stops?.length || pathTotalMeters <= 0) {
     tamStopRailBuiltFor = "";
+    tamStopRailGtfsSchedule = { ok: false, legSec: [], cumArriveSec: [] };
     tamStopRailLastAutoSnapK = null;
     root.hidden = true;
     root.classList.remove("tam-stop-rail--explore");
@@ -2989,6 +3100,7 @@ function refreshStopRail() {
   /* Même visibilité que le HUD carte (pastille prochain arrêt + commandes) : pas en aperçu mission. */
   if (!hudLive) {
     tamStopRailBuiltFor = "";
+    tamStopRailGtfsSchedule = { ok: false, legSec: [], cumArriveSec: [] };
     tamStopRailLastAutoSnapK = null;
     root.hidden = true;
     root.classList.remove("tam-stop-rail--explore");
@@ -3017,6 +3129,7 @@ function refreshStopRail() {
   /* stops[0] = premier arrêt du trajet, dernier = terminus. Colonne CSS = haut → bas :
    * on ajoute du terminus vers le départ pour que le remplissage (bas = 0 %) coïncide avec le début de ligne en bas. */
   const stops = currentPattern.stops;
+  tamStopRailGtfsSchedule = buildTamStopRailGtfsSchedule(stops);
   for (let i = stops.length - 1; i >= 0; i--) {
     const st = stops[i];
     const name = String(st.stop_name || st.name || `Arrêt ${i + 1}`);
@@ -3027,10 +3140,17 @@ function refreshStopRail() {
     btn.setAttribute("aria-label", `Arrêt : ${name}`);
     const main = document.createElement("span");
     main.className = "tam-stop-rail__pillMain";
+    const textCol = document.createElement("span");
+    textCol.className = "tam-stop-rail__pillTextCol";
     const span = document.createElement("span");
     span.className = "tam-stop-rail__pillLabel";
     span.textContent = name;
-    main.appendChild(span);
+    const eta = document.createElement("span");
+    eta.className = "tam-stop-rail__pillEta";
+    eta.setAttribute("aria-hidden", "true");
+    textCol.appendChild(span);
+    textCol.appendChild(eta);
+    main.appendChild(textCol);
     const correspondences = getStopCorrespondenceLines(st);
     if (correspondences.length) {
       const corrWrap = document.createElement("span");
