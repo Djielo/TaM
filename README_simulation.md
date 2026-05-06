@@ -49,8 +49,7 @@ menu des lignes. Sans cette clé métadonnées (anciens exports), comportement i
 
 Le fichier **`simulation_data.json` n’est pas versionné sur `master`** (voir `.gitignore`).
 Les workflows **génèrent** ce JSON et publient **tout le site statique** sur la branche
-**`gh-pages`** (action **peaceiris**). Les **tâches planifiées** suffisent pour les données :
-vous n’avez **pas** à lancer un workflow à la main au quotidien.
+**`gh-pages`** (action **peaceiris**). Avant le build GTFS, **`refresh_simulation_opendata.py`** télécharge aussi les GeoJSON **tram** et **bus lignes** (`MMM_MMM_LigneTram.json`, `MMM_MMM_BusLigne.json`) depuis Open Data : les **tracés carte** du JSON restent alignés sur la géométrie réseau officielle (pas seulement OSRM / ligne droite entre arrêts). Les **tâches planifiées** suffisent pour les données : vous n’avez **pas** à lancer un workflow à la main au quotidien.
 
 #### Réglage GitHub Pages (à ne pas confondre)
 
