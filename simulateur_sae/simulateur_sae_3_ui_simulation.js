@@ -3470,6 +3470,16 @@ function setupMapMissionHud() {
   nextStrip.addEventListener("click", () => {
     openTamStopRailAtNextStop();
   });
+  nextStrip.addEventListener(
+    "touchend",
+    (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      tamStopRailSuppressInnerClickUntil = performance.now() + 500;
+      openTamStopRailAtNextStop();
+    },
+    { passive: false },
+  );
   nextStrip.setAttribute("role", "button");
   nextStrip.setAttribute("tabindex", "0");
   nextStrip.setAttribute(
