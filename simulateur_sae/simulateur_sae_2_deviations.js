@@ -970,6 +970,11 @@ async function loadDeviationItemIntoApp(item, opts) {
     (p) => (p.pattern_id || "") === item.pattern_id,
   );
   if (!pat) {
+    // Après une mise à jour des données, un pattern_id peut ne plus exister.
+    // Proposer une action simple plutôt que de "perdre" la fiche.
+    if (await showDeviationRelinkDialog(item)) {
+      return false;
+    }
     tamAppAlert("Mission inconnue : pattern_id absent du JSON chargé.");
     return false;
   }
@@ -1007,6 +1012,182 @@ async function loadDeviationItemIntoApp(item, opts) {
   showMapMissionHud();
   liveDeviationLoadedItemId = String(item.id || "");
   return true;
+}
+
+function showDeviationRelinkDialog(item) {
+  const dlg = document.getElementById("appMessageDialog");
+  const titleEl = document.getElementById("appMessageDialogTitle");
+  const bodyEl = document.getElementById("appMessageDialogBody");
+  const defaultActions = dlg?.querySelector("form.app-message-dialog__actions");
+
+  if (!dlg || typeof dlg.showModal !== "function" || !titleEl || !bodyEl) {
+    return Promise.resolve(false);
+  }
+
+  const itemId = String(item?.id || "");
+  const itemLabel = String(item?.label || item?.pattern_id || "Fiche");
+  const pid = String(item?.pattern_id || "");
+  const sig = String(item?.pattern_signature_snapshot || "");
+  const dSaved = String(item?.dataset_digest_snapshot || "");
+  const dLive = String(datasetDigestLoaded || "");
+
+  titleEl.textContent = "Fiche à revalider";
+  bodyEl.innerHTML = "";
+
+  const intro = document.createElement("p");
+  intro.style.margin = "0 0 8px";
+  intro.textContent =
+    "Cette fiche ne correspond plus automatiquement aux missions du réseau chargé.";
+  bodyEl.appendChild(intro);
+
+  const meta = document.createElement("p");
+  meta.style.margin = "0 0 10px";
+  meta.innerHTML =
+    `<strong>Fiche :</strong> ${itemLabel}<br>` +
+    `<strong>pattern_id enregistré :</strong> ${pid || "—"}<br>` +
+    `<strong>Empreinte fiche :</strong> ${dSaved || "—"}<br>` +
+    `<strong>Empreinte réseau :</strong> ${dLive || "—"}`;
+  bodyEl.appendChild(meta);
+
+  const actions = document.createElement("div");
+  actions.className = "app-message-dialog__actions app-message-dialog__actions--split";
+
+  function mkBtn(label, cls, title) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls || "";
+    b.textContent = label;
+    if (title) b.title = title;
+    return b;
+  }
+
+  const btnKeep = mkBtn(
+    "Conserver la fiche",
+    "secondary app-message-dialog__ok",
+    "Ne modifie pas la fiche. Vous pourrez la revalider plus tard.",
+  );
+  const btnRelink = mkBtn(
+    "Rattacher à la mission sélectionnée",
+    "app-message-dialog__ok",
+    "Met à jour la fiche pour la variante actuellement choisie dans « Ligne ».",
+  );
+  const btnDup = mkBtn(
+    "Dupliquer vers la mission sélectionnée",
+    "secondary app-message-dialog__ok",
+    "Crée une nouvelle fiche rattachée à la mission choisie, sans toucher à l’originale.",
+  );
+
+  const btnDetails = mkBtn(
+    "Détails",
+    "secondary app-message-dialog__ok",
+    "Explication des 3 choix.",
+  );
+
+  actions.appendChild(btnKeep);
+  actions.appendChild(btnRelink);
+  actions.appendChild(btnDup);
+  actions.appendChild(btnDetails);
+  bodyEl.appendChild(actions);
+
+  const note = document.createElement("p");
+  note.style.margin = "10px 0 0";
+  note.style.opacity = "0.9";
+  note.textContent =
+    "Astuce : allez dans l’onglet « Ligne », choisissez une mission, puis utilisez « Rattacher » ou « Dupliquer ».";
+  bodyEl.appendChild(note);
+
+  function closeAndRestore() {
+    try {
+      dlg.close();
+    } catch (e) {
+      /* ignore */
+    }
+    if (defaultActions) defaultActions.style.display = "";
+  }
+
+  function showDetails() {
+    const lines = [
+      "Choix disponibles :",
+      "",
+      "1) Conserver la fiche :",
+      "- Ne change rien. La fiche reste en local, mais elle n’est plus rattachée automatiquement.",
+      "",
+      "2) Rattacher à la mission sélectionnée :",
+      "- Met à jour la fiche pour la mission actuellement choisie (ligne / sens / variante).",
+      "",
+      "3) Dupliquer vers la mission sélectionnée :",
+      "- Conserve l’originale intacte et crée une copie rattachée à la mission choisie.",
+    ];
+    showAppMessageDialog("Aide — revalidation fiche", lines.join("\n"));
+  }
+
+  function relinkOrDuplicate(mode) {
+    const target = typeof selectedPattern === "function" ? selectedPattern() : null;
+    if (!target || !target.pattern_id) {
+      tamAppAlert("Choisissez d’abord une mission (onglet « Ligne »).");
+      return;
+    }
+    const st = readDeviationStore();
+    const nowIso = new Date().toISOString();
+    if (mode === "relink") {
+      const idx = st.items.findIndex((x) => String(x.id || "") === itemId);
+      if (idx < 0) {
+        tamAppAlert("Fiche introuvable dans le stockage local.");
+        return;
+      }
+      stampDeviationItemPayloadMeta(st.items[idx], target, nowIso);
+      writeDeviationStore(st);
+      refreshDeviationStoreSelectorsAfterMutation();
+      tamAppAlert("Fiche rattachée à la mission sélectionnée.");
+      closeAndRestore();
+      return;
+    }
+    if (mode === "duplicate") {
+      const copy = tamCloneSerializable({}, item);
+      copy.id = generateLocalDeviationRecordId();
+      copy.origin_deviation_id = String(item?.origin_deviation_id || item?.id || "");
+      stampDeviationItemPayloadMeta(copy, target, nowIso);
+      // Garder le libellé « temporaire » si c’était le cas, sinon label auto.
+      copy.label = duplicateDeviationLabelForVariant(item, target);
+      st.items.push(copy);
+      writeDeviationStore(st);
+      refreshDeviationStoreSelectorsAfterMutation();
+      selectSavedDeviationSelectOptionByDeviationId(copy.id);
+      tamAppAlert("Copie créée et rattachée à la mission sélectionnée.");
+      closeAndRestore();
+      return;
+    }
+  }
+
+  // Masquer le bouton OK par défaut : on utilise nos boutons explicites.
+  if (defaultActions) defaultActions.style.display = "none";
+
+  return new Promise((resolve) => {
+    btnKeep.addEventListener("click", () => {
+      closeAndRestore();
+      resolve(true);
+    });
+    btnRelink.addEventListener("click", () => {
+      relinkOrDuplicate("relink");
+      resolve(true);
+    });
+    btnDup.addEventListener("click", () => {
+      relinkOrDuplicate("duplicate");
+      resolve(true);
+    });
+    btnDetails.addEventListener("click", () => {
+      showDetails();
+      resolve(true);
+    });
+    dlg.addEventListener(
+      "close",
+      () => {
+        if (defaultActions) defaultActions.style.display = "";
+      },
+      { once: true },
+    );
+    dlg.showModal();
+  });
 }
 
 /** JSON stable pour comparer deux payloads (sessions temporaire / planifiée). */

@@ -1,0 +1,51 @@
+# Après un push sur master : republie gh-pages avec vos HTML/JS + JSON généré.
+name: Pages — synchroniser master → gh-pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Générer simulation_data.json (Open Data)
+        run: python scripts/refresh_simulation_opendata.py
+
+      - name: Préparer le site statique
+        run: |
+          set -e
+          mkdir -p _site
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='gtfs_data' \
+            --exclude='__pycache__' \
+            --exclude='_site' \
+            --exclude='*.zip' \
+            ./ _site/
+          test -f _site/simulation_data.json
+          rm -f _site/.gitignore
+
+      - name: Publier sur gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _site
+          enable_jekyll: false
+

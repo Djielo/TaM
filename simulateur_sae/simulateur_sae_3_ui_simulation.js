@@ -1438,7 +1438,7 @@ function updateLines() {
 
   addLineGroup("Tram — Réseau TaM", groups.tramTam);
   addLineGroup("Tram — Autres", groups.tramAutres);
-  addLineGroup("Navette", groups.navette);
+  addLineGroup("NAVETTE - RÉSEAU TaM", groups.navette);
   addLineGroup("Bus — Réseau TaM", groups.busTam);
   addLineGroup("Bus — Autres", groups.busAutres);
 
@@ -1471,7 +1471,7 @@ function rebuildLineCustomList(groups) {
   const sections = [
     { label: "Tram — Réseau TaM", items: groups.tramTam },
     { label: "Tram — Autres", items: groups.tramAutres },
-    { label: "Navette", items: groups.navette },
+    { label: "NAVETTE - RÉSEAU TaM", items: groups.navette },
     { label: "Bus — Réseau TaM", items: groups.busTam },
     { label: "Bus — Autres", items: groups.busAutres },
   ];

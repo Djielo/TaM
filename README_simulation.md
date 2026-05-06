@@ -24,6 +24,23 @@ Le simulateur choisit la geometrie dans cet ordre:
 Ce mecanisme permet d'avoir un trace tram realiste sur les lignes 1 a 5 quand
 la donnee tram est disponible localement.
 
+## MàJ automatique (GitHub Pages)
+
+Objectif : générer `simulation_data.json` **à distance** et publier un site statique
+(HTML/JS + JSON) sur la branche **`gh-pages`**.
+
+Workflows (dans `.github/workflows/`) :
+
+- `simulation-data-daily.yml` : MàJ quotidienne (rebuild + publication `gh-pages`)
+- `simulation-data-monthly.yml` : MàJ mensuelle (rebuild + publication `gh-pages`)
+- `pages-sync-on-push.yml` : après push sur `master`, republie `gh-pages`
+
+Réglage GitHub : **Settings → Pages → Source = Deploy from a branch**, puis
+**Branch = `gh-pages`** et **Folder = `/ (root)`**.
+
+Le script CI utilise `scripts/refresh_simulation_opendata.py` (télécharge GTFS + GeoJSON
+réseau tram/bus, puis lance `build_simulator_data.py`).
+
 ## Lancer le prototype
 
 1. Generer les donnees de simulation:
