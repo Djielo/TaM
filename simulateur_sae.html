@@ -2101,6 +2101,82 @@
     <script src="vendor/leaflet/leaflet.js"></script>
     <script src="vendor/leaflet/leaflet-rotate.js"></script>
     <script src="guidage_troncons_arrets.js"></script>
+    <script>
+      // Bouton Aide « Données réseau » : volontairement autonome.
+      // Il doit fonctionner même si le JS principal du simulateur ne s’exécute pas.
+      (function () {
+        function openAppDialog(title, bodyText) {
+          var dlg = document.getElementById("appMessageDialog");
+          var titleEl = document.getElementById("appMessageDialogTitle");
+          var bodyEl = document.getElementById("appMessageDialogBody");
+          if (dlg && typeof dlg.showModal === "function" && titleEl && bodyEl) {
+            titleEl.textContent = title || "Simulateur SAE TAM";
+            bodyEl.textContent = String(bodyText || "");
+            dlg.returnValue = "";
+            dlg.showModal();
+            return;
+          }
+          alert(String(bodyText || ""));
+        }
+
+        function formatMeta(meta) {
+          var m = meta || {};
+          var lines = [
+            "Données réseau",
+            "",
+            "Généré le : " + (m.generated_at || "-"),
+            "Empreinte (dataset_digest) : " + (m.dataset_digest || "-"),
+            "Nombre de lignes : " + (m.route_count != null ? m.route_count : "-"),
+            "Nombre de variantes : " +
+              (m.pattern_count != null ? m.pattern_count : "-"),
+            "Tracés bus réseau : " +
+              (m.bus_network_feature_count != null
+                ? m.bus_network_feature_count
+                : "-"),
+            "Tracés tram réseau : " +
+              (m.tram_network_feature_count != null
+                ? m.tram_network_feature_count
+                : "-"),
+          ];
+          return lines.join("\n");
+        }
+
+        async function showNetworkData() {
+          try {
+            // Si le JS principal a déjà chargé data.meta, on l’utilise.
+            if (window.data && window.data.meta) {
+              openAppDialog("Simulateur SAE TAM", formatMeta(window.data.meta));
+              return;
+            }
+          } catch (e) {
+            /* ignore */
+          }
+          try {
+            var resp = await fetch("./simulation_data.json", { cache: "no-store" });
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            var json = await resp.json();
+            openAppDialog("Simulateur SAE TAM", formatMeta(json && json.meta));
+          } catch (e2) {
+            openAppDialog(
+              "Simulateur SAE TAM",
+              "Données réseau\n\nImpossible de charger simulation_data.json.\n\n" +
+                String(e2 && (e2.message || e2) ? (e2.message || e2) : "Erreur"),
+            );
+          }
+        }
+
+        window.tamShowNetworkDataModal = showNetworkData;
+        document.addEventListener("DOMContentLoaded", function () {
+          var btn = document.getElementById("helpShowNetworkDataBtn");
+          if (btn) {
+            btn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              showNetworkData();
+            });
+          }
+        });
+      })();
+    </script>
     <script src="simulateur_sae/simulateur_sae_1_state_mission.js"></script>
     <script src="simulateur_sae/simulateur_sae_2_deviations.js"></script>
     <script src="simulateur_sae/simulateur_sae_3_ui_simulation.js"></script>

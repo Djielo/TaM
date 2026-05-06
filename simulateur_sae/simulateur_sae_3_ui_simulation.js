@@ -1343,6 +1343,35 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
   });
 }
 
+// Lignes exploitées TaM en direct (utilisé uniquement pour le tri/affichage).
+// NB: les codes sont déjà "nettoyés" (T1->"1") dans `build_simulator_data.py`.
+const TAM_CORE_ROUTE_CODES = new Set([
+  "1",
+  "2",
+  "3",
+  "4",
+  "5", // Tram T1..T5
+  "A", // Navette
+  "6",
+  "7",
+  "8",
+  "10",
+  "11",
+  "13",
+  "14",
+  "15",
+  "16",
+  "17",
+  "19",
+  "52",
+  "53",
+]);
+
+function isTamCoreLineCode(code) {
+  const c = String(code || "").trim();
+  return !!c && TAM_CORE_ROUTE_CODES.has(c);
+}
+
 function updateLines() {
   const byCode = new Map();
   for (const p of data.patterns) {
@@ -1370,12 +1399,17 @@ function updateLines() {
 
   lineSelect.innerHTML = "";
   lineOptionLookup = [];
+  const allTram = lineOptions.filter(isTramDisplayLine);
+  const allNavette = lineOptions.filter((x) => String(x.route_short_name) === "A");
+  const allBus = lineOptions.filter(
+    (x) => !isTramDisplayLine(x) && String(x.route_short_name) !== "A",
+  );
   const groups = {
-    tram: lineOptions.filter(isTramDisplayLine),
-    navette: lineOptions.filter((x) => String(x.route_short_name) === "A"),
-    bus: lineOptions.filter(
-      (x) => !isTramDisplayLine(x) && String(x.route_short_name) !== "A",
-    ),
+    tramTam: allTram.filter((x) => isTamCoreLineCode(x.route_short_name)),
+    tramAutres: allTram.filter((x) => !isTamCoreLineCode(x.route_short_name)),
+    navette: allNavette,
+    busTam: allBus.filter((x) => isTamCoreLineCode(x.route_short_name)),
+    busAutres: allBus.filter((x) => !isTamCoreLineCode(x.route_short_name)),
   };
 
   /**
@@ -1402,9 +1436,11 @@ function updateLines() {
     lineSelect.appendChild(og);
   }
 
-  addLineGroup("Tram", groups.tram);
+  addLineGroup("Tram — Réseau TaM", groups.tramTam);
+  addLineGroup("Tram — Autres", groups.tramAutres);
   addLineGroup("Navette", groups.navette);
-  addLineGroup("Bus", groups.bus);
+  addLineGroup("Bus — Réseau TaM", groups.busTam);
+  addLineGroup("Bus — Autres", groups.busAutres);
 
   // Positionner sur la premiere vraie ligne selectable.
   for (let i = 0; i < lineSelect.options.length; i++) {
@@ -1433,9 +1469,11 @@ function rebuildLineCustomList(groups) {
     return;
   }
   const sections = [
-    { label: "Tram", items: groups.tram },
+    { label: "Tram — Réseau TaM", items: groups.tramTam },
+    { label: "Tram — Autres", items: groups.tramAutres },
     { label: "Navette", items: groups.navette },
-    { label: "Bus", items: groups.bus },
+    { label: "Bus — Réseau TaM", items: groups.busTam },
+    { label: "Bus — Autres", items: groups.busAutres },
   ];
   for (const sec of sections) {
     if (!sec.items || !sec.items.length) {
