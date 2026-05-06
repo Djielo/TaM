@@ -115,84 +115,6 @@ function stampDeviationItemPayloadMeta(cur, p, nowIso) {
   cur.pattern_signature_snapshot = getPatternDigest(p);
   cur.dataset_digest_snapshot = datasetDigestLoaded || "";
   cur.updated_at = nowIso;
-  cur.route_short_name_snapshot = String(p.route_short_name || "").trim();
-}
-
-/**
- * Résolution d’une fiche locale vers le jeu `data.patterns` courant :
- * même `pattern_id`, sinon même `pattern_signature` si l’empreinte est encore présente
- * après une mise à jour Open Data (identifiants de variante différents).
- */
-function resolveDeviationPatternForItem(item) {
-  if (!item || !Array.isArray(data?.patterns)) {
-    return null;
-  }
-  const pidWant = String(item.pattern_id || "");
-  if (pidWant) {
-    const byId = data.patterns.find(
-      (p) => String(p.pattern_id || "") === pidWant,
-    );
-    if (byId) {
-      return byId;
-    }
-  }
-  const sig = String(item.pattern_signature_snapshot || "").trim();
-  if (!sig || sig === "legacy_missing") {
-    return null;
-  }
-  const matches = data.patterns.filter(
-    (p) => String(p.pattern_signature || "").trim() === sig,
-  );
-  if (!matches.length) {
-    return null;
-  }
-  if (matches.length === 1) {
-    return matches[0];
-  }
-  const pref = String(item.route_short_name_snapshot || "").trim();
-  const hinted =
-    pref &&
-    matches.find((p) => String(p.route_short_name || "").trim() === pref);
-  return hinted || matches[0];
-}
-
-/**
- * Remappe `pattern_id` et méta après changement du JSON simulateur tout en gardant le payload utiliseur.
- */
-function migrateDeviationRecordsToCurrentPatterns() {
-  if (!Array.isArray(data?.patterns) || !data.patterns.length) {
-    return;
-  }
-  const st = readDeviationStore();
-  if (!st.items?.length) {
-    return;
-  }
-  let changed = false;
-  const nowIso = new Date().toISOString();
-  for (const it of st.items) {
-    const pidWant = String(it.pattern_id || "");
-    const byId =
-      pidWant &&
-      data.patterns.find((p) => String(p.pattern_id || "") === pidWant);
-    if (byId) {
-      const snapMissing = !String(it.route_short_name_snapshot || "").trim();
-      if (snapMissing) {
-        it.route_short_name_snapshot = String(byId.route_short_name || "").trim();
-        changed = true;
-      }
-      continue;
-    }
-    const pat = resolveDeviationPatternForItem(it);
-    if (!pat) {
-      continue;
-    }
-    stampDeviationItemPayloadMeta(it, pat, nowIso);
-    it.route_short_name_snapshot = String(pat.route_short_name || "").trim();
-    changed = true;
-  }
-  if (changed) {
-    writeDeviationStore(st);
-  }
 }
 
 function formatLineLabelForDeviation(pat) {
@@ -279,19 +201,9 @@ function normalizeDeviationLabel(raw) {
 }
 
 function routeShortNameForSavedDeviation(item) {
-  const pat = resolveDeviationPatternForItem(item);
-  if (pat) {
-    return String(pat.route_short_name || "").trim();
-  }
-  return String(item?.route_short_name_snapshot || "").trim();
-}
-
-function deviationVariantTagForStoredItem(it) {
-  const pat = resolveDeviationPatternForItem(it);
-  if (!pat) {
-    return "";
-  }
-  return formatVariantLabelForDeviation(pat);
+  const pid = String(item?.pattern_id || "");
+  const pat = data?.patterns?.find((p) => String(p.pattern_id || "") === pid);
+  return String(pat?.route_short_name || "");
 }
 
 function currentMissionRouteShortName() {
@@ -642,8 +554,8 @@ function sortSavedDeviationsForUi(items) {
       numeric: true,
     });
     if (c !== 0) return c;
-    const va = String(deviationVariantTagForStoredItem(a) || "");
-    const vb = String(deviationVariantTagForStoredItem(b) || "");
+    const va = String(getDeviationVariantTag(a.pattern_id) || "");
+    const vb = String(getDeviationVariantTag(b.pattern_id) || "");
     return va.localeCompare(vb, "fr", { numeric: true });
   });
   return arr;
@@ -659,7 +571,7 @@ function rebuildDuplicateFromOptions() {
   for (const it of sorted) {
     const opt = document.createElement("option");
     opt.value = it.id;
-    const vt = deviationVariantTagForStoredItem(it);
+    const vt = getDeviationVariantTag(it.pattern_id);
     opt.textContent = vt
       ? `${getDeviationLabelForUi(it)} — ${vt}`
       : getDeviationLabelForUi(it);
@@ -681,10 +593,7 @@ function refreshDuplicateTargetsForSelectedSource() {
   const src = st.items.find(
     (x) => x.id === duplicateFromDeviationSelectEl.value,
   );
-  const srcPat = src ? resolveDeviationPatternForItem(src) : null;
-  rebuildDuplicateVariantChoices(
-    srcPat ? srcPat.pattern_id : src?.pattern_id || null,
-  );
+  rebuildDuplicateVariantChoices(src?.pattern_id || null);
   const originId = String(src?.origin_deviation_id || src?.id || "");
   const remaining = duplicateVariantChoices.filter((pat) => {
     const existing = st.items.find(
@@ -812,7 +721,9 @@ function refreshSavedDeviationBannerAndDup(item) {
     refreshRecapDeviationMeta();
     return;
   }
-  const anchor = resolveDeviationPatternForItem(item);
+  const anchor = data.patterns.find(
+    (p) => (p.pattern_id || "") === item.pattern_id,
+  );
 
   if (duplicateFromDeviationSelectEl) {
     duplicateFromDeviationSelectEl.value = item.id || "";
@@ -889,7 +800,6 @@ function savedDeviationEnsureOptionSelectedForItemId(deviationItemId) {
 
 function refreshSavedDeviationSelectOptions() {
   if (!savedDeviationSelectEl) return;
-  migrateDeviationRecordsToCurrentPatterns();
   const prevSelectedId =
     savedDeviationSelectEl.selectedOptions?.[0]?.dataset?.deviationId || "";
   const st = readDeviationStore();
@@ -908,6 +818,7 @@ function refreshSavedDeviationSelectOptions() {
       datasetDigestLoaded !== it.dataset_digest_snapshot
         ? " [jeu données ≠]"
         : "";
+    const vt = getDeviationVariantTag(it.pattern_id);
     const opt = document.createElement("option");
     opt.value = String(it.id);
     opt.dataset.deviationId = it.id;
@@ -1055,12 +966,16 @@ async function loadDeviationItemIntoApp(item, opts) {
     tamAppAlert("Aucune entrée sélectionnée.");
     return false;
   }
-  const pat = resolveDeviationPatternForItem(item);
+  const pat = data?.patterns?.find(
+    (p) => (p.pattern_id || "") === item.pattern_id,
+  );
   if (!pat) {
-    tamAppAlert(
-      "Mission inconnue : cette déviation ne correspond à aucune variante du fichier réseau actuel.\n\n" +
-        "Cela peut arriver après une grosse mise à jour GTFS si la ligne ou le tracé a changé dans Open Data.",
-    );
+    // Après une mise à jour des données, un pattern_id peut ne plus exister.
+    // Proposer une action simple plutôt que de "perdre" la fiche.
+    if (await showDeviationRelinkDialog(item)) {
+      return false;
+    }
+    tamAppAlert("Mission inconnue : pattern_id absent du JSON chargé.");
     return false;
   }
   if (!selectMissionSelectorsForPattern(pat)) {
@@ -1097,6 +1012,182 @@ async function loadDeviationItemIntoApp(item, opts) {
   showMapMissionHud();
   liveDeviationLoadedItemId = String(item.id || "");
   return true;
+}
+
+function showDeviationRelinkDialog(item) {
+  const dlg = document.getElementById("appMessageDialog");
+  const titleEl = document.getElementById("appMessageDialogTitle");
+  const bodyEl = document.getElementById("appMessageDialogBody");
+  const defaultActions = dlg?.querySelector("form.app-message-dialog__actions");
+
+  if (!dlg || typeof dlg.showModal !== "function" || !titleEl || !bodyEl) {
+    return Promise.resolve(false);
+  }
+
+  const itemId = String(item?.id || "");
+  const itemLabel = String(item?.label || item?.pattern_id || "Fiche");
+  const pid = String(item?.pattern_id || "");
+  const sig = String(item?.pattern_signature_snapshot || "");
+  const dSaved = String(item?.dataset_digest_snapshot || "");
+  const dLive = String(datasetDigestLoaded || "");
+
+  titleEl.textContent = "Fiche à revalider";
+  bodyEl.innerHTML = "";
+
+  const intro = document.createElement("p");
+  intro.style.margin = "0 0 8px";
+  intro.textContent =
+    "Cette fiche ne correspond plus automatiquement aux missions du réseau chargé.";
+  bodyEl.appendChild(intro);
+
+  const meta = document.createElement("p");
+  meta.style.margin = "0 0 10px";
+  meta.innerHTML =
+    `<strong>Fiche :</strong> ${itemLabel}<br>` +
+    `<strong>pattern_id enregistré :</strong> ${pid || "—"}<br>` +
+    `<strong>Empreinte fiche :</strong> ${dSaved || "—"}<br>` +
+    `<strong>Empreinte réseau :</strong> ${dLive || "—"}`;
+  bodyEl.appendChild(meta);
+
+  const actions = document.createElement("div");
+  actions.className = "app-message-dialog__actions app-message-dialog__actions--split";
+
+  function mkBtn(label, cls, title) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls || "";
+    b.textContent = label;
+    if (title) b.title = title;
+    return b;
+  }
+
+  const btnKeep = mkBtn(
+    "Conserver la fiche",
+    "secondary app-message-dialog__ok",
+    "Ne modifie pas la fiche. Vous pourrez la revalider plus tard.",
+  );
+  const btnRelink = mkBtn(
+    "Rattacher à la mission sélectionnée",
+    "app-message-dialog__ok",
+    "Met à jour la fiche pour la variante actuellement choisie dans « Ligne ».",
+  );
+  const btnDup = mkBtn(
+    "Dupliquer vers la mission sélectionnée",
+    "secondary app-message-dialog__ok",
+    "Crée une nouvelle fiche rattachée à la mission choisie, sans toucher à l’originale.",
+  );
+
+  const btnDetails = mkBtn(
+    "Détails",
+    "secondary app-message-dialog__ok",
+    "Explication des 3 choix.",
+  );
+
+  actions.appendChild(btnKeep);
+  actions.appendChild(btnRelink);
+  actions.appendChild(btnDup);
+  actions.appendChild(btnDetails);
+  bodyEl.appendChild(actions);
+
+  const note = document.createElement("p");
+  note.style.margin = "10px 0 0";
+  note.style.opacity = "0.9";
+  note.textContent =
+    "Astuce : allez dans l’onglet « Ligne », choisissez une mission, puis utilisez « Rattacher » ou « Dupliquer ».";
+  bodyEl.appendChild(note);
+
+  function closeAndRestore() {
+    try {
+      dlg.close();
+    } catch (e) {
+      /* ignore */
+    }
+    if (defaultActions) defaultActions.style.display = "";
+  }
+
+  function showDetails() {
+    const lines = [
+      "Choix disponibles :",
+      "",
+      "1) Conserver la fiche :",
+      "- Ne change rien. La fiche reste en local, mais elle n’est plus rattachée automatiquement.",
+      "",
+      "2) Rattacher à la mission sélectionnée :",
+      "- Met à jour la fiche pour la mission actuellement choisie (ligne / sens / variante).",
+      "",
+      "3) Dupliquer vers la mission sélectionnée :",
+      "- Conserve l’originale intacte et crée une copie rattachée à la mission choisie.",
+    ];
+    showAppMessageDialog("Aide — revalidation fiche", lines.join("\n"));
+  }
+
+  function relinkOrDuplicate(mode) {
+    const target = typeof selectedPattern === "function" ? selectedPattern() : null;
+    if (!target || !target.pattern_id) {
+      tamAppAlert("Choisissez d’abord une mission (onglet « Ligne »).");
+      return;
+    }
+    const st = readDeviationStore();
+    const nowIso = new Date().toISOString();
+    if (mode === "relink") {
+      const idx = st.items.findIndex((x) => String(x.id || "") === itemId);
+      if (idx < 0) {
+        tamAppAlert("Fiche introuvable dans le stockage local.");
+        return;
+      }
+      stampDeviationItemPayloadMeta(st.items[idx], target, nowIso);
+      writeDeviationStore(st);
+      refreshDeviationStoreSelectorsAfterMutation();
+      tamAppAlert("Fiche rattachée à la mission sélectionnée.");
+      closeAndRestore();
+      return;
+    }
+    if (mode === "duplicate") {
+      const copy = tamCloneSerializable({}, item);
+      copy.id = generateLocalDeviationRecordId();
+      copy.origin_deviation_id = String(item?.origin_deviation_id || item?.id || "");
+      stampDeviationItemPayloadMeta(copy, target, nowIso);
+      // Garder le libellé « temporaire » si c’était le cas, sinon label auto.
+      copy.label = duplicateDeviationLabelForVariant(item, target);
+      st.items.push(copy);
+      writeDeviationStore(st);
+      refreshDeviationStoreSelectorsAfterMutation();
+      selectSavedDeviationSelectOptionByDeviationId(copy.id);
+      tamAppAlert("Copie créée et rattachée à la mission sélectionnée.");
+      closeAndRestore();
+      return;
+    }
+  }
+
+  // Masquer le bouton OK par défaut : on utilise nos boutons explicites.
+  if (defaultActions) defaultActions.style.display = "none";
+
+  return new Promise((resolve) => {
+    btnKeep.addEventListener("click", () => {
+      closeAndRestore();
+      resolve(true);
+    });
+    btnRelink.addEventListener("click", () => {
+      relinkOrDuplicate("relink");
+      resolve(true);
+    });
+    btnDup.addEventListener("click", () => {
+      relinkOrDuplicate("duplicate");
+      resolve(true);
+    });
+    btnDetails.addEventListener("click", () => {
+      showDetails();
+      resolve(true);
+    });
+    dlg.addEventListener(
+      "close",
+      () => {
+        if (defaultActions) defaultActions.style.display = "";
+      },
+      { once: true },
+    );
+    dlg.showModal();
+  });
 }
 
 /** JSON stable pour comparer deux payloads (sessions temporaire / planifiée). */

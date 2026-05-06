@@ -34,8 +34,6 @@ const LS_KEY_HEADING = "tam_sim_heading_up";
 const LS_KEY_OPS_LOG = "tam_sim_ops_log";
 const LS_KEY_RECAP = "tam_sim_recap_on";
 const LS_KEY_DRIVE_MODE = "tam_sim_drive_mode";
-/** Dernière empreinte `simulation_data.json` déjà signalée à l’utilisateur (évite popup répétée). */
-const LS_KEY_DATA_MARKER_SEEN = "tam_sim_dataset_marker_seen";
 const LS_KEY_DEVIATIONS = "tam_sim_saved_deviations_v1";
 /** Titre des boîtes de dialogue HTML du simulateur (remplace l’origine « localhost » du navigateur). */
 const TAM_APP_DIALOG_TITLE = "Simulateur SAE TAM";
@@ -1817,13 +1815,10 @@ function tamAppAlert(bodyText) {
  * ni case « Ne pas autoriser… à vous solliciter à nouveau » (Chrome, alertes répétées).
  * Retombe sur `window.alert` si `<dialog>` indisponible.
  */
-function showAppMessageDialog(title, bodyText, onCloseMaybe) {
+function showAppMessageDialog(title, bodyText) {
   const dlg = document.getElementById("appMessageDialog");
   if (!dlg || typeof dlg.showModal !== "function") {
     window.alert((title ? `${title}\n\n` : "") + String(bodyText || ""));
-    if (typeof onCloseMaybe === "function") {
-      onCloseMaybe();
-    }
     return;
   }
   if (!dlg.dataset.tamBackdropCloseWired) {
@@ -1838,13 +1833,6 @@ function showAppMessageDialog(title, bodyText, onCloseMaybe) {
   if (bEl) bEl.textContent = bodyText || "";
   dlg.returnValue = "";
   dlg.showModal();
-  if (typeof onCloseMaybe === "function") {
-    const handler = () => {
-      dlg.removeEventListener("close", handler);
-      onCloseMaybe();
-    };
-    dlg.addEventListener("close", handler);
-  }
 }
 
 /**

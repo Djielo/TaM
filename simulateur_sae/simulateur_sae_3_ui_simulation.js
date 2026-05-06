@@ -641,63 +641,6 @@ function linePriority(item) {
   return 3; // reste
 }
 
-/**
- * Métadonnées build : lignes exploitées « cœur » TaM vs délégataires (liste complète GTFS).
- * @returns {Set<string>|null}
- */
-function tamCoreRouteCodesSet() {
-  const codes = data?.meta?.tam_core_route_codes;
-  if (!Array.isArray(codes) || !codes.length) {
-    return null;
-  }
-  return new Set(codes.map((c) => String(c)));
-}
-
-/**
- * Sections optgroup/listbox : avec ou sans séparation Réseau TaM / sous-traitance.
- * @returns {{ split: boolean, sections: Array<{label: string, items: object[]}> }}
- */
-function computeLineMissionSections(lineOpts) {
-  const tamCodes = tamCoreRouteCodesSet();
-  const tramItems = lineOpts.filter(isTramDisplayLine);
-  const navetteItems = lineOpts.filter((x) => String(x.route_short_name) === "A");
-  const busItems = lineOpts.filter(
-    (x) => !isTramDisplayLine(x) && String(x.route_short_name) !== "A",
-  );
-
-  function pickTamSlice(items, wantTamSlice) {
-    if (tamCodes === null) return items;
-    return items.filter((x) => {
-      const inTam = tamCodes.has(String(x.route_short_name));
-      return inTam === wantTamSlice;
-    });
-  }
-
-  /** @type {Array<{label: string, items: object[]}>} */
-  const sections = [];
-
-  function pushNonempty(label, items) {
-    const sorted = sortLineItemsForDisplay(items);
-    if (sorted.length) sections.push({ label, items: sorted });
-  }
-
-  if (tamCodes === null) {
-    pushNonempty("Tram", tramItems);
-    pushNonempty("Navette", navetteItems);
-    pushNonempty("Bus", busItems);
-    return { split: false, sections };
-  }
-
-  /* Ordre affichage : tout le périmètre TaM (tram → navette → bus), puis sous-traitance de la même façon. */
-  pushNonempty("Réseau TaM — tramways", pickTamSlice(tramItems, true));
-  pushNonempty("Réseau TaM — navette", pickTamSlice(navetteItems, true));
-  pushNonempty("Réseau TaM — bus", pickTamSlice(busItems, true));
-  pushNonempty("Sous-traitance — tramways", pickTamSlice(tramItems, false));
-  pushNonempty("Sous-traitance — navette", pickTamSlice(navetteItems, false));
-  pushNonempty("Sous-traitance — bus", pickTamSlice(busItems, false));
-  return { split: true, sections };
-}
-
 function displayLineLabel(item) {
   const code = String(item.route_short_name);
   if (isTramDisplayLine(item)) return `T${code}`;
@@ -1400,6 +1343,35 @@ function wireCorrespondenceBadgeInteractions(el, stopObj, routeItem) {
   });
 }
 
+// Lignes exploitées TaM en direct (utilisé uniquement pour le tri/affichage).
+// NB: les codes sont déjà "nettoyés" (T1->"1") dans `build_simulator_data.py`.
+const TAM_CORE_ROUTE_CODES = new Set([
+  "1",
+  "2",
+  "3",
+  "4",
+  "5", // Tram T1..T5
+  "A", // Navette
+  "6",
+  "7",
+  "8",
+  "10",
+  "11",
+  "13",
+  "14",
+  "15",
+  "16",
+  "17",
+  "19",
+  "52",
+  "53",
+]);
+
+function isTamCoreLineCode(code) {
+  const c = String(code || "").trim();
+  return !!c && TAM_CORE_ROUTE_CODES.has(c);
+}
+
 function updateLines() {
   const byCode = new Map();
   for (const p of data.patterns) {
@@ -1427,7 +1399,20 @@ function updateLines() {
 
   lineSelect.innerHTML = "";
   lineOptionLookup = [];
-  const missionSections = computeLineMissionSections(lineOptions);
+  const allTram = lineOptions.filter(isTramDisplayLine);
+  const allNavette = lineOptions.filter(
+    (x) => String(x.route_short_name) === "A",
+  );
+  const allBus = lineOptions.filter(
+    (x) => !isTramDisplayLine(x) && String(x.route_short_name) !== "A",
+  );
+  const groups = {
+    tramTam: allTram.filter((x) => isTamCoreLineCode(x.route_short_name)),
+    tramAutres: allTram.filter((x) => !isTamCoreLineCode(x.route_short_name)),
+    navette: allNavette,
+    busTam: allBus.filter((x) => isTamCoreLineCode(x.route_short_name)),
+    busAutres: allBus.filter((x) => !isTamCoreLineCode(x.route_short_name)),
+  };
 
   /**
    * Note mobile (Chrome / WebView) : des options "fantôme" (spacer) entre
@@ -1453,9 +1438,11 @@ function updateLines() {
     lineSelect.appendChild(og);
   }
 
-  for (const sec of missionSections.sections) {
-    addLineGroup(sec.label, sec.items);
-  }
+  addLineGroup("Tram — Réseau TaM", groups.tramTam);
+  addLineGroup("Tram — Autres", groups.tramAutres);
+  addLineGroup("Navette - Réseau TaM", groups.navette);
+  addLineGroup("Bus — Réseau TaM", groups.busTam);
+  addLineGroup("Bus — Autres", groups.busAutres);
 
   // Positionner sur la premiere vraie ligne selectable.
   for (let i = 0; i < lineSelect.options.length; i++) {
@@ -1464,17 +1451,16 @@ function updateLines() {
       break;
     }
   }
-  rebuildLineCustomList(missionSections.sections);
+  rebuildLineCustomList(groups);
   lineSelect.dispatchEvent(new Event("change"));
 }
 
-/** @param {Array<{label: string, items: object[]}>|null} sections */
-function rebuildLineCustomList(sections) {
+function rebuildLineCustomList(groups) {
   if (!lineSelectListbox) {
     return;
   }
   lineSelectListbox.innerHTML = "";
-  if (!lineOptionLookup.length || !sections) {
+  if (!lineOptionLookup.length || !groups) {
     if (lineSelectTrigger) {
       lineSelectTrigger.setAttribute("aria-expanded", "false");
     }
@@ -1484,6 +1470,13 @@ function rebuildLineCustomList(sections) {
     lineListboxOpen = false;
     return;
   }
+  const sections = [
+    { label: "Tram — Réseau TaM", items: groups.tramTam },
+    { label: "Tram — Autres", items: groups.tramAutres },
+    { label: "Navette - Réseau TaM", items: groups.navette },
+    { label: "Bus — Réseau TaM", items: groups.busTam },
+    { label: "Bus — Autres", items: groups.busAutres },
+  ];
   for (const sec of sections) {
     if (!sec.items || !sec.items.length) {
       continue;
@@ -2342,58 +2335,6 @@ function reverseCoordinates(coords) {
   return copy;
 }
 
-/**
- * GeoJSON Open Data 3M : `sens` contient « Aller » ou « Retour ».
- * Sur le GTFS TaM vérifié en local, direction_id "0" correspond aux tracés « Aller » et "1" aux « Retour »
- * pour une même ligne — sans ce filtre, les deux sens restent candidats et le score bout-à-bout peut
- * choisir le mauvais tracé (impression « aller + retour » mélangés).
- */
-function classifyNetworkSensLabel(feat) {
-  const raw = String(feat?.sens || "").trim().toLowerCase();
-  if (!raw) {
-    return "unknown";
-  }
-  if (raw.includes("aller")) {
-    return "aller";
-  }
-  if (raw.includes("retour")) {
-    return "retour";
-  }
-  return "unknown";
-}
-
-function networkFeaturesMatchingTripDirection(candidates, pattern) {
-  if (!candidates.length) {
-    return candidates;
-  }
-  const dir = String(pattern.direction_id ?? "").trim();
-  if (dir !== "0" && dir !== "1") {
-    return candidates;
-  }
-  const wantAller = dir === "0";
-  const aller = [];
-  const retour = [];
-  const unknown = [];
-  for (const f of candidates) {
-    const cls = classifyNetworkSensLabel(f);
-    if (cls === "aller") {
-      aller.push(f);
-    } else if (cls === "retour") {
-      retour.push(f);
-    } else {
-      unknown.push(f);
-    }
-  }
-  const directional = wantAller ? aller : retour;
-  if (directional.length) {
-    return directional;
-  }
-  if (unknown.length) {
-    return unknown;
-  }
-  return candidates;
-}
-
 function getNetworkGeometryByLine(features, pattern) {
   if (!features.length) return null;
 
@@ -2401,10 +2342,9 @@ function getNetworkGeometryByLine(features, pattern) {
   const start = pattern.coordinates[0];
   const end = pattern.coordinates[pattern.coordinates.length - 1];
 
-  let candidates = features.filter(
+  const candidates = features.filter(
     (f) => String(f.line_code) === line && f.coordinates?.length > 1,
   );
-  candidates = networkFeaturesMatchingTripDirection(candidates, pattern);
   if (!candidates.length) return null;
 
   let best = null;
@@ -2440,6 +2380,10 @@ function getNetworkGeometryByLine(features, pattern) {
 
 function getBusNetworkGeometry(pattern) {
   return getNetworkGeometryByLine(data?.bus_network_features || [], pattern);
+}
+
+function getTramNetworkGeometry(pattern) {
+  return getNetworkGeometryByLine(data?.tram_network_features || [], pattern);
 }
 
 function updateStopToStopOverlay() {
@@ -2494,27 +2438,11 @@ async function setMission(pattern, opts) {
   missionName.textContent = `Ligne ${pattern.route_short_name} | ${pattern.headsign} | ${pattern.variant_name}`;
 
   const isTram = String(pattern.route_type) === "0";
+  const tramGeom = isTram ? getTramNetworkGeometry(pattern) : null;
   const busGeom = !isTram ? getBusNetworkGeometry(pattern) : null;
-
-  if (isTram) {
-    // Tram : le GeoJSON LigneTram mélange variantes / sens ; OSRM « voiture » est idiot sur voie réservée.
-    // On fige la carte sur la chaîne des positions GTFS des arrêts du voyage → stable et cohérent avec les arrêts affichés.
-    activeCoordinates =
-      Array.isArray(pattern.coordinates) && pattern.coordinates.length
-        ? pattern.coordinates.map((xy) => [...xy])
-        : [];
-    traceSource = "GTFS arrêt → arrêt (tram)";
-    if (!activeCoordinates.length) {
-      activeCoordinates = await fetchRoadGeometry(pattern);
-      traceSource =
-        activeCoordinates.length && activeCoordinates !== pattern.coordinates
-          ? "OSRM routier (tram, secours)"
-          : "GTFS arrêt → arrêt";
-      if (!activeCoordinates.length) {
-        activeCoordinates = [...(pattern.coordinates || [])];
-        traceSource = "GTFS arrêt → arrêt";
-      }
-    }
+  if (tramGeom) {
+    activeCoordinates = tramGeom.coords;
+    traceSource = `Réseau tram 3M (${tramGeom.nom_ligne || "ligne"})`;
   } else if (busGeom) {
     activeCoordinates = busGeom.coords;
     traceSource = `Réseau bus 3M (${busGeom.nom_ligne || "ligne"})`;
@@ -4070,6 +3998,43 @@ voiceTestBtn.addEventListener("click", () => {
   speakProchainArret("Test, Place de l'Europe", true);
 });
 
+function showNetworkDataModalFromHelp() {
+  const meta = data?.meta || null;
+  if (!meta) {
+    const msg =
+      "Données réseau\n\nLes données ne sont pas encore chargées (simulation_data.json).";
+    try {
+      showAppMessageDialog(TAM_APP_DIALOG_TITLE, msg);
+    } catch (e) {
+      alert(msg);
+    }
+    return;
+  }
+  const lines = [
+    "Données réseau",
+    "",
+    `Généré le : ${meta.generated_at || "-"}`,
+    `Empreinte (dataset_digest) : ${meta.dataset_digest || "-"}`,
+    `Nombre de lignes : ${meta.route_count ?? "-"}`,
+    `Nombre de variantes : ${meta.pattern_count ?? "-"}`,
+    `Tracés bus réseau : ${meta.bus_network_feature_count ?? "-"}`,
+    `Tracés tram réseau : ${meta.tram_network_feature_count ?? "-"}`,
+  ];
+  const body = lines.join("\n");
+  try {
+    showAppMessageDialog(TAM_APP_DIALOG_TITLE, body);
+  } catch (e) {
+    alert(body);
+  }
+}
+
+// Hook global (debug + bouton Aide en onclick).
+try {
+  window.tamShowNetworkDataModal = showNetworkDataModalFromHelp;
+} catch (e) {
+  /* ignore */
+}
+
 initVocalUI();
 try {
   const savedDriveMode = localStorage.getItem(LS_KEY_DRIVE_MODE);
@@ -4114,6 +4079,9 @@ missionTabBtn?.addEventListener("click", () => setPanelTab("mission"));
 opsTabBtn?.addEventListener("click", () => setPanelTab("ops"));
 voiceTabBtn?.addEventListener("click", () => setPanelTab("voice"));
 helpTabBtn?.addEventListener("click", () => setPanelTab("help"));
+document
+  .getElementById("helpShowNetworkDataBtn")
+  ?.addEventListener("click", showNetworkDataModalFromHelp);
 controlPanelEl
   ?.querySelectorAll(".panel-ops-subtabs [data-ops-subtab]")
   .forEach((btn) => {
@@ -4138,119 +4106,12 @@ try {
 refreshMapLayout();
 applyMapVisualProfile();
 
-/** Une fois par jeu chargé : si `dataset_digest` (ou date) a changé depuis la dernière visite, message modal puis mémorisation dans localStorage. */
-function notifySimulationDatasetRefreshIfNeeded(meta) {
-  const digest = String(meta?.dataset_digest || "").trim();
-  const genAt = String(meta?.generated_at || "").trim();
-  const marker = digest || genAt;
-  if (!marker) {
-    return;
-  }
-
-  let prev = "";
-  try {
-    prev = localStorage.getItem(LS_KEY_DATA_MARKER_SEEN) || "";
-  } catch (e) {
-    /* ignore */
-  }
-  if (prev === marker) {
-    return;
-  }
-
-  let horaire = "";
-  if (genAt) {
-    const d = new Date(genAt);
-    if (!Number.isNaN(d.getTime())) {
-      horaire = d.toLocaleString("fr-FR", {
-        dateStyle: "short",
-        timeStyle: "short",
-      });
-    }
-  }
-
-  const scope = String(meta?.routes_scope || "");
-  let sous =
-    "Les lignes et arrêts exploités directement par TaM ont été mis à jour depuis Open Data ; les autres lignes reposent sur le dernier export mensuel complet.";
-  if (scope === "all") {
-    sous =
-      "Les lignes et arrêts de base ont été mis à jour depuis Open Data (réseau complet).";
-  } else if (scope === "tam_core") {
-    sous =
-      "Les lignes et arrêts de base ont été mis à jour depuis Open Data (périmètre TaM uniquement).";
-  }
-
-  const lines = [
-    "Une nouvelle version du fichier réseau utilisée par le simulateur a été détectée.",
-    sous,
-  ];
-  if (horaire) {
-    lines.push(`Horodatage du jeu chargé : ${horaire}.`);
-  }
-
-  const persist = () => {
-    try {
-      localStorage.setItem(LS_KEY_DATA_MARKER_SEEN, marker);
-    } catch (e2) {
-      /* ignore */
-    }
-  };
-
-  window.setTimeout(() => {
-    showAppMessageDialog("Données réseau", lines.join("\n\n"), persist);
-  }, 400);
-}
-
-function simulationDataJsonFetchUrls() {
-  const primary = new URL("simulation_data.json", window.location.href).href;
-  const out = [primary];
-  try {
-    const u = new URL(window.location.href);
-    if (!u.hostname.toLowerCase().endsWith(".github.io")) {
-      return out;
-    }
-    const parts = u.pathname.split("/").filter(Boolean);
-    if (parts.length < 1) {
-      return out;
-    }
-    const repo = parts[0];
-    const owner = u.hostname.replace(/\.github\.io$/i, "");
-    const raw = `https://raw.githubusercontent.com/${owner}/${repo}/gh-pages/simulation_data.json`;
-    if (raw !== primary) {
-      out.push(raw);
-    }
-  } catch (e) {
-    /* ignore */
-  }
-  return out;
-}
-
-function loadSimulationDataJson() {
-  const urls = simulationDataJsonFetchUrls();
-  let i = 0;
-  const next = () => {
-    if (i >= urls.length) {
-      return Promise.reject(new Error("simulation_data.json introuvable"));
-    }
-    const url = urls[i];
-    i += 1;
-    return fetch(url, { cache: "no-store" })
-      .then((resp) => {
-        if (!resp.ok) {
-          return next();
-        }
-        return resp.json();
-      })
-      .catch(() => next());
-  };
-  return next();
-}
-
-loadSimulationDataJson()
+fetch("./simulation_data.json")
+  .then((resp) => resp.json())
   .then((json) => {
     data = json;
     datasetDigestLoaded = String(json?.meta?.dataset_digest || "");
     updateLines();
-    notifySimulationDatasetRefreshIfNeeded(json?.meta);
     applyMapVisualProfile();
     refreshSavedDeviationSelectOptions();
     requestAnimationFrame(tickRaf);
@@ -4258,7 +4119,7 @@ loadSimulationDataJson()
   })
   .catch((err) => {
     tamAppAlert(
-      "Impossible de charger simulation_data.json. En local : lancez build_simulator_data.py. En ligne : GitHub Pages doit servir la branche gh-pages.",
+      "Impossible de charger simulation_data.json. Lancez d'abord build_simulator_data.py",
     );
     console.error(err);
   });

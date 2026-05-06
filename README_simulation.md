@@ -13,13 +13,33 @@ Ce prototype sert a s'entrainer hors terrain avec les donnees GTFS TAM.
 
 ## Sources de trace
 
-Le simulateur choisit la géométrie ainsi :
+Le simulateur choisit la geometrie dans cet ordre:
 
-1. **Tram** (`route_type = 0`) : **tracé GTFS arrêt → arrêt** (positions officielles des arrêts du voyage).  
-   Pas de GeoJSON « LigneTram » à l’affichage : les variantes Open Data et le routage voiture sur voie tram donnaient des résultats peu fiables.
-2. **Bus** : réseau Open Data **`MMM_MMM_BusLigne.json`** si présent dans les données générées, puis OSRM, puis GTFS arrêt → arrêt.
+1. Reseau Open Data 3M (prioritaire)
+   - Tram (`route_type=0`): `MMM_MMM_LigneTram.json`
+   - Bus: `MMM_MMM_BusLigne.json`
+2. Routage routier OSRM (secours)
+3. Trace direct arret->arret GTFS (dernier secours)
 
-*(En local, si vous placez encore `MMM_MMM_LigneTram.json` dans le dépôt, il peut être embarqué dans `simulation_data.json`, mais l’interface tram ne l’utilise plus pour dessiner la mission.)*
+Ce mecanisme permet d'avoir un trace tram realiste sur les lignes 1 a 5 quand
+la donnee tram est disponible localement.
+
+## MàJ automatique (GitHub Pages)
+
+Objectif : générer `simulation_data.json` **à distance** et publier un site statique
+(HTML/JS + JSON) sur la branche **`gh-pages`**.
+
+Workflows (dans `.github/workflows/`) :
+
+- `simulation-data-daily.yml` : MàJ quotidienne (rebuild + publication `gh-pages`)
+- `simulation-data-monthly.yml` : MàJ mensuelle (rebuild + publication `gh-pages`)
+- `pages-sync-on-push.yml` : après push sur `master`, republie `gh-pages`
+
+Réglage GitHub : **Settings → Pages → Source = Deploy from a branch**, puis
+**Branch = `gh-pages`** et **Folder = `/ (root)`**.
+
+Le script CI utilise `scripts/refresh_simulation_opendata.py` (télécharge GTFS + GeoJSON
+réseau tram/bus, puis lance `build_simulator_data.py`).
 
 ## Lancer le prototype
 
@@ -28,48 +48,6 @@ Le simulateur choisit la géométrie ainsi :
 ```bash
 python build_simulator_data.py
 ```
-
-Pour une **base quotidienne** limitée aux lignes **exploitées TaM en direct**
-(trams 1 à 5, navette A, bus 6, 7, 8, 10, 11, etc. — périmètre figé dans
-`build_simulator_data.py`, constante `TAM_CORE_ROUTE_CODES`) :
-
-```bash
-python build_simulator_data.py --routes-scope tam_core
-```
-
-Même périmètre complet (`all`), le JSON peut inclure `meta.tam_core_route_codes`
-: l’interface **sépare** alors « Réseau TaM » et « Sous-traitance » dans le
-menu des lignes. Sans cette clé métadonnées (anciens exports), comportement inchangé
-(Tram / Navette / Bus seulement).
-
-### CI GitHub Pages (MàJ automatique, sans commit bot sur `master`)
-
-Le fichier **`simulation_data.json` n’est pas versionné sur `master`** (voir `.gitignore`).
-Les workflows **génèrent** ce JSON et publient **tout le site statique** sur la branche
-**`gh-pages`** (action **peaceiris**). Avant le build GTFS, **`refresh_simulation_opendata.py`** télécharge le GeoJSON **bus lignes** (`MMM_MMM_BusLigne.json`) pour les tracés bus ; le **tram** s’appuie sur la chaîne **GTFS arrêt → arrêt** à l’affichage (plus stable). Les **tâches planifiées** suffisent pour les données : vous n’avez **pas** à lancer un workflow à la main au quotidien.
-
-#### Réglage GitHub Pages (à ne pas confondre)
-
-Dans **Settings → Pages → Build and deployment** :
-
-1. **Premier menu « Source »** (en haut) : choisissez **Deploy from a branch**.  
-   Ce n’est **pas** la même chose que les menus **Branch** / **Folder** plus bas. Si vous laissez **GitHub Actions** dans **Source**, GitHub ne sert **pas** la branche **gh-pages** : le site peut sembler à jour alors que **`simulation_data.json` manque** (popup dans le simulateur).
-2. Une fois **Deploy from a branch** sélectionné, réglez **Branch** = **`gh-pages`** et **Folder** = **`/ (root)`**, puis enregistrez.
-
-Sans cette combinaison, les workflows peuvent être verts mais le fichier JSON reste **introuvable** sur `…github.io/…/simulation_data.json`.
-
-Fichiers sous **`.github/workflows/`** :
-
-- **`simulation-data-daily.yml`** — chaque jour ~**01:01 UTC** : blend TaM + lignes hors TaM déjà publiées.
-- **`simulation-data-monthly.yml`** — le **1er du mois ~02:01 UTC** : réseau complet.
-- **`pages-sync-on-push.yml`** — **optionnel** : après un push sur `master`, met à jour **gh-pages** avec vos **HTML/JS** (les crons ci‑dessus portent les données).
-
-Script : **`scripts/refresh_simulation_opendata.py`**. Clone local sans JSON :  
-`bash scripts/fetch_simulation_data_local.sh VotreCompte/NomDuRepo`  
-ou `python scripts/refresh_simulation_opendata.py --mode monthly`.
-
-**Note technique** : avant **peaceiris**, la CI **supprime le `.gitignore` copié** dans `_site`. Sinon
-**peaceiris** (`git add --all`) respecterait encore les règles et **n’ajouterait pas** `simulation_data.json` sur **gh-pages**.
 
 2. Demarrer le serveur local TAM (statique + API locale anti-CORS):
 
@@ -152,9 +130,9 @@ curl "http://IP_PUBLIQUE:8000/api/tam/perturbations"
 Section de suivi technique pour controler rapidement la coherence des donnees chargees.
 
 - Periode GTFS locale actuellement detectee: `2026-01-05` -> `2026-03-08`.
-- Les géométries **bus** peuvent provenir du GeoJSON Open Data `BusLigne` si présent dans les données générées.
-- Les lignes **tram** (`route_type=0`) utilisent la **chaîne GTFS arrêt → arrêt** à l’affichage (priorité stabilité).
-- **Bus** sans GeoJSON réseau : OSRM, puis tracé arrêt → arrêt.
+- Les geometries reseau (bus/tram) proviennent des jeux Open Data locaux si presents.
+- Les lignes tram (`route_type=0`) utilisent en priorite la geometrie `LigneTram`.
+- En absence de geometrie reseau, fallback automatique: OSRM, puis trace arret->arret.
 - Si une ligne parait incoherente, verifier en premier:
   - la date/validite GTFS locale,
   - la presence des archives Open Data reseau,
@@ -169,7 +147,7 @@ Section de suivi technique pour controler rapidement la coherence des donnees ch
 ## Notes techniques
 
 - Les variantes sont construites depuis `trips.txt` + `stop_times.txt`.
-- Le GTFS local peut ne pas inclure `shapes.txt` ; le **bus** peut s’appuyer sur Open Data réseau puis OSRM si nécessaire ; le **tram** suit les coordonnées des arrêts du voyage.
+- Le GTFS local peut ne pas inclure `shapes.txt`; le trace officiel est alors reconstruit via Open Data reseau (bus/tram) puis OSRM si necessaire.
 - Le guidage stop-to-stop est implemente dans `guidage_troncons_arrets.js`.
 - Si vous mettez a jour `gtfs_data`, regenez `simulation_data.json`.
 

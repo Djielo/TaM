@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse
 import csv
 import hashlib
 import json
@@ -13,31 +12,6 @@ from datetime import datetime, timezone
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GTFS_DIR = os.path.join(BASE_DIR, "gtfs_data")
 OUTPUT_JSON = os.path.join(BASE_DIR, "simulation_data.json")
-
-# Codes « métier simulateur » = sortie GTFS après clean_line_name (T1→"1", bus inchangé sauf extraction chiffres).
-TAM_CORE_ROUTE_CODES = frozenset(
-    {
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",  # T1..T5
-        "A",
-        "6",
-        "7",
-        "8",
-        "10",
-        "11",
-        "13",
-        "14",
-        "15",
-        "16",
-        "17",
-        "19",
-        "52",
-        "53",
-    }
-)
 
 
 def compute_dataset_digest(gtfs_dir_path):
@@ -153,28 +127,7 @@ def parse_network_features(raw_geojson, line_key_candidates):
     return features
 
 
-def filter_route_by_scope(route_by_id, routes_scope):
-    if routes_scope == "all":
-        return dict(route_by_id)
-    keep = {}
-    for rid, r in route_by_id.items():
-        if r["route_short_name"] in TAM_CORE_ROUTE_CODES:
-            keep[rid] = r
-    return keep
-
-
-def filter_network_features(features, routes_scope):
-    if routes_scope == "all":
-        return features
-    out = []
-    for feat in features:
-        code = clean_line_name(feat.get("line_code") or "")
-        if code in TAM_CORE_ROUTE_CODES:
-            out.append(feat)
-    return out
-
-
-def build_data(routes_scope="all"):
+def build_data():
     routes = read_csv("routes.txt")
     trips = read_csv("trips.txt")
     stop_times = read_csv("stop_times.txt")
@@ -189,8 +142,6 @@ def build_data(routes_scope="all"):
             "route_type": route.get("route_type", ""),
             "route_color": route.get("route_color", "005CA9"),
         }
-
-    route_by_id = filter_route_by_scope(route_by_id, routes_scope)
 
     # Only physical stops (location_type=0) are needed for mapping.
     stops_by_id = {}
@@ -318,8 +269,6 @@ def build_data(routes_scope="all"):
     raw_tram_network = read_network_geojson("MMM_MMM_LigneTram.json")
     bus_network_features = parse_network_features(raw_bus_network, ["num_commercial", "num_exploitation"])
     tram_network_features = parse_network_features(raw_tram_network, ["num_exploitation", "num_commercial"])
-    bus_network_features = filter_network_features(bus_network_features, routes_scope)
-    tram_network_features = filter_network_features(tram_network_features, routes_scope)
 
     dataset_digest = compute_dataset_digest(GTFS_DIR)
 
@@ -331,8 +280,6 @@ def build_data(routes_scope="all"):
             .isoformat(timespec="seconds")
             .replace("+00:00", "Z"),
             "dataset_digest": dataset_digest,
-            "routes_scope": routes_scope,
-            "tam_core_route_codes": sorted(TAM_CORE_ROUTE_CODES, key=lambda c: (len(c), c)),
             "route_count": len(route_by_id),
             "pattern_count": len(numbered_patterns),
             "bus_network_feature_count": len(bus_network_features),
@@ -345,25 +292,10 @@ def build_data(routes_scope="all"):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Génère simulation_data.json à partir de gtfs_data/ et réseaux 3M."
-    )
-    parser.add_argument(
-        "--routes-scope",
-        choices=("all", "tam_core"),
-        default="all",
-        help=(
-            "all = tout le GTFS présent localement ; "
-            "tam_core = uniquement le périmètre lignes exploitées TaM "
-            "(T1 à T5, navette A, bus 6,7,8,10,…) — JSON plus léger pour MàJ ciblée."
-        ),
-    )
-    args = parser.parse_args()
-    data = build_data(routes_scope=args.routes_scope)
+    data = build_data()
     with open(OUTPUT_JSON, "w", encoding="utf-8") as handle:
         json.dump(data, handle, ensure_ascii=False, indent=2)
     print(f"Fichier généré: {OUTPUT_JSON}")
-    print(f"Périmètre: {data['meta']['routes_scope']}")
     print(f"Patterns: {data['meta']['pattern_count']}")
 
 
