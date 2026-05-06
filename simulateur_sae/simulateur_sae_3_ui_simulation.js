@@ -2342,6 +2342,58 @@ function reverseCoordinates(coords) {
   return copy;
 }
 
+/**
+ * GeoJSON Open Data 3M : `sens` contient « Aller » ou « Retour ».
+ * Sur le GTFS TaM vérifié en local, direction_id "0" correspond aux tracés « Aller » et "1" aux « Retour »
+ * pour une même ligne — sans ce filtre, les deux sens restent candidats et le score bout-à-bout peut
+ * choisir le mauvais tracé (impression « aller + retour » mélangés).
+ */
+function classifyNetworkSensLabel(feat) {
+  const raw = String(feat?.sens || "").trim().toLowerCase();
+  if (!raw) {
+    return "unknown";
+  }
+  if (raw.includes("aller")) {
+    return "aller";
+  }
+  if (raw.includes("retour")) {
+    return "retour";
+  }
+  return "unknown";
+}
+
+function networkFeaturesMatchingTripDirection(candidates, pattern) {
+  if (!candidates.length) {
+    return candidates;
+  }
+  const dir = String(pattern.direction_id ?? "").trim();
+  if (dir !== "0" && dir !== "1") {
+    return candidates;
+  }
+  const wantAller = dir === "0";
+  const aller = [];
+  const retour = [];
+  const unknown = [];
+  for (const f of candidates) {
+    const cls = classifyNetworkSensLabel(f);
+    if (cls === "aller") {
+      aller.push(f);
+    } else if (cls === "retour") {
+      retour.push(f);
+    } else {
+      unknown.push(f);
+    }
+  }
+  const directional = wantAller ? aller : retour;
+  if (directional.length) {
+    return directional;
+  }
+  if (unknown.length) {
+    return unknown;
+  }
+  return candidates;
+}
+
 function getNetworkGeometryByLine(features, pattern) {
   if (!features.length) return null;
 
@@ -2349,9 +2401,10 @@ function getNetworkGeometryByLine(features, pattern) {
   const start = pattern.coordinates[0];
   const end = pattern.coordinates[pattern.coordinates.length - 1];
 
-  const candidates = features.filter(
+  let candidates = features.filter(
     (f) => String(f.line_code) === line && f.coordinates?.length > 1,
   );
+  candidates = networkFeaturesMatchingTripDirection(candidates, pattern);
   if (!candidates.length) return null;
 
   let best = null;
