@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Télécharge le dernier simulation_data.json publié sur GitHub Pages (clone local sans fichier).
-# Usage (depuis la racine du dépôt) : scripts/fetch_simulation_data_local.sh Proprietaire/NomRepo
+# Télécharge le dernier simulation_data.json publié (Pages ou branche gh-pages).
+# Usage (racine du dépôt) : scripts/fetch_simulation_data_local.sh proprietaire/nom-repo
 set -e
 if [ -z "${1:-}" ]; then
   echo "Usage: $0 proprietaire/nom-repo   (ex. Djielo/TaM)" >&2

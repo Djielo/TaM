@@ -4135,7 +4135,6 @@ function notifySimulationDatasetRefreshIfNeeded(meta) {
   }, 400);
 }
 
-/** URLs à essayer : même origine, puis secours raw gh-pages (Pages projet sur github.io). */
 function simulationDataJsonFetchUrls() {
   const primary = new URL("simulation_data.json", window.location.href).href;
   const out = [primary];
@@ -4194,7 +4193,7 @@ loadSimulationDataJson()
   })
   .catch((err) => {
     tamAppAlert(
-      "Impossible de charger simulation_data.json. En local : lancez build_simulator_data.py. En ligne : vérifiez la publication GitHub Pages (branche gh-pages) et relancez le workflow mensuel.",
+      "Impossible de charger simulation_data.json. En local : lancez build_simulator_data.py. En ligne : GitHub Pages doit servir la branche gh-pages.",
     );
     console.error(err);
   });

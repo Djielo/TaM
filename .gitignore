@@ -25,5 +25,5 @@ VehiclePosition.pb
 TAM_MMM_TpsReel.csv
 tam_perturbations.json
 
-# Généré par la CI (branche gh-pages) — ne plus versionner sur master pour éviter les conflits avec le bot.
+# Généré en CI sur gh-pages — pas de commits bot sur master pour ce fichier.
 simulation_data.json

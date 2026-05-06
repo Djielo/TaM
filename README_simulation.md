@@ -45,38 +45,27 @@ Même périmètre complet (`all`), le JSON peut inclure `meta.tam_core_route_cod
 menu des lignes. Sans cette clé métadonnées (anciens exports), comportement inchangé
 (Tram / Navette / Bus seulement).
 
-### CI GitHub Pages (données hors `master`, sans conflits avec le bot)
+### CI GitHub Pages (MàJ automatique, sans commit bot sur `master`)
 
-Le fichier **`simulation_data.json` n’est plus versionné sur `master`** (voir `.gitignore`).
-Les workflows **génèrent** ce JSON puis **poussent tout le site** sur la branche **`gh-pages`**
-(action **peaceiris**). Côté GitHub, la source classique **Deploy from a branch → gh-pages** suffit
-(l’option « GitHub Actions » comme source Pages n’est pas toujours proposée selon le compte ou le dépôt).
+Le fichier **`simulation_data.json` n’est pas versionné sur `master`** (voir `.gitignore`).
+Les workflows **génèrent** ce JSON et publient **tout le site statique** sur la branche
+**`gh-pages`** (action **peaceiris**). Les **tâches planifiées** suffisent pour les données :
+vous n’avez **pas** à lancer un workflow à la main au quotidien.
 
-**Détail important** : `simulation_data.json` reste dans **`.gitignore`** sur `master` (évite les conflits),
-mais avant publication la CI **retire cette ligne** du `.gitignore` copié vers le site : sans cela,
-**peaceiris** (`git add --all`) n’ajouterait jamais le JSON sur **gh-pages** → **404** en production.
+Réglage GitHub une fois : **Settings → Pages → Deploy from a branch → `gh-pages` / (root)**.
 
 Fichiers sous **`.github/workflows/`** :
 
-- **`simulation-data-daily.yml`** — cron quotidien : téléchargements GTFS, blend TaM, publication **gh-pages**.
-- **`simulation-data-monthly.yml`** — cron mensuel : réseau complet, publication **gh-pages**.
-- **`pages-sync-on-push.yml`** — à chaque **push** sur `master` : republie **gh-pages** en réinjectant le **dernier**
-  `simulation_data.json` déjà en ligne (vos changements HTML/JS partent tout de suite).
+- **`simulation-data-daily.yml`** — chaque jour ~**01:01 UTC** : blend TaM + lignes hors TaM déjà publiées.
+- **`simulation-data-monthly.yml`** — le **1er du mois ~02:01 UTC** : réseau complet.
+- **`pages-sync-on-push.yml`** — **optionnel** : après un push sur `master`, met à jour **gh-pages** avec vos **HTML/JS** (les crons ci‑dessus portent les données).
 
-Script Open Data : **`scripts/refresh_simulation_opendata.py`**.
-
-**Clone local sans `simulation_data.json`** : après `git clone`, exécuter par exemple  
+Script : **`scripts/refresh_simulation_opendata.py`**. Clone local sans JSON :  
 `bash scripts/fetch_simulation_data_local.sh VotreCompte/NomDuRepo`  
-ou `python scripts/refresh_simulation_opendata.py --mode monthly` (nécessite réseau).
+ou `python scripts/refresh_simulation_opendata.py --mode monthly`.
 
-#### Guide une fois (après avoir poussé ces workflows sur GitHub)
-
-1. **Settings** du dépôt → **Pages** → **Build and deployment** → **Source** : **Deploy from a branch**.
-2. **Branch** : **`gh-pages`**, dossier **`/ (root)`**, puis **Save**.
-3. Onglet **Actions** → lancer **Simulation — données Open Data (mensuel complet)** (*Run workflow*) pour créer ou mettre à jour **gh-pages** si besoin.
-4. Attendre le run **vert** ; tester `https://<vous>.github.io/<dépôt>/simulation_data.json` puis `simulateur_sae.html`.
-
-Tant que **Pages** pointe vers **`gh-pages`**, les MàJ quotidiennes / mensuelles restent **automatiques** sans commit de données sur **`master`**.
+**Note technique** : avant publication, la CI retire `simulation_data.json` du **`.gitignore` copié**
+dans le dossier publié — sans cela **peaceiris** (`git add --all`) n’ajouterait pas le fichier sur **gh-pages**.
 
 2. Demarrer le serveur local TAM (statique + API locale anti-CORS):
 
