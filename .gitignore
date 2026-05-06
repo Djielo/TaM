@@ -17,6 +17,7 @@ PROCEDURE_GPS_AUTONOME.txt
 PROCEDURE_TELEPHONE_ADB.txt
 
 # Donnees locales Open Data (volumineux / non versionnees)
+simulation_data.json
 arrts-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
 rseau-de-tramway-de-montpellier-mditerrane-mtropole-All-*.zip
 Alert.pb
