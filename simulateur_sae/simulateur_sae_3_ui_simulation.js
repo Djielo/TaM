@@ -13,6 +13,10 @@ let tamStopRailSuppressInnerClickUntil = 0;
 let tamStopRailMapCloseWired = false;
 /** Cache des correspondances par arrêt (clé stop_id et nom normalisé). */
 let tamStopRailCorrespondenceByStop = null;
+/** Cache court des ETA temps réel pour les badges de correspondance du rail. */
+const TAM_REALTIME_API_BASE = "https://tam-sae-jielo.duckdns.org";
+const TAM_STOP_RAIL_ARRIVALS_CACHE_MS = 20_000;
+const tamStopRailArrivalCache = new Map();
 
 /** Au-delà : le geste n’est pas un « tap » (défilement, etc.). */
 const TAM_STOP_RAIL_TAP_MOVE_MAX_SQ = 28 * 28;
@@ -798,6 +802,8 @@ function buildCorrespondenceDirectionInfo(stopObj, routeItem) {
 
 function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   const lineLabel = displayLineLabel(routeItem);
+  const routeCode = String(routeItem?.route_short_name || "").trim();
+  const stopId = resolveRealtimeStopIdForRoute(stopObj, routeItem);
   const stopName = String(
     stopObj?.stop_name || stopObj?.name || "Arrêt",
   ).trim();
@@ -816,15 +822,21 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
     titleEl.textContent = TAM_APP_DIALOG_TITLE;
     bodyEl.innerHTML = "";
 
+    const badgeRow = document.createElement("div");
+    badgeRow.className = "app-correspondence-arrivals-row";
     const badge = document.createElement("span");
     badge.textContent = lineLabel;
+    const arrivals = document.createElement("span");
+    arrivals.className = "app-correspondence-arrivals";
+    arrivals.textContent = stopId && routeCode ? "chargement…" : "";
     applyLineColorStyling(badge, routeItem, "contextPill");
     badge.style.display = "inline-flex";
     badge.style.alignItems = "center";
     badge.style.justifyContent = "center";
     badge.style.padding = "3px 10px";
-    badge.style.marginBottom = "8px";
-    bodyEl.appendChild(badge);
+    badgeRow.appendChild(badge);
+    badgeRow.appendChild(arrivals);
+    bodyEl.appendChild(badgeRow);
 
     const stopLine = document.createElement("p");
     stopLine.style.margin = "0 0 6px";
@@ -841,6 +853,9 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
 
     dlg.returnValue = "";
     dlg.showModal();
+    if (stopId && routeCode) {
+      refreshCorrespondencePopupArrivals(stopObj, routeItem, arrivals);
+    }
     return;
   }
   const lines = [`Ligne : ${lineLabel}`, `Arrêt : ${stopName}`, ""];
@@ -849,6 +864,42 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
     lines.push(`${sensLabel} : ${it.labels.join(" / ")}`);
   }
   showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
+}
+
+async function refreshCorrespondencePopupArrivals(stopObj, routeItem, targetEl) {
+  if (!(targetEl instanceof HTMLElement)) return;
+  const stopId = resolveRealtimeStopIdForRoute(stopObj, routeItem);
+  const routeCode = String(routeItem?.route_short_name || "").trim();
+  if (!stopId || !routeCode) {
+    targetEl.textContent = "";
+    return;
+  }
+  try {
+    const payload = await fetchTamStopRailArrivals(stopId, routeCode);
+    const text = formatTamArrivalMinutes(payload?.arrivals);
+    targetEl.textContent = text ? text : "aucun passage imminent";
+  } catch (err) {
+    console.warn("Chargement des prochains passages impossible:", err);
+    targetEl.textContent = "temps indisponible";
+  }
+}
+
+function resolveRealtimeStopIdForRoute(stopObj, routeItem) {
+  const direct = String(stopObj?.stop_id || "").trim();
+  if (direct) return direct;
+  const routeCode = String(routeItem?.route_short_name || "").trim();
+  if (!routeCode) return "";
+  const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  for (const p of patterns) {
+    if (String(p?.route_short_name || "").trim() !== routeCode) continue;
+    const stops = Array.isArray(p?.stops) ? p.stops : [];
+    for (const st of stops) {
+      if (stopMatchesPatternStop(stopObj, st)) {
+        return String(st?.stop_id || "").trim();
+      }
+    }
+  }
+  return "";
 }
 
 function appendLineDirectionDetails(lines, stopObj, routeItem) {
@@ -905,6 +956,8 @@ function showTabbedCorrespondenceDialog(title, subtitle, entries) {
       buttons[i].setAttribute("aria-selected", i === idx ? "true" : "false");
     }
     panel.innerHTML = "";
+    const lineRow = document.createElement("div");
+    lineRow.className = "app-correspondence-arrivals-row";
     const lineBadge = document.createElement("span");
     lineBadge.textContent = entry.lineLabel;
     if (entry.routeItem) {
@@ -913,8 +966,20 @@ function showTabbedCorrespondenceDialog(title, subtitle, entries) {
     lineBadge.style.display = "inline-flex";
     lineBadge.style.alignItems = "center";
     lineBadge.style.justifyContent = "center";
-    lineBadge.style.margin = "0 0 6px";
-    panel.appendChild(lineBadge);
+    const arrivalEl = document.createElement("span");
+    arrivalEl.className = "app-correspondence-arrivals";
+    arrivalEl.textContent =
+      entry.stopObj && entry.routeItem ? "chargement…" : "";
+    lineRow.appendChild(lineBadge);
+    lineRow.appendChild(arrivalEl);
+    panel.appendChild(lineRow);
+    if (entry.stopObj && entry.routeItem) {
+      refreshCorrespondencePopupArrivals(
+        entry.stopObj,
+        entry.routeItem,
+        arrivalEl,
+      );
+    }
     if (entry.stopName) {
       const stopP = document.createElement("p");
       stopP.style.margin = "0 0 6px";
@@ -1043,6 +1108,7 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
     return {
       lineLabel: displayLineLabel(item),
       routeItem: item,
+      stopObj,
       stopName,
       details: info.map((it) => ({
         sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
@@ -1162,6 +1228,9 @@ function showStopAreaHubPopup(stopObj) {
         entry._buttonEl.setAttribute("aria-selected", "true");
       }
       sharedPanel.innerHTML = "";
+      const stopObjForEta = { stop_name: secStopName };
+      const lineRow = document.createElement("div");
+      lineRow.className = "app-correspondence-arrivals-row";
       const lineBadge = document.createElement("span");
       lineBadge.textContent = entry.lineLabel;
       if (entry.routeItem) {
@@ -1170,8 +1239,19 @@ function showStopAreaHubPopup(stopObj) {
       lineBadge.style.display = "inline-flex";
       lineBadge.style.alignItems = "center";
       lineBadge.style.justifyContent = "center";
-      lineBadge.style.margin = "0 0 6px";
-      sharedPanel.appendChild(lineBadge);
+      const arrivalEl = document.createElement("span");
+      arrivalEl.className = "app-correspondence-arrivals";
+      arrivalEl.textContent = entry.routeItem ? "chargement…" : "";
+      lineRow.appendChild(lineBadge);
+      lineRow.appendChild(arrivalEl);
+      sharedPanel.appendChild(lineRow);
+      if (entry.routeItem) {
+        refreshCorrespondencePopupArrivals(
+          stopObjForEta,
+          entry.routeItem,
+          arrivalEl,
+        );
+      }
       const stopP = document.createElement("p");
       stopP.style.margin = "0 0 6px";
       stopP.innerHTML = `<strong>Arrêt :</strong> ${secStopName}`;
@@ -2591,6 +2671,44 @@ function setTamStopRailExploreOpen(open) {
     );
     updateTamStopRailCompactSpacing();
   });
+}
+
+function formatTamArrivalMinutes(arrivals) {
+  const items = Array.isArray(arrivals) ? arrivals : [];
+  return items
+    .slice(0, 4)
+    .map((it) => {
+      const m = Number(it?.minutes);
+      if (!Number.isFinite(m)) return "";
+      return `${Math.max(0, Math.round(m))}′`;
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
+async function fetchTamStopRailArrivals(stopId, routeCode) {
+  const stop = String(stopId || "").trim();
+  const route = String(routeCode || "").trim();
+  if (!stop || !route) return null;
+  const key = `${stop}|${route}`;
+  const now = Date.now();
+  const cached = tamStopRailArrivalCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.payload;
+  }
+  const url =
+    `${TAM_REALTIME_API_BASE}/arrivals?` +
+    new URLSearchParams({ stop_id: stop, route, limit: "4" }).toString();
+  const resp = await fetch(url, { cache: "no-store" });
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status}`);
+  }
+  const payload = await resp.json();
+  tamStopRailArrivalCache.set(key, {
+    expiresAt: now + TAM_STOP_RAIL_ARRIVALS_CACHE_MS,
+    payload,
+  });
+  return payload;
 }
 
 function updateTamStopRailCompactSpacing() {
