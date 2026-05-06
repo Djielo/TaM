@@ -800,10 +800,37 @@ function buildCorrespondenceDirectionInfo(stopObj, routeItem) {
   return out;
 }
 
+function appendCorrespondenceLineHeader(parentEl, opts) {
+  const o = opts || {};
+  const routeItem = o.routeItem || null;
+  const stopObj = o.stopObj || null;
+  const lineLabel =
+    o.lineLabel || (routeItem ? displayLineLabel(routeItem) : "Ligne");
+  const row = document.createElement("div");
+  row.className = "app-correspondence-arrivals-row";
+  const badge = document.createElement("span");
+  badge.textContent = lineLabel;
+  if (routeItem) {
+    applyLineColorStyling(badge, routeItem, "contextPill");
+  }
+  badge.style.display = "inline-flex";
+  badge.style.alignItems = "center";
+  badge.style.justifyContent = "center";
+  badge.style.padding = "3px 10px";
+  const arrivals = document.createElement("span");
+  arrivals.className = "app-correspondence-arrivals";
+  arrivals.textContent = stopObj && routeItem ? "chargement…" : "";
+  row.appendChild(badge);
+  row.appendChild(arrivals);
+  parentEl.appendChild(row);
+  if (stopObj && routeItem) {
+    refreshCorrespondencePopupArrivals(stopObj, routeItem, arrivals);
+  }
+  return row;
+}
+
 function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   const lineLabel = displayLineLabel(routeItem);
-  const routeCode = String(routeItem?.route_short_name || "").trim();
-  const stopId = resolveRealtimeStopIdForRoute(stopObj, routeItem);
   const stopName = String(
     stopObj?.stop_name || stopObj?.name || "Arrêt",
   ).trim();
@@ -822,21 +849,7 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
     titleEl.textContent = TAM_APP_DIALOG_TITLE;
     bodyEl.innerHTML = "";
 
-    const badgeRow = document.createElement("div");
-    badgeRow.className = "app-correspondence-arrivals-row";
-    const badge = document.createElement("span");
-    badge.textContent = lineLabel;
-    const arrivals = document.createElement("span");
-    arrivals.className = "app-correspondence-arrivals";
-    arrivals.textContent = stopId && routeCode ? "chargement…" : "";
-    applyLineColorStyling(badge, routeItem, "contextPill");
-    badge.style.display = "inline-flex";
-    badge.style.alignItems = "center";
-    badge.style.justifyContent = "center";
-    badge.style.padding = "3px 10px";
-    badgeRow.appendChild(badge);
-    badgeRow.appendChild(arrivals);
-    bodyEl.appendChild(badgeRow);
+    appendCorrespondenceLineHeader(bodyEl, { lineLabel, routeItem, stopObj });
 
     const stopLine = document.createElement("p");
     stopLine.style.margin = "0 0 6px";
@@ -853,9 +866,6 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
 
     dlg.returnValue = "";
     dlg.showModal();
-    if (stopId && routeCode) {
-      refreshCorrespondencePopupArrivals(stopObj, routeItem, arrivals);
-    }
     return;
   }
   const lines = [`Ligne : ${lineLabel}`, `Arrêt : ${stopName}`, ""];
@@ -955,30 +965,7 @@ function showTabbedCorrespondenceDialog(title, subtitle, entries) {
       buttons[i].setAttribute("aria-selected", i === idx ? "true" : "false");
     }
     panel.innerHTML = "";
-    const lineRow = document.createElement("div");
-    lineRow.className = "app-correspondence-arrivals-row";
-    const lineBadge = document.createElement("span");
-    lineBadge.textContent = entry.lineLabel;
-    if (entry.routeItem) {
-      applyLineColorStyling(lineBadge, entry.routeItem, "contextPill");
-    }
-    lineBadge.style.display = "inline-flex";
-    lineBadge.style.alignItems = "center";
-    lineBadge.style.justifyContent = "center";
-    const arrivalEl = document.createElement("span");
-    arrivalEl.className = "app-correspondence-arrivals";
-    arrivalEl.textContent =
-      entry.stopObj && entry.routeItem ? "chargement…" : "";
-    lineRow.appendChild(lineBadge);
-    lineRow.appendChild(arrivalEl);
-    panel.appendChild(lineRow);
-    if (entry.stopObj && entry.routeItem) {
-      refreshCorrespondencePopupArrivals(
-        entry.stopObj,
-        entry.routeItem,
-        arrivalEl,
-      );
-    }
+    appendCorrespondenceLineHeader(panel, entry);
     if (entry.stopName) {
       const stopP = document.createElement("p");
       stopP.style.margin = "0 0 6px";
@@ -1025,70 +1012,6 @@ function showTabbedCorrespondenceDialog(title, subtitle, entries) {
   dlg.returnValue = "";
   dlg.showModal();
   return true;
-}
-
-function buildTabbedPanelBlock(entries) {
-  const wrap = document.createElement("div");
-  const tabs = document.createElement("div");
-  tabs.className = "app-message-tabs";
-  tabs.setAttribute("role", "tablist");
-  const panel = document.createElement("div");
-  panel.className = "app-message-tab-panel";
-  panel.setAttribute("role", "tabpanel");
-
-  const buttons = [];
-  function renderEntry(idx) {
-    const entry = entries[idx];
-    for (let i = 0; i < buttons.length; i++) {
-      buttons[i].classList.toggle("active", i === idx);
-      buttons[i].setAttribute("aria-selected", i === idx ? "true" : "false");
-    }
-    panel.innerHTML = "";
-    const t = document.createElement("p");
-    t.className = "app-message-tab-panel-title";
-    t.textContent = `Ligne ${entry.lineLabel}`;
-    panel.appendChild(t);
-    const ul = document.createElement("ul");
-    ul.className = "app-message-tab-panel-lines";
-    if (!entry.details.length) {
-      const li = document.createElement("li");
-      li.textContent = "Sens indisponible";
-      ul.appendChild(li);
-    } else {
-      for (const d of entry.details) {
-        const li = document.createElement("li");
-        li.textContent = `${d.sensLabel} : ${d.headsigns.join(" / ")}`;
-        ul.appendChild(li);
-      }
-    }
-    panel.appendChild(ul);
-  }
-
-  entries.forEach((entry, idx) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "app-message-tab";
-    btn.setAttribute("role", "tab");
-    btn.textContent = entry.lineLabel;
-    if (entry.routeItem) {
-      applyLineColorStyling(btn, entry.routeItem, "contextPill");
-      btn.style.display = "inline-flex";
-      btn.style.alignItems = "center";
-      btn.style.justifyContent = "center";
-      btn.style.width = "100%";
-      btn.style.minWidth = "0";
-      btn.style.padding = "6px 8px";
-      btn.style.borderRadius = "7px";
-    }
-    btn.addEventListener("click", () => renderEntry(idx));
-    buttons.push(btn);
-    tabs.appendChild(btn);
-  });
-
-  wrap.appendChild(tabs);
-  wrap.appendChild(panel);
-  renderEntry(0);
-  return wrap;
 }
 
 function showCorrespondenceListPopup(stopObj, routeItems, title) {
@@ -1228,29 +1151,10 @@ function showStopAreaHubPopup(stopObj) {
       }
       sharedPanel.innerHTML = "";
       const stopObjForEta = { stop_name: secStopName };
-      const lineRow = document.createElement("div");
-      lineRow.className = "app-correspondence-arrivals-row";
-      const lineBadge = document.createElement("span");
-      lineBadge.textContent = entry.lineLabel;
-      if (entry.routeItem) {
-        applyLineColorStyling(lineBadge, entry.routeItem, "contextPill");
-      }
-      lineBadge.style.display = "inline-flex";
-      lineBadge.style.alignItems = "center";
-      lineBadge.style.justifyContent = "center";
-      const arrivalEl = document.createElement("span");
-      arrivalEl.className = "app-correspondence-arrivals";
-      arrivalEl.textContent = entry.routeItem ? "chargement…" : "";
-      lineRow.appendChild(lineBadge);
-      lineRow.appendChild(arrivalEl);
-      sharedPanel.appendChild(lineRow);
-      if (entry.routeItem) {
-        refreshCorrespondencePopupArrivals(
-          stopObjForEta,
-          entry.routeItem,
-          arrivalEl,
-        );
-      }
+      appendCorrespondenceLineHeader(sharedPanel, {
+        ...entry,
+        stopObj: stopObjForEta,
+      });
       const stopP = document.createElement("p");
       stopP.style.margin = "0 0 6px";
       stopP.innerHTML = `<strong>Arrêt :</strong> ${secStopName}`;
