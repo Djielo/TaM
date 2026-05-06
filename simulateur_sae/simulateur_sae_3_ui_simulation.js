@@ -800,6 +800,10 @@ function buildCorrespondenceDirectionInfo(stopObj, routeItem) {
   return out;
 }
 
+function directionDisplayLabel(dirKey) {
+  return String(dirKey) === "1" ? "Dir. 1" : "Dir. 0";
+}
+
 function appendCorrespondenceLineHeader(parentEl, opts) {
   const o = opts || {};
   const routeItem = o.routeItem || null;
@@ -857,7 +861,7 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
     bodyEl.appendChild(stopLine);
 
     for (const it of info) {
-      const sensLabel = it.dirKey === "1" ? "Sens 2" : "Sens 1";
+      const sensLabel = directionDisplayLabel(it.dirKey);
       const p = document.createElement("p");
       p.style.margin = "0 0 6px";
       p.innerHTML = `<strong>${sensLabel} :</strong> ${it.labels.join(" / ")}`;
@@ -870,7 +874,7 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   }
   const lines = [`Ligne : ${lineLabel}`, `Arrêt : ${stopName}`, ""];
   for (const it of info) {
-    const sensLabel = it.dirKey === "1" ? "Sens 2" : "Sens 1";
+    const sensLabel = directionDisplayLabel(it.dirKey);
     lines.push(`${sensLabel} : ${it.labels.join(" / ")}`);
   }
   showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
@@ -920,7 +924,7 @@ function appendLineDirectionDetails(lines, stopObj, routeItem) {
     return;
   }
   for (const it of info) {
-    const sensLabel = it.dirKey === "1" ? "Sens 2" : "Sens 1";
+    const sensLabel = directionDisplayLabel(it.dirKey);
     lines.push(`  ${sensLabel}`);
     for (const headsign of it.labels) {
       lines.push(`   • ${headsign}`);
@@ -1033,7 +1037,7 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
       stopObj,
       stopName,
       details: info.map((it) => ({
-        sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
+        sensLabel: directionDisplayLabel(it.dirKey),
         headsigns: it.labels,
       })),
     };
@@ -1200,7 +1204,7 @@ function showStopAreaHubPopup(stopObj) {
           lineLabel: displayLineLabel(item),
           routeItem: item,
           details: info.map((it) => ({
-            sensLabel: it.dirKey === "1" ? "Sens 2" : "Sens 1",
+            sensLabel: directionDisplayLabel(it.dirKey),
             headsigns: it.labels,
           })),
         };
