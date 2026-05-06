@@ -8,6 +8,7 @@ Ce prototype sert a s'entrainer hors terrain avec les donnees GTFS TAM.
 - Carte avec trace complet de la mission
 - Progression visuelle type SAE (partie deja faite en gris)
 - Guidage visuel temporaire par troncon actif `arret courant -> arret suivant` (vert)
+- Rail des arrêts avec correspondances et prochains passages via l’API temps réel
 - Simulation 100% locale (pas besoin de geolocalisation reelle)
 - Commandes: pause/reprise, vitesse, arret precedent/suivant
 
@@ -39,20 +40,32 @@ Réglage GitHub : **Settings → Pages → Source = Deploy from a branch**, puis
 **Branch = `gh-pages`** et **Folder = `/ (root)`**.
 
 Le script CI utilise `scripts/refresh_simulation_opendata.py` (télécharge GTFS + GeoJSON
-réseau tram/bus, puis lance `build_simulator_data.py`).
+réseau tram/bus, puis lance `build_simulator_data.py`). Les données générées
+(`gtfs_data/`, GeoJSON Open Data, `simulation_data.json`, ZIP/PB) sont des artefacts
+locaux ou CI : elles ne sont plus versionnées sur `master`.
 
 ## Lancer le prototype
 
-1. Generer les donnees de simulation:
+1. Récupérer / générer les données de simulation locales si besoin:
 
 ```bash
-python build_simulator_data.py
+python scripts/refresh_simulation_opendata.py
 ```
 
-2. Demarrer le serveur local TAM (statique + API locale anti-CORS):
+   Pour un test rapide sans régénérer, on peut aussi récupérer le dernier JSON publié :
 
 ```bash
-python serve_tam.py
+python - <<'PY'
+import urllib.request
+url = "https://djielo.github.io/TaM/simulation_data.json?v=local"
+urllib.request.urlretrieve(url, "simulation_data.json")
+PY
+```
+
+2. Demarrer un serveur local statique:
+
+```bash
+python -m http.server 8000
 ```
 
 3. Ouvrir dans le navigateur:
@@ -69,7 +82,31 @@ Optionnel (secours hors ligne pour le mode planifie):
 python update_tam_perturbations.py
 ```
 
-## Deploiement de `serve_tam` sur un serveur (ex. VM Oracle Cloud)
+## API temps réel (`tam_realtime_api/`)
+
+Le simulateur consomme les prochains passages via une petite API HTTPS :
+
+```text
+https://tam-sae-jielo.duckdns.org/health
+https://tam-sae-jielo.duckdns.org/arrivals?stop_id=101&route=11&limit=4
+```
+
+Architecture actuelle :
+
+```text
+GitHub Pages / navigateur -> HTTPS Nginx -> Gunicorn 127.0.0.1:8000 -> Flask -> GTFS-RT TAM
+```
+
+Le code est dans `tam_realtime_api/`. L’API :
+
+- lit les flux `TripUpdate.pb` urbain + suburbain ;
+- reconstruit l’index `route_short_name` -> `route_id` depuis les GTFS ;
+- applique un cache court sur les temps réel ;
+- expose le CORS pour `https://djielo.github.io`.
+
+Voir `tam_realtime_api/README.md` pour le déploiement VM.
+
+## Deploiement historique de `serve_tam` sur un serveur (ex. VM Oracle Cloud)
 
 Memo pour un **seul** but : exposer `GET /api/tam/perturbations` (HTML TAM parse en JSON) sur Internet pour une appli mobile / PWA, sans CORS cote TAM.
 
@@ -121,7 +158,8 @@ curl "http://IP_PUBLIQUE:8000/api/tam/perturbations"
 
 ## Donnees Open Data locales
 
-- Les archives Open Data volumineuses (notamment ZIP tram) sont utilisees en local mais ne sont pas versionnees dans Git (`.gitignore`).
+- `gtfs_data/`, `simulation_data.json`, GeoJSON Open Data, ZIP et PB temps réel sont des données volumineuses / générées : elles sont ignorées par Git.
+- En CI, `scripts/refresh_simulation_opendata.py` les télécharge et régénère `simulation_data.json` avant publication `gh-pages`.
 - Les liens utiles (reseau, GTFS, GTFS-RT temps reel) sont centralises dans:
   - `LIENS_OPENDATA_TAM.md`
 
@@ -149,7 +187,7 @@ Section de suivi technique pour controler rapidement la coherence des donnees ch
 - Les variantes sont construites depuis `trips.txt` + `stop_times.txt`.
 - Le GTFS local peut ne pas inclure `shapes.txt`; le trace officiel est alors reconstruit via Open Data reseau (bus/tram) puis OSRM si necessaire.
 - Le guidage stop-to-stop est implemente dans `guidage_troncons_arrets.js`.
-- Si vous mettez a jour `gtfs_data`, regenez `simulation_data.json`.
+- Si vous mettez a jour les données locales Open Data, régénérez `simulation_data.json` avec `python scripts/refresh_simulation_opendata.py`.
 
 ## Deviations enregistrees (stockage local navigateur)
 

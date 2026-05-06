@@ -6,7 +6,7 @@ Document vivant : figer **ce qui est acté**, **ce qu’on a décidé** et **ce 
 C’est la **liste de ce qu’il reste à faire** (sections **4** et suivantes). La **priorité déviations** est désormais fixée en **section 0** (conversation projet, mai 2026) : **mode manuel** ; les chantiers « planifié / temps réel » décrits historiquement en **§1** et **4A** sont **gelés** tant que §0 n’est pas révisé.
 
 - **Cible principale** : conduite / formation, usage **mobile** (paysage), données **TAM** (GTFS, Open Data, temps réel selon options).
-- **Démo technique** : l’appli telle qu’on la teste = page web + idéalement `python serve_tam.py` (CORS, API locale perturbations). Voir [README_simulation.md](README_simulation.md) — y compris la section **« Deploiement de serve_tam sur un serveur (ex. VM Oracle Cloud) »** (bind `0.0.0.0`, OCI, `iptables`, systemd, IP publique, SSH).
+- **Démo technique** : l’appli telle qu’on la teste = page web statique + `simulation_data.json` généré / publié. Les prochains passages des correspondances passent par l’API HTTPS `tam_realtime_api/` (Nginx → Gunicorn → Flask) ; `serve_tam.py` reste un outil historique/local pour les perturbations.
 - **Liens** : ressources Open Data / portail API : [LIENS_OPENDATA_TAM.md](LIENS_OPENDATA_TAM.md).
 
 ---
@@ -79,7 +79,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - **Déviations enregistrées** : stockage **local** (`localStorage`), charger / nouvelle entrée / mise à jour / duplication vers autre variante ; correction mai 2026 du **double `readDeviationStore`** lors du « Mettre à jour » ; **synchronisation automatique** du payload de l’entrée sélectionnée après suppression d’une portion ou effacement du tracé validé (si la mission courante correspond au `pattern_id` de la fiche). **Garde-fou enregistrement planifié** : pas de **nouvelle** fiche pour un `pattern_id` déjà présent sans avoir chargé la fiche sur la carte (`liveDeviationLoadedItemId` + message d’aide). **Bandeau** carte si déviation non enregistrée / session temporaire ouverte ; **blocage** reprise simulation / sauts d’arrêts tant que l’état attendu n’est pas réglé.
 - **Modales utilisateur** : messages, confirmations et saisie courte (ex. nom arrêt provisoire) passent par des **`<dialog>` HTML** (`tamAppAlert`, `showAppConfirmDialog`, `showAppPromptDialog` dans le segment 1/3) avec titre **« Simulateur SAE TAM »** — plus d’en-tête navigateur « localhost » sur ces flux ; repli natif seulement si `<dialog>` indisponible.
 - **Perturbations** : piste `serve_tam` + `update_tam_perturbations.py` / `tam_perturbations.json` (éviter CORS sur chargement “Infos trafic”).
-- **Rail arrêts mission (V1)** : bandeau vertical **à droite** de la carte (`#tamStopRail`) — pastilles **à pas égal** sur la **piste** (remplissage = % parcours) ; **z-index au-dessus du HUD** carte pour le tactile ; marge basse pour rester au-dessus du bandeau « Prochain arrêt » ; **mode explore** au scroll / molette / toucher : pastilles élargies avec le nom ; repli **4 s** après relâchement. **`aria-label`** = lecteurs d’écran seulement (pas les annonces vocales mission). **V2** : correspondances, guidage déviation, délai de repli configurable.
+- **Rail arrêts mission (V1/V2)** : bandeau vertical **à droite** de la carte (`#tamStopRail`) — pastilles **à pas égal** sur la **piste** (remplissage = % parcours) ; **z-index au-dessus du HUD** carte pour le tactile ; marge basse pour rester au-dessus du bandeau « Prochain arrêt » ; **mode explore** au scroll / molette / toucher : pastilles élargies avec le nom. Les correspondances sont affichées dans le rail ; appui long / tap sur une correspondance ouvre le détail avec les prochains passages via `tam_realtime_api/`. Le bandeau **« Prochain arrêt »** ouvre le rail et cale l’arrêt annoncé en bas de liste quand c’est possible. **`aria-label`** = lecteurs d’écran seulement (pas les annonces vocales mission).
 
 ### 2.1 Déviation — Planifiée / Temporaire (`simulateur_sae.html`, mai 2026)
 
@@ -141,7 +141,7 @@ Ci‑dessous, ce qui avait été consigné pour mémoire : **où** = stockage **
 - [x] **Persistance locale** du trio **tracé + overrides arrêts non desservis + arrêts provisoires** dans une même entrée « Déviations enregistrées », avec **chargement** et **mise à jour** ; **réédition** sans tout resaisir — **V1 en place**. Restent ouverts : plages de dates métier plus riches si besoin, export hors navigateur, garde-fou GTFS (case suivante).
 - [ ] **Garde-fou données** : comparer au chargement **empreinte jeu GTFS / JSON** (`dataset_digest`) et **signature du pattern** (`pattern_signature`) à celles mémorisées avec l’enregistrement → **alerte** si le réseau de référence a changé (voir conception build `simulation_data.json`).
 - [x] **Dupliquer** une déviation enregistrée vers **d’autres variantes** du même sens — **V1 en place** dans le simulateur (UI Enregistrée / Dupliquée) ; révision par variante et garde-fou données restent ouverts ailleurs dans **4C**.
-- [x] **Rail arrêts mission** sur la carte (pastilles, barre % parcours, mode explore au scroll) — **V1 en place** (mai 2026) ; **V2** : correspondances, alignement sur le guidage réel (provisoires / non desservis), délai de repli configurable.
+- [x] **Rail arrêts mission** sur la carte (pastilles, barre % parcours, mode explore, correspondances, prochains passages via API temps réel, ouverture depuis la pastille « Prochain arrêt ») — **en place** (mai 2026). Restent ouverts : délai de repli configurable et affinages UX au fil des tests terrain.
 
 ### 4D. Emballage produit (quand le fond métier est stable)
 
@@ -174,6 +174,7 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 | `simulateur_sae/simulateur_sae_2_deviations.js` | **Segment 2/3** : stockage local, fiches et UI associées jusqu’à `deviationDuplicateSelectionToVariant`. |
 | `simulateur_sae/simulateur_sae_3_ui_simulation.js` | **Segment 3/3** : depuis `previewMissionToken` jusqu’aux écouteurs DOM et `fetch(simulation_data.json)` ; `refreshStopRail` / rail arrêts. |
 | `serve_tam.py` | Fichiers statiques + API locale (ex. perturbations) |
+| `tam_realtime_api/` | API HTTPS Flask/Gunicorn pour prochains passages GTFS-RT des correspondances |
 | `build_simulator_data.py` | Génère `simulation_data.json` (GTFS + réseau 3M en ZIP/JSON) |
 | `update_tam_perturbations.py` | Télécharge / alimente les perturbations (secours) |
 | `guidage_troncons_arrets.js` | Tronçon vert guide |
@@ -181,4 +182,4 @@ Tableau de **repérage** pour retrouver le code (ce n’est **pas** un tableau d
 
 ---
 
-*Dernière révision de **ce** fichier markdown : 2026-05-01 — rail arrêts mission V1 (§2 + §6) ; précision `aria-label` vs annonces vocales.*
+*Dernière révision de **ce** fichier markdown : 2026-05-06 — rail arrêts avec correspondances temps réel, API `tam_realtime_api/`, données locales Open Data hors Git.*
