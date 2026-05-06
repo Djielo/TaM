@@ -4135,8 +4135,53 @@ function notifySimulationDatasetRefreshIfNeeded(meta) {
   }, 400);
 }
 
-fetch("./simulation_data.json")
-  .then((resp) => resp.json())
+/** URLs à essayer : même origine, puis secours raw gh-pages (Pages projet sur github.io). */
+function simulationDataJsonFetchUrls() {
+  const primary = new URL("simulation_data.json", window.location.href).href;
+  const out = [primary];
+  try {
+    const u = new URL(window.location.href);
+    if (!u.hostname.toLowerCase().endsWith(".github.io")) {
+      return out;
+    }
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length < 1) {
+      return out;
+    }
+    const repo = parts[0];
+    const owner = u.hostname.replace(/\.github\.io$/i, "");
+    const raw = `https://raw.githubusercontent.com/${owner}/${repo}/gh-pages/simulation_data.json`;
+    if (raw !== primary) {
+      out.push(raw);
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return out;
+}
+
+function loadSimulationDataJson() {
+  const urls = simulationDataJsonFetchUrls();
+  let i = 0;
+  const next = () => {
+    if (i >= urls.length) {
+      return Promise.reject(new Error("simulation_data.json introuvable"));
+    }
+    const url = urls[i];
+    i += 1;
+    return fetch(url, { cache: "no-store" })
+      .then((resp) => {
+        if (!resp.ok) {
+          return next();
+        }
+        return resp.json();
+      })
+      .catch(() => next());
+  };
+  return next();
+}
+
+loadSimulationDataJson()
   .then((json) => {
     data = json;
     datasetDigestLoaded = String(json?.meta?.dataset_digest || "");
@@ -4149,7 +4194,7 @@ fetch("./simulation_data.json")
   })
   .catch((err) => {
     tamAppAlert(
-      "Impossible de charger simulation_data.json. Lancez d'abord build_simulator_data.py",
+      "Impossible de charger simulation_data.json. En local : lancez build_simulator_data.py. En ligne : vérifiez la publication GitHub Pages (branche gh-pages) et relancez le workflow mensuel.",
     );
     console.error(err);
   });

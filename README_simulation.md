@@ -52,6 +52,10 @@ Les workflows **génèrent** ce JSON puis **poussent tout le site** sur la branc
 (action **peaceiris**). Côté GitHub, la source classique **Deploy from a branch → gh-pages** suffit
 (l’option « GitHub Actions » comme source Pages n’est pas toujours proposée selon le compte ou le dépôt).
 
+**Détail important** : `simulation_data.json` reste dans **`.gitignore`** sur `master` (évite les conflits),
+mais avant publication la CI **retire cette ligne** du `.gitignore` copié vers le site : sans cela,
+**peaceiris** (`git add --all`) n’ajouterait jamais le JSON sur **gh-pages** → **404** en production.
+
 Fichiers sous **`.github/workflows/`** :
 
 - **`simulation-data-daily.yml`** — cron quotidien : téléchargements GTFS, blend TaM, publication **gh-pages**.
