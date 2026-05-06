@@ -28,6 +28,24 @@ WorkingDirectory=/home/ubuntu/tam-api
 ExecStart=/home/ubuntu/tam-api/.venv/bin/gunicorn -b 127.0.0.1:8000 app:app
 ```
 
+Commandes de déploiement typiques après copie des fichiers :
+
+```bash
+cd /home/ubuntu/tam-api
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart tam-api
+```
+
+Sur Ubuntu OCI, penser à ouvrir les ports Nginx dans `iptables` en plus des règles OCI :
+
+```bash
+sudo iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+sudo iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
+sudo netfilter-persistent save
+```
+
 ## Cache
 
 - GTFS statique routes : 6 h par défaut.

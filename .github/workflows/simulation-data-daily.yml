@@ -34,6 +34,7 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='gtfs_data' \
+            --exclude='tam_realtime_api' \
             --exclude='__pycache__' \
             --exclude='_site' \
             --exclude='*.zip' \

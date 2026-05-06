@@ -61,4 +61,4 @@ Ces URL completent les **fiches dataset** ci-dessous (GTFS, GTFS-RT, reseau vect
 
 ---
 
-*Revue documentaire 2026-05-02 : aucun lien modifié. Rappel — le simulateur web actuel ne consomme pas les flux GTFS-RT depuis la page (priorité mode manuel, voir [EVOLUTION_ET_BACKLOG.md](EVOLUTION_ET_BACKLOG.md) §0).*
+*Revue documentaire 2026-05-06 : les flux `TripUpdate.pb` sont consommés par l’API serveur `tam_realtime_api/`, pas directement par la page GitHub Pages (CORS / protobuf).*
