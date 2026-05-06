@@ -804,6 +804,9 @@ function directionDisplayLabel(dirKey) {
   return String(dirKey) === "1" ? "Dir. 1" : "Dir. 0";
 }
 
+const CORRESPONDENCE_DIALOG_TITLE = "SAE TAM";
+const SAINT_ROCH_HUB_DIALOG_TITLE = "SAE TAM (Pôle Saint-Roch)";
+
 function appendCorrespondenceLineHeader(parentEl, opts) {
   const o = opts || {};
   const routeItem = o.routeItem || null;
@@ -841,7 +844,7 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   const info = buildCorrespondenceDirectionInfo(stopObj, routeItem);
   if (!info.length) {
     showAppMessageDialog(
-      TAM_APP_DIALOG_TITLE,
+      CORRESPONDENCE_DIALOG_TITLE,
       `Correspondance ${lineLabel}\n\nAucune direction disponible pour cet arrêt.`,
     );
     return;
@@ -850,7 +853,7 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   const titleEl = document.getElementById("appMessageDialogTitle");
   const bodyEl = document.getElementById("appMessageDialogBody");
   if (dlg && typeof dlg.showModal === "function" && titleEl && bodyEl) {
-    titleEl.textContent = TAM_APP_DIALOG_TITLE;
+    titleEl.textContent = CORRESPONDENCE_DIALOG_TITLE;
     bodyEl.innerHTML = "";
 
     appendCorrespondenceLineHeader(bodyEl, { lineLabel, routeItem, stopObj });
@@ -877,7 +880,7 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
     const sensLabel = directionDisplayLabel(it.dirKey);
     lines.push(`${sensLabel} : ${it.labels.join(" / ")}`);
   }
-  showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
+  showAppMessageDialog(CORRESPONDENCE_DIALOG_TITLE, lines.join("\n").trim());
 }
 
 async function refreshCorrespondencePopupArrivals(stopObj, routeItem, targetEl) {
@@ -1024,7 +1027,7 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
   ).trim();
   if (!routeItems?.length) {
     showAppMessageDialog(
-      TAM_APP_DIALOG_TITLE,
+      CORRESPONDENCE_DIALOG_TITLE,
       `${title}\n\nAucune ligne supplémentaire pour ${stopName}.`,
     );
     return;
@@ -1042,7 +1045,7 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
       })),
     };
   });
-  if (showTabbedCorrespondenceDialog(title, "", entries)) {
+  if (showTabbedCorrespondenceDialog(CORRESPONDENCE_DIALOG_TITLE, "", entries)) {
     return;
   }
   const lines = [title, `Arrêt : ${stopName}`, ""];
@@ -1050,7 +1053,7 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
     appendLineDirectionDetails(lines, stopObj, item);
     lines.push("");
   }
-  showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
+  showAppMessageDialog(CORRESPONDENCE_DIALOG_TITLE, lines.join("\n").trim());
 }
 
 function getStopAreaHubKey(stopObj) {
@@ -1120,7 +1123,7 @@ function buildStopAreaHubSummary(stopObj) {
     }))
     .sort((a, b) => hubStopNameOrder(a.stopName, b.stopName));
   return {
-    title: "Correspondances pôle Saint-Roch",
+    title: SAINT_ROCH_HUB_DIALOG_TITLE,
     sections,
   };
 }
@@ -1129,7 +1132,7 @@ function showStopAreaHubPopup(stopObj) {
   const summary = buildStopAreaHubSummary(stopObj);
   if (!summary || !summary.sections.length) {
     showAppMessageDialog(
-      TAM_APP_DIALOG_TITLE,
+      SAINT_ROCH_HUB_DIALOG_TITLE,
       "Aucune correspondance de pôle supplémentaire disponible.",
     );
     return;
@@ -1255,7 +1258,7 @@ function showStopAreaHubPopup(stopObj) {
     }
     lines.push("");
   }
-  showAppMessageDialog(TAM_APP_DIALOG_TITLE, lines.join("\n").trim());
+  showAppMessageDialog(summary.title, lines.join("\n").trim());
 }
 
 function wireStopRailInfoBadgeInteractions(el, onOpen) {
