@@ -2442,10 +2442,6 @@ function getBusNetworkGeometry(pattern) {
   return getNetworkGeometryByLine(data?.bus_network_features || [], pattern);
 }
 
-function getTramNetworkGeometry(pattern) {
-  return getNetworkGeometryByLine(data?.tram_network_features || [], pattern);
-}
-
 function updateStopToStopOverlay() {
   if (typeof tamUpdateStopToStopGuide !== "function") {
     stopToStopLayer.clearLayers();
@@ -2498,11 +2494,27 @@ async function setMission(pattern, opts) {
   missionName.textContent = `Ligne ${pattern.route_short_name} | ${pattern.headsign} | ${pattern.variant_name}`;
 
   const isTram = String(pattern.route_type) === "0";
-  const tramGeom = isTram ? getTramNetworkGeometry(pattern) : null;
   const busGeom = !isTram ? getBusNetworkGeometry(pattern) : null;
-  if (tramGeom) {
-    activeCoordinates = tramGeom.coords;
-    traceSource = `Réseau tram 3M (${tramGeom.nom_ligne || "ligne"})`;
+
+  if (isTram) {
+    // Tram : le GeoJSON LigneTram mélange variantes / sens ; OSRM « voiture » est idiot sur voie réservée.
+    // On fige la carte sur la chaîne des positions GTFS des arrêts du voyage → stable et cohérent avec les arrêts affichés.
+    activeCoordinates =
+      Array.isArray(pattern.coordinates) && pattern.coordinates.length
+        ? pattern.coordinates.map((xy) => [...xy])
+        : [];
+    traceSource = "GTFS arrêt → arrêt (tram)";
+    if (!activeCoordinates.length) {
+      activeCoordinates = await fetchRoadGeometry(pattern);
+      traceSource =
+        activeCoordinates.length && activeCoordinates !== pattern.coordinates
+          ? "OSRM routier (tram, secours)"
+          : "GTFS arrêt → arrêt";
+      if (!activeCoordinates.length) {
+        activeCoordinates = [...(pattern.coordinates || [])];
+        traceSource = "GTFS arrêt → arrêt";
+      }
+    }
   } else if (busGeom) {
     activeCoordinates = busGeom.coords;
     traceSource = `Réseau bus 3M (${busGeom.nom_ligne || "ligne"})`;

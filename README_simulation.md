@@ -13,16 +13,13 @@ Ce prototype sert a s'entrainer hors terrain avec les donnees GTFS TAM.
 
 ## Sources de trace
 
-Le simulateur choisit la geometrie dans cet ordre:
+Le simulateur choisit la géométrie ainsi :
 
-1. Reseau Open Data 3M (prioritaire)
-   - Tram (`route_type=0`): `MMM_MMM_LigneTram.json`
-   - Bus: `MMM_MMM_BusLigne.json`
-2. Routage routier OSRM (secours)
-3. Trace direct arret->arret GTFS (dernier secours)
+1. **Tram** (`route_type = 0`) : **tracé GTFS arrêt → arrêt** (positions officielles des arrêts du voyage).  
+   Pas de GeoJSON « LigneTram » à l’affichage : les variantes Open Data et le routage voiture sur voie tram donnaient des résultats peu fiables.
+2. **Bus** : réseau Open Data **`MMM_MMM_BusLigne.json`** si présent dans les données générées, puis OSRM, puis GTFS arrêt → arrêt.
 
-Ce mecanisme permet d'avoir un trace tram realiste sur les lignes 1 a 5 quand
-la donnee tram est disponible localement.
+*(En local, si vous placez encore `MMM_MMM_LigneTram.json` dans le dépôt, il peut être embarqué dans `simulation_data.json`, mais l’interface tram ne l’utilise plus pour dessiner la mission.)*
 
 ## Lancer le prototype
 
@@ -49,7 +46,7 @@ menu des lignes. Sans cette clé métadonnées (anciens exports), comportement i
 
 Le fichier **`simulation_data.json` n’est pas versionné sur `master`** (voir `.gitignore`).
 Les workflows **génèrent** ce JSON et publient **tout le site statique** sur la branche
-**`gh-pages`** (action **peaceiris**). Avant le build GTFS, **`refresh_simulation_opendata.py`** télécharge aussi les GeoJSON **tram** et **bus lignes** (`MMM_MMM_LigneTram.json`, `MMM_MMM_BusLigne.json`) depuis Open Data : les **tracés carte** du JSON restent alignés sur la géométrie réseau officielle (pas seulement OSRM / ligne droite entre arrêts). Les **tâches planifiées** suffisent pour les données : vous n’avez **pas** à lancer un workflow à la main au quotidien.
+**`gh-pages`** (action **peaceiris**). Avant le build GTFS, **`refresh_simulation_opendata.py`** télécharge le GeoJSON **bus lignes** (`MMM_MMM_BusLigne.json`) pour les tracés bus ; le **tram** s’appuie sur la chaîne **GTFS arrêt → arrêt** à l’affichage (plus stable). Les **tâches planifiées** suffisent pour les données : vous n’avez **pas** à lancer un workflow à la main au quotidien.
 
 #### Réglage GitHub Pages (à ne pas confondre)
 
@@ -155,9 +152,9 @@ curl "http://IP_PUBLIQUE:8000/api/tam/perturbations"
 Section de suivi technique pour controler rapidement la coherence des donnees chargees.
 
 - Periode GTFS locale actuellement detectee: `2026-01-05` -> `2026-03-08`.
-- Les geometries reseau (bus/tram) proviennent des jeux Open Data locaux si presents.
-- Les lignes tram (`route_type=0`) utilisent en priorite la geometrie `LigneTram`.
-- En absence de geometrie reseau, fallback automatique: OSRM, puis trace arret->arret.
+- Les géométries **bus** peuvent provenir du GeoJSON Open Data `BusLigne` si présent dans les données générées.
+- Les lignes **tram** (`route_type=0`) utilisent la **chaîne GTFS arrêt → arrêt** à l’affichage (priorité stabilité).
+- **Bus** sans GeoJSON réseau : OSRM, puis tracé arrêt → arrêt.
 - Si une ligne parait incoherente, verifier en premier:
   - la date/validite GTFS locale,
   - la presence des archives Open Data reseau,
@@ -172,7 +169,7 @@ Section de suivi technique pour controler rapidement la coherence des donnees ch
 ## Notes techniques
 
 - Les variantes sont construites depuis `trips.txt` + `stop_times.txt`.
-- Le GTFS local peut ne pas inclure `shapes.txt`; le trace officiel est alors reconstruit via Open Data reseau (bus/tram) puis OSRM si necessaire.
+- Le GTFS local peut ne pas inclure `shapes.txt` ; le **bus** peut s’appuyer sur Open Data réseau puis OSRM si nécessaire ; le **tram** suit les coordonnées des arrêts du voyage.
 - Le guidage stop-to-stop est implemente dans `guidage_troncons_arrets.js`.
 - Si vous mettez a jour `gtfs_data`, regenez `simulation_data.json`.
 

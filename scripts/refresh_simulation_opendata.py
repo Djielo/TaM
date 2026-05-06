@@ -33,12 +33,9 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 GTFS_PUBLIC_URBA = "https://data.montpellier3m.fr/GTFS/Urbain/GTFS.zip"
 GTFS_PUBLIC_SUB = "https://data.montpellier3m.fr/GTFS/Suburbain/GTFS.zip"
 
-# GeoJSON lignes (tracés carte « officiels » 3M) — même périmètre que lecture locale dans build_simulator_data.py.
+# GeoJSON bus lignes (tracés carte 3M). Le tram n’est pas téléchargé : le simulateur utilise la chaîne GTFS arrêt → arrêt.
 OPEN_DATA_RESOURCES_BASE = "https://data.montpellier3m.fr/sites/default/files/ressources"
-NETWORK_GEOJSON_FILES = (
-    "MMM_MMM_LigneTram.json",
-    "MMM_MMM_BusLigne.json",
-)
+NETWORK_GEOJSON_FILES = ("MMM_MMM_BusLigne.json",)
 
 REQUIRED_MERGE_FILENAMES = ("routes.txt", "trips.txt", "stop_times.txt", "stops.txt")
 
@@ -211,7 +208,7 @@ def write_json(payload: dict, path: str) -> None:
 
 
 def fetch_network_geojson_layers() -> None:
-    """Télécharge tram + bus (réseau lignes) pour que build_data extrait les tracés réseau."""
+    """Télécharge le GeoJSON bus lignes ; le tram reste GTFS arrêt → arrêt côté simulateur."""
     for fname in NETWORK_GEOJSON_FILES:
         url = f"{OPEN_DATA_RESOURCES_BASE}/{fname}"
         dest = os.path.join(REPO_ROOT, fname)

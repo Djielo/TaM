@@ -15,14 +15,17 @@ Memo dedoublonne des liens utiles pour le projet simulateur.
 
 Ces URL completent les **fiches dataset** ci-dessous (GTFS, GTFS-RT, reseau vectoriel).
 
-## Géométries lignes (JSON GeoJSON — utilisées par `refresh_simulation_opendata.py`)
+## Géométries lignes (JSON GeoJSON)
 
-Téléchargement direct (tracés pour `build_simulator_data.py` / carte simulateur) :
+**CI / `refresh_simulation_opendata.py`** : téléchargement **bus uniquement** (`BusLigne`). Le simulateur affiche le **tram** en **GTFS arrêt → arrêt** (stabilité).
+
+- Bus / lignes suburbaines (`MMM_MMM_BusLigne.json`) — utilisé en CI  
+  https://data.montpellier3m.fr/sites/default/files/ressources/MMM_MMM_BusLigne.json
+
+Référence optionnelle locale (`build_simulator_data.py` peut encore l’embarquer dans le JSON, sans usage carte tram actuel) :
 
 - Tram (`MMM_MMM_LigneTram.json`)  
   https://data.montpellier3m.fr/sites/default/files/ressources/MMM_MMM_LigneTram.json
-- Bus / lignes suburbaines (`MMM_MMM_BusLigne.json`)  
-  https://data.montpellier3m.fr/sites/default/files/ressources/MMM_MMM_BusLigne.json
 
 *(Le jeu « Bustram » JSON sur le portail ne couvre qu’un sous-ensemble BHNS ; le bus général reste sur `BusLigne`.)*
 
