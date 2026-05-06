@@ -260,9 +260,19 @@
         min-width: 0;
         width: 100%;
       }
+      .tam-stop-rail__pillTextCol {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 6px;
+        min-width: 0;
+        flex: 1 1 auto;
+        pointer-events: none;
+      }
       .tam-stop-rail__pillLabel {
         display: none;
-        flex: 1 1 auto;
+        flex: 0 1 auto;
         min-width: 0;
         font-size: 11px;
         font-weight: 600;
@@ -271,9 +281,20 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        pointer-events: none;
+      }
+      .tam-stop-rail__pillEta {
+        display: none;
+        flex: 0 0 auto;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.25;
+        color: #64748b;
+        white-space: nowrap;
       }
       .tam-stop-rail--explore .tam-stop-rail__pillLabel {
+        display: block;
+      }
+      .tam-stop-rail--explore .tam-stop-rail__pillEta:not(:empty) {
         display: block;
       }
       .tam-stop-rail__correspondences {
@@ -333,6 +354,11 @@
         .tam-stop-rail__pill.tam-stop-rail__pill--past
         .tam-stop-rail__pillLabel {
         color: #14532d;
+      }
+      .tam-stop-rail--explore
+        .tam-stop-rail__pill.tam-stop-rail__pill--past
+        .tam-stop-rail__pillEta {
+        color: #3f6212;
       }
       @media (prefers-reduced-motion: reduce) {
         .tam-stop-rail,
