@@ -2672,6 +2672,40 @@ function setTamStopRailExploreOpen(open) {
   });
 }
 
+function scrollTamStopRailStopToBottom(patternIdx) {
+  const { root, scroll } = getTamStopRailEls();
+  if (!root || !scroll || root.hidden) return;
+  const idx = Number(patternIdx);
+  if (!Number.isFinite(idx)) return;
+  const btn = scroll.querySelector(
+    `.tam-stop-rail__pill[data-tam-stop-idx="${idx}"]`,
+  );
+  if (!(btn instanceof HTMLElement)) return;
+  const sr = scroll.getBoundingClientRect();
+  const br = btn.getBoundingClientRect();
+  const topInContent = br.top - sr.top + scroll.scrollTop;
+  const bottomInContent = topInContent + btn.offsetHeight;
+  const pad = 4;
+  const maxScroll = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+  const target = bottomInContent - scroll.clientHeight + pad;
+  scroll.scrollTop = Math.min(maxScroll, Math.max(0, Math.round(target)));
+}
+
+function openTamStopRailAtNextStop() {
+  const pair = getCurrentAndNextServedGuideSlots(distanceAlongPathMeters);
+  const next = pair.next;
+  if (!next || next.kind !== "gtfs") {
+    setTamStopRailExploreOpen(true);
+    return;
+  }
+  setTamStopRailExploreOpen(true);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      scrollTamStopRailStopToBottom(next.patternIdx);
+    });
+  });
+}
+
 function formatTamArrivalMinutes(arrivals) {
   const items = Array.isArray(arrivals) ? arrivals : [];
   return items
@@ -3393,6 +3427,7 @@ function setupMapMissionHud() {
   const nextB = document.getElementById("mapHudNextBtn");
   const speedB = document.getElementById("mapHudSpeedBtn");
   const mapHeading = document.getElementById("mapHudHeadingUp");
+  const nextStrip = root.querySelector(".map-mission-hud__nextStrip");
   if (
     !root ||
     !toggleB ||
@@ -3401,7 +3436,8 @@ function setupMapMissionHud() {
     !prevB ||
     !nextB ||
     !speedB ||
-    !mapHeading
+    !mapHeading ||
+    !nextStrip
   )
     return;
 
@@ -3430,6 +3466,21 @@ function setupMapMissionHud() {
   });
   nextB.addEventListener("click", () => {
     jumpServedStop(1);
+  });
+  nextStrip.addEventListener("click", () => {
+    openTamStopRailAtNextStop();
+  });
+  nextStrip.setAttribute("role", "button");
+  nextStrip.setAttribute("tabindex", "0");
+  nextStrip.setAttribute(
+    "aria-label",
+    "Ouvrir le rail des arrêts au prochain arrêt",
+  );
+  nextStrip.setAttribute("title", "Ouvrir le rail au prochain arrêt");
+  nextStrip.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    ev.preventDefault();
+    openTamStopRailAtNextStop();
   });
   speedB.addEventListener("click", () => {
     cycleMapHudSpeed();
