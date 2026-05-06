@@ -1400,7 +1400,9 @@ function updateLines() {
   lineSelect.innerHTML = "";
   lineOptionLookup = [];
   const allTram = lineOptions.filter(isTramDisplayLine);
-  const allNavette = lineOptions.filter((x) => String(x.route_short_name) === "A");
+  const allNavette = lineOptions.filter(
+    (x) => String(x.route_short_name) === "A",
+  );
   const allBus = lineOptions.filter(
     (x) => !isTramDisplayLine(x) && String(x.route_short_name) !== "A",
   );
@@ -1438,7 +1440,7 @@ function updateLines() {
 
   addLineGroup("Tram — Réseau TaM", groups.tramTam);
   addLineGroup("Tram — Autres", groups.tramAutres);
-  addLineGroup("NAVETTE - RÉSEAU TaM", groups.navette);
+  addLineGroup("Navette - Réseau TaM", groups.navette);
   addLineGroup("Bus — Réseau TaM", groups.busTam);
   addLineGroup("Bus — Autres", groups.busAutres);
 
@@ -1471,7 +1473,7 @@ function rebuildLineCustomList(groups) {
   const sections = [
     { label: "Tram — Réseau TaM", items: groups.tramTam },
     { label: "Tram — Autres", items: groups.tramAutres },
-    { label: "NAVETTE - RÉSEAU TaM", items: groups.navette },
+    { label: "Navette - Réseau TaM", items: groups.navette },
     { label: "Bus — Réseau TaM", items: groups.busTam },
     { label: "Bus — Autres", items: groups.busAutres },
   ];
