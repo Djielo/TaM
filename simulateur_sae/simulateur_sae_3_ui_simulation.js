@@ -3958,6 +3958,43 @@ voiceTestBtn.addEventListener("click", () => {
   speakProchainArret("Test, Place de l'Europe", true);
 });
 
+function showNetworkDataModalFromHelp() {
+  const meta = data?.meta || null;
+  if (!meta) {
+    const msg =
+      "Données réseau\n\nLes données ne sont pas encore chargées (simulation_data.json).";
+    try {
+      showAppMessageDialog(TAM_APP_DIALOG_TITLE, msg);
+    } catch (e) {
+      alert(msg);
+    }
+    return;
+  }
+  const lines = [
+    "Données réseau",
+    "",
+    `Généré le : ${meta.generated_at || "-"}`,
+    `Empreinte (dataset_digest) : ${meta.dataset_digest || "-"}`,
+    `Nombre de lignes : ${meta.route_count ?? "-"}`,
+    `Nombre de variantes : ${meta.pattern_count ?? "-"}`,
+    `Tracés bus réseau : ${meta.bus_network_feature_count ?? "-"}`,
+    `Tracés tram réseau : ${meta.tram_network_feature_count ?? "-"}`,
+  ];
+  const body = lines.join("\n");
+  try {
+    showAppMessageDialog(TAM_APP_DIALOG_TITLE, body);
+  } catch (e) {
+    alert(body);
+  }
+}
+
+// Hook global (debug + bouton Aide en onclick).
+try {
+  window.tamShowNetworkDataModal = showNetworkDataModalFromHelp;
+} catch (e) {
+  /* ignore */
+}
+
 initVocalUI();
 try {
   const savedDriveMode = localStorage.getItem(LS_KEY_DRIVE_MODE);
@@ -4002,6 +4039,9 @@ missionTabBtn?.addEventListener("click", () => setPanelTab("mission"));
 opsTabBtn?.addEventListener("click", () => setPanelTab("ops"));
 voiceTabBtn?.addEventListener("click", () => setPanelTab("voice"));
 helpTabBtn?.addEventListener("click", () => setPanelTab("help"));
+document
+  .getElementById("helpShowNetworkDataBtn")
+  ?.addEventListener("click", showNetworkDataModalFromHelp);
 controlPanelEl
   ?.querySelectorAll(".panel-ops-subtabs [data-ops-subtab]")
   .forEach((btn) => {
