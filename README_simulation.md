@@ -52,7 +52,15 @@ Les workflows **génèrent** ce JSON et publient **tout le site statique** sur l
 **`gh-pages`** (action **peaceiris**). Les **tâches planifiées** suffisent pour les données :
 vous n’avez **pas** à lancer un workflow à la main au quotidien.
 
-Réglage GitHub une fois : **Settings → Pages → Deploy from a branch → `gh-pages` / (root)**.
+#### Réglage GitHub Pages (à ne pas confondre)
+
+Dans **Settings → Pages → Build and deployment** :
+
+1. **Premier menu « Source »** (en haut) : choisissez **Deploy from a branch**.  
+   Ce n’est **pas** la même chose que les menus **Branch** / **Folder** plus bas. Si vous laissez **GitHub Actions** dans **Source**, GitHub ne sert **pas** la branche **gh-pages** : le site peut sembler à jour alors que **`simulation_data.json` manque** (popup dans le simulateur).
+2. Une fois **Deploy from a branch** sélectionné, réglez **Branch** = **`gh-pages`** et **Folder** = **`/ (root)`**, puis enregistrez.
+
+Sans cette combinaison, les workflows peuvent être verts mais le fichier JSON reste **introuvable** sur `…github.io/…/simulation_data.json`.
 
 Fichiers sous **`.github/workflows/`** :
 
@@ -64,8 +72,8 @@ Script : **`scripts/refresh_simulation_opendata.py`**. Clone local sans JSON :
 `bash scripts/fetch_simulation_data_local.sh VotreCompte/NomDuRepo`  
 ou `python scripts/refresh_simulation_opendata.py --mode monthly`.
 
-**Note technique** : avant publication, la CI retire `simulation_data.json` du **`.gitignore` copié**
-dans le dossier publié — sans cela **peaceiris** (`git add --all`) n’ajouterait pas le fichier sur **gh-pages**.
+**Note technique** : avant **peaceiris**, la CI **supprime le `.gitignore` copié** dans `_site`. Sinon
+**peaceiris** (`git add --all`) respecterait encore les règles et **n’ajouterait pas** `simulation_data.json` sur **gh-pages**.
 
 2. Demarrer le serveur local TAM (statique + API locale anti-CORS):
 
