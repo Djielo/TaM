@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import os
 import shutil
+import sys
 import tempfile
 import time
 from urllib.error import URLError
@@ -134,6 +135,10 @@ def fetch_network_geojson_layers() -> None:
 
 def main() -> int:
     os.chdir(REPO_ROOT)
+    # Assure que les imports depuis la racine du dépôt fonctionnent aussi
+    # quand ce script est exécuté via `python scripts/...` (CI inclus).
+    if REPO_ROOT not in sys.path:
+        sys.path.insert(0, REPO_ROOT)
     fetch_network_geojson_layers()
     merge_gtfs_into(GTFS_DIR, (GTFS_PUBLIC_URBA, GTFS_PUBLIC_SUB))
     # Génération JSON (utilise gtfs_data/ + MMM_MMM_*.json à la racine)

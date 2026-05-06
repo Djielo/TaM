@@ -2141,21 +2141,63 @@
           return lines.join("\n");
         }
 
+        function safeString(x) {
+          try {
+            return String(x == null ? "" : x);
+          } catch (_e) {
+            return "";
+          }
+        }
+
+        function metaSummary(meta) {
+          var m = meta || {};
+          return [
+            safeString(m.generated_at || ""),
+            safeString(m.dataset_digest || ""),
+            safeString(m.route_count),
+            safeString(m.pattern_count),
+            safeString(m.tram_network_feature_count),
+            safeString(m.bus_network_feature_count),
+          ].join("|");
+        }
+
         async function showNetworkData() {
           try {
-            // Si le JS principal a déjà chargé data.meta, on l’utilise.
-            if (window.data && window.data.meta) {
-              openAppDialog("Simulateur SAE TAM", formatMeta(window.data.meta));
-              return;
+            var localMeta = null;
+            try {
+              localMeta = window.data && window.data.meta ? window.data.meta : null;
+            } catch (_e0) {
+              localMeta = null;
             }
-          } catch (e) {
-            /* ignore */
-          }
-          try {
-            var resp = await fetch("./simulation_data.json", { cache: "no-store" });
+
+            // IMPORTANT: on force un refetch réseau (cache-buster + no-store).
+            // Sinon, certains navigateurs / caches peuvent resservir un JSON obsolète.
+            var url = "./simulation_data.json?v=" + Date.now();
+            var resp = await fetch(url, { cache: "no-store" });
             if (!resp.ok) throw new Error("HTTP " + resp.status);
             var json = await resp.json();
-            openAppDialog("Simulateur SAE TAM", formatMeta(json && json.meta));
+            var fetchedMeta = json && json.meta ? json.meta : null;
+
+            var lines = [];
+            lines.push(formatMeta(fetchedMeta));
+            lines.push("");
+            lines.push("Source (fetch) : " + safeString(resp.url || url));
+            lines.push("HTTP cache-control : " + safeString(resp.headers.get("cache-control")));
+            lines.push("HTTP etag : " + safeString(resp.headers.get("etag")));
+            lines.push("HTTP last-modified : " + safeString(resp.headers.get("last-modified")));
+
+            if (localMeta) {
+              var same = metaSummary(localMeta) === metaSummary(fetchedMeta);
+              lines.push("");
+              lines.push("Données déjà chargées par l’app : " + (same ? "identiques" : "DIFFÉRENTES"));
+              if (!same) {
+                lines.push("");
+                lines.push("[Chargées par l’app]");
+                lines.push(formatMeta(localMeta));
+              }
+            }
+
+            openAppDialog("Simulateur SAE TAM", lines.join("\n"));
           } catch (e2) {
             openAppDialog(
               "Simulateur SAE TAM",
