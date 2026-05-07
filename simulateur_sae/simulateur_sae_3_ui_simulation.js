@@ -4341,7 +4341,6 @@ function hideMapMissionHud() {
   root.classList.add("map-mission-hud--inactive");
   root.classList.remove("map-mission-hud--collapsed");
   root.setAttribute("aria-hidden", "true");
-  setTamRouteUiVisible(true);
 }
 
 function syncMapHudHeadingCheckboxFromMain() {
@@ -4357,9 +4356,6 @@ function showMapMissionHud() {
   root.classList.remove("map-mission-hud--inactive");
   root.classList.remove("map-mission-hud--collapsed");
   root.setAttribute("aria-hidden", "false");
-  setTamRouteUiVisible(false);
-  // En mode mission, on ne doit jamais conserver un tracé "itinéraire" sur la carte.
-  clearTamRouteOverlay();
   syncMapHudHeadingCheckboxFromMain();
   refreshMapMissionHudState();
   refreshMapHudToggleIcon();
