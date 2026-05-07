@@ -676,6 +676,16 @@ function displayLineLabel(item) {
   return code;
 }
 
+/** Libellé pour les phrases « Prenez … » dans le résumé d’itinéraire carte. */
+function routePlannerTakeLinePhrase(routeCode) {
+  const code = String(routeCode || "").trim();
+  const items = Array.isArray(lineOptions) ? lineOptions : [];
+  const item = items.find((x) => String(x?.route_short_name || "").trim() === code);
+  const lab = item ? displayLineLabel(item) : code;
+  if (item && isTramDisplayLine(item)) return `le ${lab}`;
+  return `la ligne ${lab}`;
+}
+
 function sortLineItemsForDisplay(items) {
   return [...items].sort((a, b) => {
     const pa = linePriority(a);
@@ -1069,17 +1079,50 @@ function describeRouteResult(destStopId, dRes) {
   lines.push(`Destination : ${dest.stop_name}`);
   lines.push(`Durée estimée : ${fmtMinutesFromSeconds(dRes.seconds)}`);
   lines.push("");
+  /** Arrêt atteint par la dernière étape « marche » (évite « montez à … » redondant). */
+  let lastWalkArrivalStopId = null;
+  /** Nom normalisé du dernier arrêt de descente (même pôle / correspondance). */
+  let lastAlightNameKey = "";
   let currentRide = null;
   let rideFrom = null;
+  let rideHeadsign = "";
   const flushRide = (toStopId) => {
     if (!currentRide || !rideFrom) return;
     const a = idx.stopsById.get(rideFrom);
     const b = idx.stopsById.get(toStopId);
-    lines.push(
-      `- Prenez la ligne ${currentRide} de ${a?.stop_name || "?"} à ${b?.stop_name || "?"}.`,
-    );
+    const take = routePlannerTakeLinePhrase(currentRide);
+    const hs = String(rideHeadsign || "").trim();
+    const alightNameK = normalizeStopName(a?.stop_name || "");
+    const arrivedByWalk =
+      lastWalkArrivalStopId && rideFrom === lastWalkArrivalStopId;
+    const sameHubAsLastAlight =
+      !!lastAlightNameKey &&
+      !!alightNameK &&
+      alightNameK === lastAlightNameKey;
+    const omitMontez = arrivedByWalk || sameHubAsLastAlight;
+    lastWalkArrivalStopId = null;
+    if (hs) {
+      if (omitMontez) {
+        lines.push(`- Prenez ${take} en direction de « ${hs} ».`);
+      } else {
+        lines.push(
+          `- Prenez ${take} en direction de « ${hs} », montez à ${a?.stop_name || "?"}.`,
+        );
+      }
+      lines.push(`- Descendez à ${b?.stop_name || "?"}.`);
+    } else {
+      if (omitMontez) {
+        lines.push(`- Prenez ${take}.`);
+      } else {
+        lines.push(`- Prenez ${take}, montez à ${a?.stop_name || "?"}.`);
+      }
+      lines.push(`- Descendez à ${b?.stop_name || "?"}.`);
+    }
+    const bk = normalizeStopName(b?.stop_name || "");
+    if (bk) lastAlightNameKey = bk;
     currentRide = null;
     rideFrom = null;
+    rideHeadsign = "";
   };
   for (const step of dRes.path) {
     const e = step.edge;
@@ -1089,13 +1132,31 @@ function describeRouteResult(destStopId, dRes) {
       lines.push(
         `- Marchez jusqu’à ${b?.stop_name || "un arrêt"} (~${fmtMinutesFromSeconds(e.w)}).`,
       );
+      lastWalkArrivalStopId = step.to;
     } else if (e.kind === "transfer") {
       flushRide(step.from);
+      lastWalkArrivalStopId = null;
       const a = idx.stopsById.get(step.from);
       const b = idx.stopsById.get(step.to);
-      lines.push(
-        `- Correspondance à ${a?.stop_name || "l’arrêt"} → ${b?.stop_name || "arrêt"} (~${fmtMinutesFromSeconds(e.w)}).`,
-      );
+      if (step.to === destStopId) {
+        const destKey = normalizeStopName(dest.stop_name || "");
+        const fromKey = normalizeStopName(a?.stop_name || "");
+        if (fromKey && destKey && fromKey === destKey) {
+          continue;
+        }
+      }
+      const na = normalizeStopName(a?.stop_name || "");
+      const nb = normalizeStopName(b?.stop_name || "");
+      const samePublicName = na && nb && na === nb;
+      if (samePublicName) {
+        lines.push(
+          `- Changement de quai à ${a?.stop_name || "l’arrêt"} (~${fmtMinutesFromSeconds(e.w)}).`,
+        );
+      } else {
+        lines.push(
+          `- Correspondance : ${a?.stop_name || "l’arrêt"} → ${b?.stop_name || "arrêt"} (~${fmtMinutesFromSeconds(e.w)}).`,
+        );
+      }
     } else if (e.kind === "ride") {
       const r = String(e.route || "").trim();
       if (!r) continue;
@@ -1103,6 +1164,7 @@ function describeRouteResult(destStopId, dRes) {
         flushRide(step.from);
         currentRide = r;
         rideFrom = step.from;
+        rideHeadsign = String(e.headsign || "").trim();
       }
     }
   }
@@ -1585,12 +1647,14 @@ function buildRoutePlannerGraph() {
   const { stopsById, nameKeyToStopIds } = buildRoutePlannerIndexes();
   const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
 
-  /** @type {Map<string, { to: string, w: number, kind: string, route: string }[]>} */
+  /** @type {Map<string, { to: string, w: number, kind: string, route: string, headsign: string }[]>} */
   const adj = new Map();
-  const addEdge = (from, to, w, kind, route) => {
+  const addEdge = (from, to, w, kind, route, headsign) => {
     if (!from || !to || from === to) return;
     if (!adj.has(from)) adj.set(from, []);
-    adj.get(from).push({ to, w, kind, route });
+    const hs =
+      kind === "ride" ? String(headsign == null ? "" : headsign).trim() : "";
+    adj.get(from).push({ to, w, kind, route: route || "", headsign: hs });
   };
 
   // Arcs "dans le véhicule" (directionnels) basés sur les temps GTFS du pattern.
@@ -1601,12 +1665,13 @@ function buildRoutePlannerGraph() {
     const model = buildTamStopRailGtfsSchedule(stops);
     if (!model.ok) continue;
     const leg = model.legSec;
+    const headsign = String(p?.headsign || "").trim();
     for (let i = 0; i < stops.length - 1; i++) {
       const a = String(stops[i]?.stop_id || "").trim();
       const b = String(stops[i + 1]?.stop_id || "").trim();
       if (!stopsById.has(a) || !stopsById.has(b)) continue;
       const w = Math.max(30, Number(leg[i] || 120));
-      addEdge(a, b, w, "ride", route);
+      addEdge(a, b, w, "ride", route, headsign);
     }
   }
 
@@ -1625,7 +1690,7 @@ function buildRoutePlannerGraph() {
         if (!b) continue;
         const dm = approximateGeoDistMeters(a.lat, a.lon, b.lat, b.lon);
         if (!Number.isFinite(dm) || dm > transferMaxMeters) continue;
-        addEdge(ids[i], ids[j], transferW, "transfer", "");
+        addEdge(ids[i], ids[j], transferW, "transfer", "", "");
       }
     }
   }
