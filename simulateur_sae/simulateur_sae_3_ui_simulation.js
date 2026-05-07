@@ -676,14 +676,80 @@ function displayLineLabel(item) {
   return code;
 }
 
-/** Libellé pour les phrases « Prenez … » dans le résumé d’itinéraire carte. */
-function routePlannerTakeLinePhrase(routeCode) {
+/** Libellé pour les phrases « Prenez … » dans le résumé d’itinéraire carte.
+ * @param {string|null|undefined} branchLetter « A » ou « B » (boucle T4 / même base de headsign), sinon omis. */
+function routePlannerTakeLinePhrase(routeCode, branchLetter) {
   const code = String(routeCode || "").trim();
+  const br = branchLetter == null ? "" : String(branchLetter).trim().toUpperCase().slice(0, 1);
+  const suffix = br === "A" || br === "B" ? br : "";
   const items = Array.isArray(lineOptions) ? lineOptions : [];
   const item = items.find((x) => String(x?.route_short_name || "").trim() === code);
   const lab = item ? displayLineLabel(item) : code;
-  if (item && isTramDisplayLine(item)) return `le ${lab}`;
-  return `la ligne ${lab}`;
+  if (item && isTramDisplayLine(item)) {
+    return suffix ? `le ${lab}${suffix}` : `le ${lab}`;
+  }
+  return suffix ? `la ligne ${lab}${suffix}` : `la ligne ${lab}`;
+}
+
+/** Normalise la base d’un headsign pour repérer une même destination (A vs B). */
+function routePlannerNormHeadsignBranchBase(base) {
+  return String(base || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+/** Extrait « … A » / « … B » en fin de trip_headsign (une lettre seule). */
+function headsignAbBranchSplit(headsign) {
+  const s = String(headsign || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!s) return null;
+  const m = /\s([AB])\s*$/i.exec(s);
+  if (!m) return null;
+  const letter = m[1].toUpperCase();
+  const base = s.slice(0, m.index).trim();
+  if (!base) return null;
+  return { base, letter };
+}
+
+/**
+ * T4 en boucle : selon la TaM, branche A = Corum puis Les Aubes ; branche B = l’inverse.
+ * Déduction uniquement sur l’ordre des arrêts du pattern GTFS (pas sur trip_headsign).
+ */
+function t4BranchLetterFromPatternStops(p) {
+  const route = String(p?.route_short_name || "").trim();
+  if (route !== "4") return "";
+  const stops = Array.isArray(p?.stops) ? p.stops : [];
+  let iCorum = -1;
+  let iLesAubes = -1;
+  for (let i = 0; i < stops.length; i++) {
+    const nk = normalizeStopName(stops[i]?.stop_name || stops[i]?.name || "");
+    if (iCorum < 0 && nk.includes("corum")) iCorum = i;
+    if (iLesAubes < 0 && nk.includes("les aubes")) iLesAubes = i;
+  }
+  if (iCorum < 0 || iLesAubes < 0) return "";
+  if (iCorum < iLesAubes) return "A";
+  if (iLesAubes < iCorum) return "B";
+  return "";
+}
+
+function routePlannerHeadsignBranchPairMeta(routeCode, headsign) {
+  const code = String(routeCode || "").trim();
+  const cur = headsignAbBranchSplit(headsign);
+  if (!code || !cur) return null;
+  const baseKey = routePlannerNormHeadsignBranchBase(cur.base);
+  const otherLetter = cur.letter === "A" ? "B" : "A";
+  const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  for (const p of patterns) {
+    if (String(p?.route_short_name || "").trim() !== code) continue;
+    const sp = headsignAbBranchSplit(p?.headsign || "");
+    if (!sp) continue;
+    if (sp.letter !== otherLetter) continue;
+    if (routePlannerNormHeadsignBranchBase(sp.base) !== baseKey) continue;
+    return { base: cur.base, letter: cur.letter };
+  }
+  return null;
 }
 
 function sortLineItemsForDisplay(items) {
@@ -1086,12 +1152,26 @@ function describeRouteResult(destStopId, dRes) {
   let currentRide = null;
   let rideFrom = null;
   let rideHeadsign = "";
+  let rideBranchLetter = "";
   const flushRide = (toStopId) => {
     if (!currentRide || !rideFrom) return;
     const a = idx.stopsById.get(rideFrom);
     const b = idx.stopsById.get(toStopId);
-    const take = routePlannerTakeLinePhrase(currentRide);
-    const hs = String(rideHeadsign || "").trim();
+    const hsRaw = String(rideHeadsign || "").trim();
+    const branchPair = routePlannerHeadsignBranchPairMeta(currentRide, hsRaw);
+    const splitHs = headsignAbBranchSplit(hsRaw);
+    const letterMeta =
+      rideBranchLetter === "A" || rideBranchLetter === "B"
+        ? rideBranchLetter
+        : branchPair
+          ? branchPair.letter
+          : null;
+    const take = routePlannerTakeLinePhrase(currentRide, letterMeta);
+    const dirQuoted = branchPair
+      ? branchPair.base
+      : splitHs
+        ? splitHs.base
+        : hsRaw;
     const alightNameK = normalizeStopName(a?.stop_name || "");
     const arrivedByWalk =
       lastWalkArrivalStopId && rideFrom === lastWalkArrivalStopId;
@@ -1101,12 +1181,12 @@ function describeRouteResult(destStopId, dRes) {
       alightNameK === lastAlightNameKey;
     const omitMontez = arrivedByWalk || sameHubAsLastAlight;
     lastWalkArrivalStopId = null;
-    if (hs) {
+    if (hsRaw) {
       if (omitMontez) {
-        lines.push(`- Prenez ${take} en direction de « ${hs} ».`);
+        lines.push(`- Prenez ${take} en direction de « ${dirQuoted} ».`);
       } else {
         lines.push(
-          `- Prenez ${take} en direction de « ${hs} », montez à ${a?.stop_name || "?"}.`,
+          `- Prenez ${take} en direction de « ${dirQuoted} », montez à ${a?.stop_name || "?"}.`,
         );
       }
       lines.push(`- Descendez à ${b?.stop_name || "?"}.`);
@@ -1123,6 +1203,7 @@ function describeRouteResult(destStopId, dRes) {
     currentRide = null;
     rideFrom = null;
     rideHeadsign = "";
+    rideBranchLetter = "";
   };
   for (const step of dRes.path) {
     const e = step.edge;
@@ -1165,6 +1246,11 @@ function describeRouteResult(destStopId, dRes) {
         currentRide = r;
         rideFrom = step.from;
         rideHeadsign = String(e.headsign || "").trim();
+        const br = String(e.branchLetter || "")
+          .trim()
+          .toUpperCase()
+          .slice(0, 1);
+        rideBranchLetter = br === "A" || br === "B" ? br : "";
       }
     }
   }
@@ -1647,14 +1733,26 @@ function buildRoutePlannerGraph() {
   const { stopsById, nameKeyToStopIds } = buildRoutePlannerIndexes();
   const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
 
-  /** @type {Map<string, { to: string, w: number, kind: string, route: string, headsign: string }[]>} */
+  /** @type {Map<string, { to: string, w: number, kind: string, route: string, headsign: string, branchLetter: string }[]>} */
   const adj = new Map();
-  const addEdge = (from, to, w, kind, route, headsign) => {
+  const addEdge = (from, to, w, kind, route, headsign, branchLetter) => {
     if (!from || !to || from === to) return;
     if (!adj.has(from)) adj.set(from, []);
     const hs =
       kind === "ride" ? String(headsign == null ? "" : headsign).trim() : "";
-    adj.get(from).push({ to, w, kind, route: route || "", headsign: hs });
+    const brRaw =
+      kind === "ride"
+        ? String(branchLetter == null ? "" : branchLetter).trim().toUpperCase()
+        : "";
+    const brOk = brRaw === "A" || brRaw === "B" ? brRaw : "";
+    adj.get(from).push({
+      to,
+      w,
+      kind,
+      route: route || "",
+      headsign: hs,
+      branchLetter: brOk,
+    });
   };
 
   // Arcs "dans le véhicule" (directionnels) basés sur les temps GTFS du pattern.
@@ -1666,12 +1764,13 @@ function buildRoutePlannerGraph() {
     if (!model.ok) continue;
     const leg = model.legSec;
     const headsign = String(p?.headsign || "").trim();
+    const t4Br = route === "4" ? t4BranchLetterFromPatternStops(p) : "";
     for (let i = 0; i < stops.length - 1; i++) {
       const a = String(stops[i]?.stop_id || "").trim();
       const b = String(stops[i + 1]?.stop_id || "").trim();
       if (!stopsById.has(a) || !stopsById.has(b)) continue;
       const w = Math.max(30, Number(leg[i] || 120));
-      addEdge(a, b, w, "ride", route, headsign);
+      addEdge(a, b, w, "ride", route, headsign, t4Br);
     }
   }
 
@@ -1690,7 +1789,7 @@ function buildRoutePlannerGraph() {
         if (!b) continue;
         const dm = approximateGeoDistMeters(a.lat, a.lon, b.lat, b.lon);
         if (!Number.isFinite(dm) || dm > transferMaxMeters) continue;
-        addEdge(ids[i], ids[j], transferW, "transfer", "", "");
+        addEdge(ids[i], ids[j], transferW, "transfer", "", "", "");
       }
     }
   }
