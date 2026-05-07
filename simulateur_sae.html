@@ -999,6 +999,86 @@
         --map-hud-next-fill-pct: 0;
         cursor: pointer;
       }
+      /* Itinéraire (mode carte) — panneau attaché au contrôle Leaflet (haut gauche). */
+      .tam-route-ui {
+        position: absolute;
+        inset: 0;
+        z-index: 1090; /* sous HUD mission (1100), au-dessus Leaflet */
+        pointer-events: none;
+      }
+      .tam-route-ui.hidden {
+        display: none;
+      }
+      .tam-route-ui__panel {
+        pointer-events: auto;
+        position: absolute;
+        left: var(--tam-route-panel-left, 54px);
+        top: var(--tam-route-panel-top, 12px);
+        width: min(340px, calc(100vw - 66px));
+        max-height: min(60vh, 420px);
+        overflow: auto;
+        padding: 10px 10px 9px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid #ccd3db;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+        display: none;
+      }
+      .tam-route-ui__panel.show {
+        display: block;
+      }
+      .tam-route-ui__panel h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 800;
+        color: #1b1f24;
+      }
+      .tam-route-ui__panel label {
+        display: block;
+        margin: 0 0 6px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #334155;
+      }
+      .tam-route-ui__panel select {
+        width: 100%;
+        box-sizing: border-box;
+        margin: 0 0 8px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        color: #1b1f24;
+      }
+      .tam-route-ui__panelBtns {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 6px;
+      }
+      .tam-route-ui__panelBtns button {
+        border-radius: 10px;
+        border: 1px solid #bbc4cf;
+        background: rgba(255, 255, 255, 0.96);
+        padding: 7px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .tam-route-ui__panelBtns button.primary {
+        border-color: #005ca9;
+        background: #005ca9;
+        color: #fff;
+      }
+      .tam-route-ui__panelResult {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.35;
+        color: #1b1f24;
+        white-space: pre-line;
+      }
       /* Remplissage horizontal : progression entre arrêt courant et prochain (distance le long du tracé) */
       .map-mission-hud__nextStrip::before {
         content: "";
@@ -1961,6 +2041,33 @@
             </div>
           </div>
           <div id="map"></div>
+          <div class="tam-route-ui" id="tamRouteUi" aria-hidden="true">
+            <div class="tam-route-ui__panel" id="tamRoutePanel">
+              <h3>Itinéraire</h3>
+              <label for="mapHudRouteMode">Mode</label>
+              <select id="mapHudRouteMode">
+                <option value="stop">Aller à un arrêt</option>
+                <option value="line">Prendre une ligne</option>
+              </select>
+              <div id="mapHudRouteLineBlock" hidden>
+                <label for="mapHudRouteLine">Ligne</label>
+                <select id="mapHudRouteLine"></select>
+                <label for="mapHudRouteLineStop">Arrêt (optionnel)</label>
+                <select id="mapHudRouteLineStop"></select>
+              </div>
+              <div id="mapHudRouteStopBlock">
+                <label for="mapHudRouteStop">Arrêt de destination</label>
+                <select id="mapHudRouteStop"></select>
+              </div>
+              <div class="tam-route-ui__panelBtns">
+                <button type="button" id="mapHudRouteCloseBtn">Fermer</button>
+                <button type="button" class="primary" id="mapHudRouteGoBtn">
+                  Calculer
+                </button>
+              </div>
+              <div class="tam-route-ui__panelResult" id="mapHudRouteResult"></div>
+            </div>
+          </div>
           <aside
             id="tamStopRail"
             class="tam-stop-rail"
