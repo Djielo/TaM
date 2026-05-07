@@ -1052,6 +1052,44 @@
         font-weight: 600;
         color: #1b1f24;
       }
+      .tam-route-ui__linePills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0 0 8px;
+      }
+      .tam-route-ui__linePillBtn {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        margin: 0;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tam-route-ui__linePillBadge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        height: 30px;
+        padding: 0 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(15, 23, 42, 0.18);
+        box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        user-select: none;
+      }
+      .tam-route-ui__linePillBtn.is-active .tam-route-ui__linePillBadge {
+        outline: 2px solid #005ca9;
+        outline-offset: 2px;
+      }
+      .tam-route-ui__linePillBtn:focus-visible .tam-route-ui__linePillBadge {
+        outline: 3px solid #0ea5e9;
+        outline-offset: 2px;
+      }
       .tam-route-ui__panelBtns {
         display: flex;
         gap: 8px;
@@ -2051,7 +2089,13 @@
               </select>
               <div id="mapHudRouteLineBlock" hidden>
                 <label for="mapHudRouteLine">Ligne</label>
-                <select id="mapHudRouteLine"></select>
+                <div
+                  id="mapHudRouteLinePills"
+                  class="tam-route-ui__linePills"
+                  role="list"
+                  aria-label="Choix de ligne"
+                ></div>
+                <select id="mapHudRouteLine" hidden aria-hidden="true"></select>
                 <label for="mapHudRouteLineStop">Arrêt (optionnel)</label>
                 <select id="mapHudRouteLineStop"></select>
               </div>
@@ -2060,7 +2104,7 @@
                 <select id="mapHudRouteStop"></select>
               </div>
               <div class="tam-route-ui__panelBtns">
-                <button type="button" id="mapHudRouteCloseBtn">Fermer</button>
+                <button type="button" id="mapHudRouteCloseBtn">Annuler</button>
                 <button type="button" class="primary" id="mapHudRouteGoBtn">
                   Calculer
                 </button>
