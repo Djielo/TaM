@@ -15,10 +15,15 @@ let tamStopRailMapCloseWired = false;
 let tamStopRailCorrespondenceByStop = null;
 /** Temps de parcours issus du GTFS (voyage représentatif du pattern) pour le rail. */
 let tamStopRailGtfsSchedule = { ok: false, legSec: [], cumArriveSec: [] };
-/** Cache court des ETA temps réel pour les badges de correspondance du rail. */
+/** Cache court des ETA temps réel (popups correspondances sur le rail, etc.). */
 const TAM_REALTIME_API_BASE = "https://tam-sae-jielo.duckdns.org";
 const TAM_STOP_RAIL_ARRIVALS_CACHE_MS = 20_000;
 const tamStopRailArrivalCache = new Map();
+/** Temps réel pour la ligne courante (route_short_name) aux arrêts à venir. */
+let tamStopRailCurrentLineRtCandidatesByStopIdx = new Map();
+let tamStopRailCurrentLineRtRefreshGen = 0;
+let tamStopRailCurrentLineRtScheduleTid = 0;
+let tamStopRailCurrentLineRtPeriodicAt = 0;
 
 /** Au-delà : le geste n’est pas un « tap » (défilement, etc.). */
 const TAM_STOP_RAIL_TAP_MOVE_MAX_SQ = 28 * 28;
@@ -772,6 +777,27 @@ function stopMatchesPatternStop(stopObj, patternStop) {
   return !!aName && !!bName && aName === bName;
 }
 
+/** Distance à vol d’oiseau entre deux points WGS84 (arrêts GTFS). */
+function approximateGeoDistMeters(lat1, lon1, lat2, lon2) {
+  if (
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lon1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lon2)
+  ) {
+    return Infinity;
+  }
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return 6371000 * c;
+}
+
 function buildCorrespondenceDirectionInfo(stopObj, routeItem) {
   const routeCode = String(routeItem?.route_short_name || "").trim();
   if (!routeCode) return [];
@@ -903,21 +929,62 @@ async function refreshCorrespondencePopupArrivals(stopObj, routeItem, targetEl) 
   }
 }
 
+/**
+ * `stop_id` pour l’API temps réel : celui de **la ligne consultée** au même lieu,
+ * pas un repli sur le `stop_id` du trajet simulé (sinon T4 renvoie les mêmes minutes que le T1).
+ */
 function resolveRealtimeStopIdForRoute(stopObj, routeItem) {
-  const direct = String(stopObj?.stop_id || "").trim();
   const routeCode = String(routeItem?.route_short_name || "").trim();
+  const direct = String(stopObj?.stop_id || "").trim();
   if (!routeCode) return direct;
+
   const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  let routeUsesSameStopIdAsSimulated = false;
+  /** @type {{ sid: string; lat: number | null; lon: number | null }[]} */
+  const candidates = [];
+
   for (const p of patterns) {
     if (String(p?.route_short_name || "").trim() !== routeCode) continue;
-    const stops = Array.isArray(p?.stops) ? p.stops : [];
-    for (const st of stops) {
-      if (stopMatchesPatternStop(stopObj, st)) {
-        return String(st?.stop_id || "").trim();
-      }
+    const pstops = Array.isArray(p?.stops) ? p.stops : [];
+    for (const st of pstops) {
+      const sid = String(st?.stop_id || "").trim();
+      if (!sid) continue;
+      if (direct && sid === direct) routeUsesSameStopIdAsSimulated = true;
+      if (!stopMatchesPatternStop(stopObj, st)) continue;
+      const lat = Number(st.lat);
+      const lon = Number(st.lon);
+      candidates.push({
+        sid,
+        lat: Number.isFinite(lat) ? lat : null,
+        lon: Number.isFinite(lon) ? lon : null,
+      });
     }
   }
-  return direct;
+
+  if (routeUsesSameStopIdAsSimulated && direct) return direct;
+
+  const uniqBySid = new Map();
+  for (const c of candidates) {
+    if (!uniqBySid.has(c.sid)) uniqBySid.set(c.sid, c);
+  }
+  const uniq = [...uniqBySid.values()];
+  if (!uniq.length) return "";
+
+  if (uniq.length === 1) return uniq[0].sid;
+
+  const lat0 = Number(stopObj?.lat);
+  const lon0 = Number(stopObj?.lon);
+  let best = uniq[0];
+  let bestD = Infinity;
+  for (const c of uniq) {
+    if (c.lat == null || c.lon == null) continue;
+    const dm = approximateGeoDistMeters(lat0, lon0, c.lat, c.lon);
+    if (dm < bestD) {
+      bestD = dm;
+      best = c;
+    }
+  }
+  return Number.isFinite(bestD) && bestD < Infinity ? best.sid : uniq[0].sid;
 }
 
 function appendLineDirectionDetails(lines, stopObj, routeItem) {
@@ -2572,9 +2639,12 @@ function setTamStopRailExploreOpen(open) {
   if (open) {
     root.style.removeProperty("--tam-rail-pill");
     root.classList.add("tam-stop-rail--explore");
+    tamStopRailCurrentLineRtPeriodicAt = Date.now();
+    scheduleTamStopRailCurrentLineRealtime();
     return;
   }
   root.classList.remove("tam-stop-rail--explore");
+  tamStopRailCurrentLineRtRefreshGen++;
   tamStopRailLastAutoSnapK = null;
   requestAnimationFrame(() => {
     snapTamStopRailScrollToLastPastImpl();
@@ -2655,6 +2725,136 @@ async function fetchTamStopRailArrivals(stopId, routeCode) {
     payload,
   });
   return payload;
+}
+
+function firstTamArrivalMinuteRounded(payload) {
+  const arr = payload?.arrivals;
+  if (!Array.isArray(arr) || !arr.length) return null;
+  const m = Number(arr[0]?.minutes);
+  if (!Number.isFinite(m)) return null;
+  return Math.max(0, Math.round(m));
+}
+
+function extractTamArrivalCandidates(payload) {
+  const arr = payload?.arrivals;
+  if (!Array.isArray(arr) || !arr.length) return [];
+  const out = [];
+  for (const it of arr) {
+    const m = Number(it?.minutes);
+    if (!Number.isFinite(m)) continue;
+    const tripId = String(it?.trip_id || "").trim();
+    out.push({ min: Math.max(0, Math.round(m)), tripId });
+  }
+  return out;
+}
+
+function pickCandidateClosestToGtfs(cands, gtfsMin, minFloor) {
+  const vs = Array.isArray(cands) ? cands : [];
+  const g = Number(gtfsMin);
+  const gOk = Number.isFinite(g) ? Math.max(1, Math.round(g)) : 1;
+  const floor = Number.isFinite(minFloor) ? minFloor : 0;
+  let best = null;
+  let bestDist = Infinity;
+  for (const c of vs) {
+    const v = Number(c?.min);
+    if (!Number.isFinite(v) || v < floor) continue;
+    const dist = Math.abs(v - gOk);
+    if (dist < bestDist || (dist === bestDist && v > (best?.min ?? -1))) {
+      best = c;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+const TAM_STOP_RAIL_LINE_RT_DEBOUNCE_MS = 260;
+const TAM_STOP_RAIL_LINE_RT_PERIODIC_MS = 22_000;
+const TAM_STOP_RAIL_LINE_RT_PARALLEL = 5;
+const TAM_STOP_RAIL_LINE_RT_MAX_STOPS_AHEAD = 12;
+
+function scheduleTamStopRailCurrentLineRealtime() {
+  if (tamStopRailCurrentLineRtScheduleTid) {
+    clearTimeout(tamStopRailCurrentLineRtScheduleTid);
+    tamStopRailCurrentLineRtScheduleTid = 0;
+  }
+  tamStopRailCurrentLineRtScheduleTid = window.setTimeout(() => {
+    tamStopRailCurrentLineRtScheduleTid = 0;
+    void refreshTamStopRailCurrentLineRealtime();
+  }, TAM_STOP_RAIL_LINE_RT_DEBOUNCE_MS);
+}
+
+function maybePeriodicTamStopRailCurrentLineRealtime() {
+  const { root } = getTamStopRailEls();
+  if (
+    !root ||
+    root.hidden ||
+    !root.classList.contains("tam-stop-rail--explore")
+  ) {
+    return;
+  }
+  const now = Date.now();
+  if (now - tamStopRailCurrentLineRtPeriodicAt < TAM_STOP_RAIL_LINE_RT_PERIODIC_MS)
+    return;
+  tamStopRailCurrentLineRtPeriodicAt = now;
+  scheduleTamStopRailCurrentLineRealtime();
+}
+
+function collectTamStopRailCurrentLineRtJobs() {
+  const stops = currentPattern?.stops;
+  if (!stops?.length) return [];
+  const route = String(currentPattern?.route_short_name || "").trim();
+  if (!route) return [];
+  const k = currentStopIndexForDistance(distanceAlongPathMeters);
+  const hi = Math.min(stops.length - 1, k + TAM_STOP_RAIL_LINE_RT_MAX_STOPS_AHEAD);
+  /** @type {{ stopIdx: number, stopId: string, route: string }[]} */
+  const jobs = [];
+  for (let idx = k + 1; idx <= hi; idx++) {
+    const st = stops[idx];
+    const sid = String(st?.stop_id || "").trim();
+    if (!sid) continue;
+    jobs.push({ stopIdx: idx, stopId: sid, route });
+  }
+  return jobs;
+}
+
+async function refreshTamStopRailCurrentLineRealtime() {
+  const { root, scroll } = getTamStopRailEls();
+  if (
+    !root ||
+    root.hidden ||
+    !scroll ||
+    !root.classList.contains("tam-stop-rail--explore")
+  ) {
+    return;
+  }
+  const gen = ++tamStopRailCurrentLineRtRefreshGen;
+  const jobs = collectTamStopRailCurrentLineRtJobs();
+  if (!jobs.length) {
+    tamStopRailCurrentLineRtCandidatesByStopIdx = new Map();
+    updateTamStopRailScheduleEtas();
+    return;
+  }
+  /** @type {Map<number, { min: number, tripId: string }[]>} */
+  const byIdx = new Map();
+  for (let i = 0; i < jobs.length; i += TAM_STOP_RAIL_LINE_RT_PARALLEL) {
+    if (gen !== tamStopRailCurrentLineRtRefreshGen) return;
+    const slice = jobs.slice(i, i + TAM_STOP_RAIL_LINE_RT_PARALLEL);
+    await Promise.all(
+      slice.map(async ({ stopIdx, stopId, route }) => {
+        try {
+          const payload = await fetchTamStopRailArrivals(stopId, route);
+          if (gen !== tamStopRailCurrentLineRtRefreshGen) return;
+          const cands = extractTamArrivalCandidates(payload);
+          if (cands.length) byIdx.set(stopIdx, cands);
+        } catch (err) {
+          console.warn("Temps réel ligne courante — échec:", err);
+        }
+      }),
+    );
+  }
+  if (gen !== tamStopRailCurrentLineRtRefreshGen) return;
+  tamStopRailCurrentLineRtCandidatesByStopIdx = byIdx;
+  updateTamStopRailScheduleEtas();
 }
 
 function updateTamStopRailCompactSpacing() {
@@ -2938,7 +3138,10 @@ function updateTamStopRailScheduleEtas() {
     for (const btn of scroll.children) {
       if (!(btn instanceof HTMLElement)) continue;
       const eta = btn.querySelector(".tam-stop-rail__pillEta");
-      if (eta) eta.textContent = "";
+      if (eta) {
+        eta.textContent = "";
+        eta.classList.remove("tam-stop-rail__pillEta--tempsReel");
+      }
     }
     return;
   }
@@ -2946,6 +3149,66 @@ function updateTamStopRailScheduleEtas() {
   const k = currentStopIndexForDistance(d);
   const elapsed = tamStopRailScheduleElapsedSec(d, model);
   const cum = model.cumArriveSec;
+  function gtfsMinutesToStop(idx) {
+    const remainSec = Math.max(0, (cum[idx] ?? 0) - elapsed);
+    return Math.max(1, Math.round(remainSec / 60));
+  }
+
+  const useRt =
+    root.classList.contains("tam-stop-rail--explore") &&
+    tamStopRailCurrentLineRtCandidatesByStopIdx?.size > 0;
+
+  const n = stops.length;
+  /** Chaînage : après un temps réel direct cohérent (vert), les suivants restent en gris mais suivent les deltas GTFS. */
+  let chainAbsMin = null;
+  let chainGtfsMin = null;
+  let chosenTripId = "";
+  let lastGreenMin = null;
+
+  /** @type {Map<number, { mins: number, vert: boolean }>} */
+  const etaPlan = new Map();
+  for (let idx = k + 1; idx < n; idx++) {
+    const g = gtfsMinutesToStop(idx);
+    /** Continuité : valeur minimale attendue à cet arrêt selon le calendrier (depuis la dernière valeur affichée). */
+    const base =
+      chainAbsMin != null && chainGtfsMin != null
+        ? Math.max(1, chainAbsMin + (g - chainGtfsMin))
+        : g;
+    /** Tolérance arrondi : on accepte au plus 1 min en dessous, jamais un vrai retour en arrière. */
+    const floor = Math.max(0, base - 1);
+
+    let mins = base;
+    let vert = false;
+
+    if (useRt) {
+      const cands = tamStopRailCurrentLineRtCandidatesByStopIdx.get(idx) || [];
+      if (chosenTripId) {
+        const same = cands.find(
+          (c) => String(c?.tripId || "") === chosenTripId,
+        );
+        const v = same ? Number(same.min) : NaN;
+        if (Number.isFinite(v) && v >= floor) {
+          mins = Math.max(1, Math.round(v));
+          vert = true;
+        }
+      }
+      if (!vert) {
+        const picked = pickCandidateClosestToGtfs(cands, g, floor);
+        if (picked && Number.isFinite(Number(picked.min))) {
+          mins = Math.max(1, Math.round(Number(picked.min)));
+          vert = true;
+          chosenTripId = String(picked.tripId || "").trim();
+        }
+      }
+      if (vert) lastGreenMin = mins;
+    }
+
+    etaPlan.set(idx, { mins, vert });
+    /** La continuité avance toujours avec la valeur affichée (verte ou grise). */
+    chainAbsMin = mins;
+    chainGtfsMin = g;
+  }
+
   for (const btn of scroll.children) {
     if (!(btn instanceof HTMLElement)) continue;
     if (!btn.classList.contains("tam-stop-rail__pill")) continue;
@@ -2955,11 +3218,13 @@ function updateTamStopRailScheduleEtas() {
     if (!Number.isFinite(i)) continue;
     if (i <= k) {
       eta.textContent = "";
+      eta.classList.remove("tam-stop-rail__pillEta--tempsReel");
       continue;
     }
-    const remainSec = Math.max(0, (cum[i] ?? 0) - elapsed);
-    const mins = Math.max(1, Math.round(remainSec / 60));
+    const row = etaPlan.get(i);
+    const mins = row ? row.mins : gtfsMinutesToStop(i);
     eta.textContent = `${mins} min`;
+    eta.classList.toggle("tam-stop-rail__pillEta--tempsReel", !!row?.vert);
   }
 }
 
@@ -3053,6 +3318,7 @@ function updateTamStopRailPillPastStates() {
     btn.classList.toggle("tam-stop-rail__pill--past", past);
   }
   updateTamStopRailScheduleEtas();
+  maybePeriodicTamStopRailCurrentLineRealtime();
 }
 
 function updateTamStopRailProgressFill() {
