@@ -1053,33 +1053,89 @@
         color: #1b1f24;
       }
       .tam-route-ui__linePills {
+        --tam-route-pill: 40px;
         display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
+        flex-direction: column;
+        gap: 8px;
         margin: 0 0 8px;
       }
+      .tam-route-ui__linePillsGroup {
+        align-items: center;
+      }
+      /* Retour à la ligne forcé après T1…A pour enchaîner avec les bus sur la ligne suivante (même grille). */
+      .tam-route-ui__linePillsGridBreak {
+        grid-column: 1 / -1;
+        width: 100%;
+        height: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        overflow: hidden;
+        pointer-events: none;
+        visibility: hidden;
+        font-size: 0;
+        line-height: 0;
+      }
+      .tam-route-ui__linePillsGroup--grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, var(--tam-route-pill));
+        gap: 6px;
+        justify-content: start;
+      }
+      .tam-route-ui__linePillsGroup--secondary {
+        padding-top: 8px;
+        margin-top: 2px;
+        border-top: 1px solid #e2e8f0;
+      }
       .tam-route-ui__linePillBtn {
+        /* Remplace le style global `button { width: 100% }` ; gabarit fixe pour alignement grille / rangée. */
+        width: var(--tam-route-pill);
+        min-width: var(--tam-route-pill);
+        max-width: var(--tam-route-pill);
+        flex: 0 0 var(--tam-route-pill);
+        box-sizing: border-box;
         appearance: none;
         border: 0;
         background: transparent;
         padding: 0;
         margin: 0;
         cursor: pointer;
+        color: inherit;
+        font: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         -webkit-tap-highlight-color: transparent;
+      }
+      .tam-route-ui__linePillsGroup--grid .tam-route-ui__linePillBtn {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        flex: none;
+      }
+      .tam-route-ui__linePillsGroup--grid .tam-route-ui__linePillBadge {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
       }
       .tam-route-ui__linePillBadge {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-width: 44px;
-        height: 30px;
-        padding: 0 10px;
-        border-radius: 999px;
+        width: var(--tam-route-pill);
+        height: 26px;
+        min-width: var(--tam-route-pill);
+        max-width: var(--tam-route-pill);
+        padding: 0;
+        box-sizing: border-box;
+        border-radius: 8px;
         border: 1px solid rgba(15, 23, 42, 0.18);
         box-shadow: 0 1px 0 rgba(15, 23, 42, 0.08);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 900;
+        line-height: 1;
         letter-spacing: 0.02em;
+        font-variant-numeric: tabular-nums;
         user-select: none;
       }
       .tam-route-ui__linePillBtn.is-active .tam-route-ui__linePillBadge {
@@ -1097,6 +1153,11 @@
         margin-top: 6px;
       }
       .tam-route-ui__panelBtns button {
+        /* Fond clair : sans color explicite, le texte reste #fff (règle globale `button`) → invisible. */
+        color: #1b1f24;
+        width: auto;
+        flex: 0 0 auto;
+        box-sizing: border-box;
         border-radius: 10px;
         border: 1px solid #bbc4cf;
         background: rgba(255, 255, 255, 0.96);
@@ -2092,7 +2153,7 @@
                 <div
                   id="mapHudRouteLinePills"
                   class="tam-route-ui__linePills"
-                  role="list"
+                  role="group"
                   aria-label="Choix de ligne"
                 ></div>
                 <select id="mapHudRouteLine" hidden aria-hidden="true"></select>
