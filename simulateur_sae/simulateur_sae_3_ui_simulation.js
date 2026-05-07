@@ -834,6 +834,7 @@ function ensureTamRouteUiEls() {
     mode: document.getElementById("mapHudRouteMode"),
     lineBlock: document.getElementById("mapHudRouteLineBlock"),
     stopBlock: document.getElementById("mapHudRouteStopBlock"),
+    linePills: document.getElementById("mapHudRouteLinePills"),
     line: document.getElementById("mapHudRouteLine"),
     lineStop: document.getElementById("mapHudRouteLineStop"),
     stop: document.getElementById("mapHudRouteStop"),
@@ -868,24 +869,90 @@ function routePanelSetMode(mode) {
 
 function populateRoutePlannerSelects() {
   const els = ensureTamRouteUiEls();
-  if (!els.line || !els.lineStop || !els.stop) return;
+  if (!els.line || !els.lineStop || !els.stop || !els.linePills) return;
   const idx = buildRoutePlannerIndexes();
 
+  function isTramCode(code) {
+    return /^T\d+/i.test(String(code || "").trim());
+  }
+  function tramSortKey(code) {
+    const c = String(code || "").trim().toUpperCase();
+    const m = /^T(\d+)/.exec(c);
+    if (!m) return 999;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : 999;
+  }
+  function lineSortKey(code) {
+    const c = String(code || "").trim().toUpperCase();
+    if (isTramCode(c)) return { group: 0, n: tramSortKey(c), s: c };
+    // Navette : souvent non numérique → on la met après les trams.
+    if (c.includes("NAV") || c.includes("NAVETTE")) return { group: 1, n: 0, s: c };
+    const n = Number.parseInt(c, 10);
+    if (Number.isFinite(n)) return { group: 2, n, s: c };
+    return { group: 3, n: 0, s: c };
+  }
+  const routeItemByCode = new Map();
+  for (const it of lineOptions || []) {
+    const c = String(it?.route_short_name || "").trim();
+    if (!c) continue;
+    if (!routeItemByCode.has(c)) routeItemByCode.set(c, it);
+  }
+
   els.line.innerHTML = "";
+  const codes = [];
   for (const item of lineOptions || []) {
     const code = String(item?.route_short_name || "").trim();
     if (!code) continue;
+    codes.push(code);
     const opt = document.createElement("option");
     opt.value = code;
     opt.textContent = `Ligne ${code}`;
     els.line.appendChild(opt);
   }
 
+  // Vignettes cliquables.
+  const sortedCodes = [...new Set(codes)].sort((a, b) => {
+    const ka = lineSortKey(a);
+    const kb = lineSortKey(b);
+    if (ka.group !== kb.group) return ka.group - kb.group;
+    if (ka.n !== kb.n) return ka.n - kb.n;
+    return ka.s.localeCompare(kb.s, "fr");
+  });
+  els.linePills.innerHTML = "";
+  for (const code of sortedCodes) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tam-route-ui__linePillBtn";
+    btn.dataset.routeCode = code;
+    btn.setAttribute("role", "listitem");
+    const badge = document.createElement("span");
+    badge.className = "mission-context-pill tam-route-ui__linePillBadge";
+    const routeItem = routeItemByCode.get(code) || null;
+    const lineLabel = routeItem ? displayLineLabel(routeItem) : String(code || "").trim();
+    badge.textContent = lineLabel || "?";
+    if (routeItem) {
+      applyLineColorStyling(badge, routeItem, "contextPill");
+    }
+    badge.style.display = "inline-flex";
+    badge.style.alignItems = "center";
+    badge.style.justifyContent = "center";
+    badge.style.padding = "0 10px";
+    badge.style.height = "30px";
+    badge.style.boxSizing = "border-box";
+    btn.appendChild(badge);
+    btn.addEventListener("click", () => {
+      els.line.value = code;
+      fillLineStops(code);
+      syncActiveLinePill();
+    });
+    els.linePills.appendChild(btn);
+  }
+
   els.stop.innerHTML = "";
-  for (const st of idx.stopOptions) {
+  for (const st of idx.stopDestOptions) {
     const opt = document.createElement("option");
-    opt.value = st.stop_id;
-    opt.textContent = st.stop_name;
+    opt.value = st.value;
+    opt.textContent = st.label;
     els.stop.appendChild(opt);
   }
 
@@ -910,8 +977,17 @@ function populateRoutePlannerSelects() {
       els.lineStop.appendChild(opt);
     }
   };
+  const syncActiveLinePill = () => {
+    const active = String(els.line.value || "").trim();
+    for (const child of els.linePills.children) {
+      if (!(child instanceof HTMLElement)) continue;
+      const code = String(child.dataset.routeCode || "");
+      child.classList.toggle("is-active", code === active);
+    }
+  };
   fillLineStops(els.line.value);
   els.line.addEventListener("change", () => fillLineStops(els.line.value));
+  syncActiveLinePill();
 }
 
 function computeWalkEdgeCandidates(lat, lon, maxMeters) {
@@ -1093,10 +1169,33 @@ function setupTamRoutePlannerUi() {
     const mode = String(els.mode.value || "stop");
     const idx = buildRoutePlannerIndexes();
     if (mode === "stop") {
-      const destStopId = String(els.stop.value || "").trim();
-      if (!destStopId) {
+      const raw = String(els.stop.value || "").trim();
+      if (!raw) {
         els.result.textContent = "Choisissez un arrêt de destination.";
         return;
+      }
+      let destStopId = raw;
+      if (raw.startsWith("namekey:")) {
+        const key = raw.slice("namekey:".length);
+        const opt = idx.stopDestOptions.find((o) => o.key === key);
+        const ids = opt?.stop_ids || [];
+        if (!ids.length) {
+          els.result.textContent = "Choisissez un arrêt de destination.";
+          return;
+        }
+        // On cible le quai le plus proche de la position (plus logique qu’un choix arbitraire).
+        let best = ids[0];
+        let bestD = Infinity;
+        for (const sid of ids) {
+          const st = idx.stopsById.get(sid);
+          if (!st) continue;
+          const dm = approximateGeoDistMeters(lat, lon, st.lat, st.lon);
+          if (dm < bestD) {
+            bestD = dm;
+            best = sid;
+          }
+        }
+        destStopId = best;
       }
       const walkEdges = computeWalkEdgeCandidates(lat, lon, 900);
       const res = dijkstraRoutePlanner("__gps__", destStopId, walkEdges);
@@ -1220,6 +1319,7 @@ function buildRoutePlannerIndexes() {
   const stopsById = new Map();
   const nameKeyToStopIds = new Map();
   const stopsByRoute = new Map();
+  const routesByStopId = new Map();
 
   for (const p of patterns) {
     const route = String(p?.route_short_name || "").trim();
@@ -1243,14 +1343,76 @@ function buildRoutePlannerIndexes() {
       }
       if (route) {
         stopsByRoute.get(route).add(sid);
+        if (!routesByStopId.has(sid)) routesByStopId.set(sid, new Set());
+        routesByStopId.get(sid).add(route);
       }
     }
   }
 
-  const stopOptions = [...stopsById.values()].sort((a, b) =>
+  function isTramCode(code) {
+    return /^T\d+/i.test(String(code || "").trim());
+  }
+  function tramSortKey(code) {
+    const c = String(code || "").trim().toUpperCase();
+    const m = /^T(\d+)/.exec(c);
+    if (!m) return 999;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : 999;
+  }
+  function routeSortKey(code) {
+    const c = String(code || "").trim().toUpperCase();
+    if (isTramCode(c)) return { group: 0, n: tramSortKey(c), s: c };
+    if (c.includes("NAV") || c.includes("NAVETTE")) return { group: 1, n: 0, s: c };
+    const n = Number.parseInt(c, 10);
+    if (Number.isFinite(n)) return { group: 2, n, s: c };
+    return { group: 3, n: 0, s: c };
+  }
+  function formatRoutesList(routes) {
+    const arr = [...routes].filter(Boolean);
+    arr.sort((a, b) => {
+      const ka = routeSortKey(a);
+      const kb = routeSortKey(b);
+      if (ka.group !== kb.group) return ka.group - kb.group;
+      if (ka.n !== kb.n) return ka.n - kb.n;
+      return ka.s.localeCompare(kb.s, "fr");
+    });
+    return arr.join(", ");
+  }
+
+  /** Options de destination par nom d’arrêt (évite doublons de quais). */
+  const stopDestOptions = [];
+  for (const [key, set] of nameKeyToStopIds.entries()) {
+    const ids = [...set];
+    if (!ids.length) continue;
+    const first = stopsById.get(ids[0]);
+    if (!first) continue;
+    const routes = new Set();
+    for (const sid of ids) {
+      const rs = routesByStopId.get(sid);
+      if (!rs) continue;
+      for (const r of rs) routes.add(r);
+    }
+    const rs = formatRoutesList(routes);
+    const label = rs ? `${first.stop_name} — ${rs}` : first.stop_name;
+    stopDestOptions.push({
+      value: `namekey:${key}`,
+      key,
+      label,
+      stop_name: first.stop_name,
+      stop_ids: ids,
+    });
+  }
+  stopDestOptions.sort((a, b) =>
     String(a.stop_name || "").localeCompare(String(b.stop_name || ""), "fr"),
   );
-  routePlannerIndexCache = { stopsById, nameKeyToStopIds, stopsByRoute, stopOptions };
+
+  routePlannerIndexCache = {
+    stopsById,
+    nameKeyToStopIds,
+    stopsByRoute,
+    routesByStopId,
+    stopDestOptions,
+  };
   return routePlannerIndexCache;
 }
 
