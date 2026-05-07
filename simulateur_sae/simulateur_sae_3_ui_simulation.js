@@ -539,7 +539,7 @@ function lineLabelContrastTextColor(item) {
 /**
  * Même logique de couleurs qu’en bureau : option native (PC) + pastilles
  * (mobile, sélecteur custom).
- * @param {"option"|"row"|"trigger"|"missionSelect"|"contextPill"} context
+ * @param {"option"|"row"|"trigger"|"missionSelect"|"contextPill"|"routePlannerPill"} context
  */
 function applyLineColorStyling(el, item, context) {
   const bg =
@@ -548,13 +548,20 @@ function applyLineColorStyling(el, item, context) {
     const tx = lineLabelContrastTextColor(item);
     el.style.backgroundColor = bg;
     el.style.color = tx;
-    el.style.fontWeight = "700";
     el.style.setProperty("-webkit-text-fill-color", tx);
+    if (context === "routePlannerPill") {
+      el.style.fontWeight = "";
+    } else {
+      el.style.fontWeight = "700";
+    }
     if (context === "missionSelect") {
       el.style.border = "1px solid rgba(0, 0, 0, 0.2)";
       /* Bande couleur ligne uniquement sur le menu, pas sur le label (évite le « rose » à côté du 2 / 3). */
       el.style.borderLeft = `4px solid ${bg}`;
       el.classList.add("line-themed-select");
+    } else if (context === "routePlannerPill") {
+      el.style.border = "1px solid rgba(0, 0, 0, 0.2)";
+      el.style.boxSizing = "border-box";
     } else if (context === "contextPill") {
       el.style.padding = "3px 10px";
       el.style.borderRadius = "6px";
@@ -586,6 +593,10 @@ function applyLineColorStyling(el, item, context) {
     el.style.border = "";
     el.style.boxSizing = "";
   }
+  if (context === "routePlannerPill") {
+    el.style.border = "";
+    el.style.boxSizing = "";
+  }
   if (context === "row") {
     el.style.backgroundColor = "#e8ecf1";
     el.style.color = "#1b1f24";
@@ -597,6 +608,13 @@ function applyLineColorStyling(el, item, context) {
   } else if (context === "missionSelect") {
     el.style.backgroundColor = "#ffffff";
     el.style.color = "#1b1f24";
+  } else if (context === "routePlannerPill") {
+    el.style.backgroundColor = "#e8ecf1";
+    el.style.color = "#1b1f24";
+    el.style.fontWeight = "";
+    el.style.setProperty("-webkit-text-fill-color", "#1b1f24");
+    el.style.border = "1px solid #ccd3db";
+    el.style.boxSizing = "border-box";
   } else if (context === "contextPill") {
     el.style.backgroundColor = "#e8ecf1";
     el.style.color = "#1b1f24";
@@ -670,6 +688,14 @@ function sortLineItemsForDisplay(items) {
     }
     return aCode.localeCompare(bCode, "fr");
   });
+}
+
+/** Tram T1–T5 + navette A : première rangée du panneau itinéraire (carte). */
+function isRoutePlannerTramNavetteFirstRowItem(item) {
+  return (
+    isTramDisplayLine(item) ||
+    String(item.route_short_name || "").trim().toUpperCase() === "A"
+  );
 }
 
 function addStopCorrespondenceEntry(store, key, routeItem) {
@@ -872,25 +898,6 @@ function populateRoutePlannerSelects() {
   if (!els.line || !els.lineStop || !els.stop || !els.linePills) return;
   const idx = buildRoutePlannerIndexes();
 
-  function isTramCode(code) {
-    return /^T\d+/i.test(String(code || "").trim());
-  }
-  function tramSortKey(code) {
-    const c = String(code || "").trim().toUpperCase();
-    const m = /^T(\d+)/.exec(c);
-    if (!m) return 999;
-    const n = Number(m[1]);
-    return Number.isFinite(n) ? n : 999;
-  }
-  function lineSortKey(code) {
-    const c = String(code || "").trim().toUpperCase();
-    if (isTramCode(c)) return { group: 0, n: tramSortKey(c), s: c };
-    // Navette : souvent non numérique → on la met après les trams.
-    if (c.includes("NAV") || c.includes("NAVETTE")) return { group: 1, n: 0, s: c };
-    const n = Number.parseInt(c, 10);
-    if (Number.isFinite(n)) return { group: 2, n, s: c };
-    return { group: 3, n: 0, s: c };
-  }
   const routeItemByCode = new Map();
   for (const it of lineOptions || []) {
     const c = String(it?.route_short_name || "").trim();
@@ -910,43 +917,88 @@ function populateRoutePlannerSelects() {
     els.line.appendChild(opt);
   }
 
-  // Vignettes cliquables.
-  const sortedCodes = [...new Set(codes)].sort((a, b) => {
-    const ka = lineSortKey(a);
-    const kb = lineSortKey(b);
-    if (ka.group !== kb.group) return ka.group - kb.group;
-    if (ka.n !== kb.n) return ka.n - kb.n;
-    return ka.s.localeCompare(kb.s, "fr");
-  });
+  // Vignettes : un seul bloc grille pour tout le réseau TaM (T1…A puis 6…53, avec retour à la ligne forcé),
+  // puis barre de séparation et « Autres lignes » — même logique visuelle partout, sans défilement horizontal.
+  const uniqueRouteItems = sortLineItemsForDisplay(
+    [...new Set(codes)]
+      .map((c) => routeItemByCode.get(String(c || "").trim()))
+      .filter(Boolean),
+  );
+  const tamRouteItems = uniqueRouteItems.filter((it) =>
+    isTamCoreLineCode(it.route_short_name),
+  );
+  const tamFirstRowItems = sortLineItemsForDisplay(
+    tamRouteItems.filter(isRoutePlannerTramNavetteFirstRowItem),
+  );
+  const tamGridItems = sortLineItemsForDisplay(
+    tamRouteItems.filter((it) => !isRoutePlannerTramNavetteFirstRowItem(it)),
+  );
+  const otherRouteItems = uniqueRouteItems.filter(
+    (it) => !isTamCoreLineCode(it.route_short_name),
+  );
   els.linePills.innerHTML = "";
-  for (const code of sortedCodes) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "tam-route-ui__linePillBtn";
-    btn.dataset.routeCode = code;
-    btn.setAttribute("role", "listitem");
-    const badge = document.createElement("span");
-    badge.className = "mission-context-pill tam-route-ui__linePillBadge";
-    const routeItem = routeItemByCode.get(code) || null;
-    const lineLabel = routeItem ? displayLineLabel(routeItem) : String(code || "").trim();
-    badge.textContent = lineLabel || "?";
-    if (routeItem) {
-      applyLineColorStyling(badge, routeItem, "contextPill");
+
+  const addLinePillButtons = (groupEl, items) => {
+    for (const routeItem of items) {
+      const code = String(routeItem.route_short_name || "").trim();
+      if (!code) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tam-route-ui__linePillBtn";
+      btn.dataset.routeCode = code;
+      btn.setAttribute("role", "listitem");
+      const badge = document.createElement("span");
+      badge.className = "mission-context-pill tam-route-ui__linePillBadge";
+      badge.textContent = displayLineLabel(routeItem) || "?";
+      applyLineColorStyling(badge, routeItem, "routePlannerPill");
+      btn.appendChild(badge);
+      btn.addEventListener("click", () => {
+        els.line.value = code;
+        fillLineStops(code);
+        syncActiveLinePill();
+      });
+      groupEl.appendChild(btn);
     }
-    badge.style.display = "inline-flex";
-    badge.style.alignItems = "center";
-    badge.style.justifyContent = "center";
-    badge.style.padding = "0 10px";
-    badge.style.height = "30px";
-    badge.style.boxSizing = "border-box";
-    btn.appendChild(badge);
-    btn.addEventListener("click", () => {
-      els.line.value = code;
-      fillLineStops(code);
-      syncActiveLinePill();
-    });
-    els.linePills.appendChild(btn);
+  };
+
+  const addLinePillGroup = (parent, items, opts) => {
+    const isSecondary = !!(opts && opts.isSecondary);
+    const ariaLabel = (opts && opts.ariaLabel) || "Lignes";
+    if (!items.length) return;
+    const group = document.createElement("div");
+    let groupClass =
+      "tam-route-ui__linePillsGroup tam-route-ui__linePillsGroup--grid";
+    if (isSecondary) {
+      groupClass += " tam-route-ui__linePillsGroup--secondary";
+    }
+    group.className = groupClass;
+    group.setAttribute("role", "list");
+    group.setAttribute("aria-label", ariaLabel);
+    addLinePillButtons(group, items);
+    parent.appendChild(group);
+  };
+
+  if (tamRouteItems.length) {
+    const tamGroup = document.createElement("div");
+    tamGroup.className =
+      "tam-route-ui__linePillsGroup tam-route-ui__linePillsGroup--grid";
+    tamGroup.setAttribute("role", "list");
+    tamGroup.setAttribute("aria-label", "Lignes du réseau TaM");
+    addLinePillButtons(tamGroup, tamFirstRowItems);
+    if (tamFirstRowItems.length && tamGridItems.length) {
+      const brk = document.createElement("span");
+      brk.className = "tam-route-ui__linePillsGridBreak";
+      brk.setAttribute("aria-hidden", "true");
+      tamGroup.appendChild(brk);
+    }
+    addLinePillButtons(tamGroup, tamGridItems);
+    els.linePills.appendChild(tamGroup);
   }
+
+  addLinePillGroup(els.linePills, otherRouteItems, {
+    isSecondary: tamRouteItems.length > 0,
+    ariaLabel: "Autres lignes",
+  });
 
   els.stop.innerHTML = "";
   for (const st of idx.stopDestOptions) {
@@ -979,10 +1031,10 @@ function populateRoutePlannerSelects() {
   };
   const syncActiveLinePill = () => {
     const active = String(els.line.value || "").trim();
-    for (const child of els.linePills.children) {
-      if (!(child instanceof HTMLElement)) continue;
-      const code = String(child.dataset.routeCode || "");
-      child.classList.toggle("is-active", code === active);
+    for (const btn of els.linePills.querySelectorAll(".tam-route-ui__linePillBtn")) {
+      if (!(btn instanceof HTMLElement)) continue;
+      const code = String(btn.dataset.routeCode || "");
+      btn.classList.toggle("is-active", code === active);
     }
   };
   fillLineStops(els.line.value);
