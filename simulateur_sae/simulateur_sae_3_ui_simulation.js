@@ -1420,10 +1420,11 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
           [toStop.lat, toStop.lon],
         ];
       addRoutePolyline(latlngs, {
-        color: e.kind === "transfer" ? "#64748b" : "#0ea5e9",
+        // Tous les déplacements à pied (marche + changement de quai) : pointillé bleu.
+        color: "#0ea5e9",
         weight: 5,
         opacity: 0.9,
-        dashArray: e.kind === "transfer" ? "6 6" : null,
+        dashArray: "6 6",
         lineCap: "round",
       });
       // Point d’étape (arrivée de marche / changement de quai)
