@@ -932,7 +932,7 @@ async function getOneShotGeolocationLatLngOrNull() {
           resolve([lat, lon]);
         },
         () => resolve(null),
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 9000 },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
       );
     } catch {
       resolve(null);
@@ -1515,10 +1515,12 @@ function setupTamRoutePlannerUi() {
       routePanelSetMode(els.mode.value);
     }
 
-    const gps = gpsLatLngOrNull() || (await getOneShotGeolocationLatLngOrNull());
-    const pos = gps || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+    // Itinéraire = GPS uniquement : pas de fallback au centre carte.
+    // On force un "fix" fresh (maximumAge=0) ; si indisponible, on ne calcule pas.
+    const pos = await getOneShotGeolocationLatLngOrNull();
     if (!pos) {
-      els.result.textContent = "Position indisponible.";
+      els.result.textContent =
+        "Position GPS indisponible. Activez la géolocalisation et réessayez.";
       return;
     }
     const [lat, lon] = pos;
@@ -5679,6 +5681,56 @@ function maybeAdvanceRouteGuidance() {
   }
 }
 
+function updateRouteGuidanceMarkerFromGps() {
+  // Ne jamais interférer avec une mission en cours.
+  if (currentPattern) return;
+  if (!routeGuidanceActive) return;
+  if (!Array.isArray(lastGpsLatLng) || lastGpsLatLng.length < 2) return;
+  const lat = Number(lastGpsLatLng[0]);
+  const lon = Number(lastGpsLatLng[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+  try {
+    if (typeof marker !== "undefined" && marker?.setLatLng) {
+      marker.setLatLng([lat, lon]);
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // Rotation (cap) : réutilise le heading GPS quand il est fiable.
+  const brg = Number(lastGpsHeadingDeg);
+  if (!Number.isFinite(brg)) {
+    // Si on n’a pas de cap, on évite de toucher à la rotation.
+    return;
+  }
+  try {
+    const el =
+      typeof marker !== "undefined" && typeof marker.getElement === "function"
+        ? marker.getElement()
+        : null;
+    const tri = el ? el.querySelector(".nav-triangle") : null;
+    if (headingUpEl && headingUpEl.checked) {
+      if (map && typeof map.setBearing === "function") {
+        map.setBearing((360 - brg) % 360);
+      }
+      if (tri) {
+        tri.style.transform = "none";
+      }
+    } else {
+      if (map && typeof map.setBearing === "function") {
+        map.setBearing(0);
+      }
+      if (tri) {
+        tri.style.transform = "rotate(" + brg + "deg)";
+        tri.style.transformOrigin = "50% 65%";
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
 /**
  * Recalcule skips + guide puis redraw pastilles/overlays carte (sans stats ni tronçon stop-to-stop) —
  * utilisé avant repositionnement lignes carte dans `setMission`.
@@ -5732,6 +5784,7 @@ function tickRaf(now) {
   requestAnimationFrame(tickRaf);
   // Guidage itinéraire (GPS + annonces).
   try {
+    updateRouteGuidanceMarkerFromGps();
     maybeAdvanceRouteGuidance();
   } catch (e) {
     // ne pas casser la boucle raf
