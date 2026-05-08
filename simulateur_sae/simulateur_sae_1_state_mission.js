@@ -396,9 +396,6 @@ function stopGpsTracking() {
 }
 
 function applyGpsPositionToMission(pos) {
-  if (!currentPattern || !pathTotalMeters || pathTotalMeters <= 0) {
-    return;
-  }
   const acc = Number(pos?.coords?.accuracy || 0);
   const lat = Number(pos?.coords?.latitude || 0);
   const lon = Number(pos?.coords?.longitude || 0);
@@ -414,6 +411,22 @@ function applyGpsPositionToMission(pos) {
     speedKnown && speedMs >= GPS_HEADING_MIN_SPEED_MS;
   lastGpsHeadingDeg =
     Number.isFinite(gpsHeading) && speedHighEnough ? gpsHeading : null;
+
+  // Hors mission (ex. guidage Itinéraire GPS uniquement) : on veut quand même une position
+  // GPS fraîche, sans projection sur un tracé.
+  if (!currentPattern || !pathTotalMeters || pathTotalMeters <= 0) {
+    const speedKmh = Number(pos?.coords?.speed);
+    const speedInfo =
+      Number.isFinite(speedKmh) && speedKmh >= 0
+        ? ` | ~${Math.round(speedKmh * 3.6)} km/h`
+        : "";
+    const qualif =
+      acc && acc > 80 ? "GPS actif (précision faible)" : "GPS actif";
+    setGpsStatus(
+      `${qualif} (~${Math.max(1, Math.round(acc || 0))} m${speedInfo}).`,
+    );
+    return;
+  }
   let projected;
   if (typeof projectLatLngOntoActivePath === "function") {
     const pr = projectLatLngOntoActivePath(lat, lon);
@@ -473,7 +486,7 @@ function startGpsTracking() {
     },
     {
       enableHighAccuracy: true,
-      maximumAge: 2000,
+      maximumAge: 0,
       timeout: 12000,
     },
   );
