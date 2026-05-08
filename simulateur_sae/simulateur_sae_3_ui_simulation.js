@@ -1098,10 +1098,53 @@ function populateRoutePlannerSelects() {
     any.value = "";
     any.textContent = "Peu importe l’arrêt";
     els.lineStop.appendChild(any);
+
+    // Si un même libellé d’arrêt apparaît plusieurs fois sur la ligne
+    // (deux quais / deux sens), on ajoute la direction (headsign) entre parenthèses.
+    const countByName = new Map();
+    for (const st of stops) {
+      const nm = String(st.stop_name || "").trim();
+      if (!nm) continue;
+      countByName.set(nm, (countByName.get(nm) || 0) + 1);
+    }
+    const needsDirByName = new Set(
+      [...countByName.entries()].filter(([, ct]) => ct > 1).map(([n]) => n),
+    );
+
+    const stopsIdSet = new Set(stops.map((s) => String(s.stop_id || "").trim()));
+    const headsignByStopId = new Map();
+    for (const sid of stopsIdSet) headsignByStopId.set(sid, new Set());
+    const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+    for (const p of patterns) {
+      if (String(p?.route_short_name || "").trim() !== c) continue;
+      const hs = String(p?.headsign || "").trim();
+      if (!hs) continue;
+      const ps = Array.isArray(p?.stops) ? p.stops : [];
+      for (const s of ps) {
+        const psid = String(s?.stop_id || "").trim();
+        if (!headsignByStopId.has(psid)) continue;
+        headsignByStopId.get(psid).add(hs);
+      }
+    }
+
     for (const st of stops) {
       const opt = document.createElement("option");
       opt.value = st.stop_id;
-      opt.textContent = st.stop_name;
+      const nm = String(st.stop_name || "").trim();
+      if (needsDirByName.has(nm)) {
+        const hsSet = headsignByStopId.get(String(st.stop_id || "").trim());
+        const hsList = hsSet ? [...hsSet].filter(Boolean) : [];
+        hsList.sort((a, b) => String(a).localeCompare(String(b), "fr"));
+        if (hsList.length) {
+          const shown = hsList.slice(0, 2).join(" / ");
+          const suffix = hsList.length > 2 ? " …" : "";
+          opt.textContent = `${nm} (${shown}${suffix})`;
+        } else {
+          opt.textContent = nm;
+        }
+      } else {
+        opt.textContent = nm;
+      }
       els.lineStop.appendChild(opt);
     }
   };
@@ -1135,7 +1178,9 @@ function computeWalkEdgeCandidates(lat, lon, maxMeters) {
   return edges.slice(0, 18);
 }
 
-function describeRouteResult(destStopId, dRes) {
+function describeRouteResult(destStopId, dRes, opts) {
+  const o = opts || {};
+  const omitFinalRideDirection = !!o.omitFinalRideDirection;
   const idx = buildRoutePlannerIndexes();
   const dest = idx.stopsById.get(destStopId);
   if (!dest) return "Destination inconnue.";
@@ -1158,8 +1203,14 @@ function describeRouteResult(destStopId, dRes) {
     const a = idx.stopsById.get(rideFrom);
     const b = idx.stopsById.get(toStopId);
     const hsRaw = String(rideHeadsign || "").trim();
-    const branchPair = routePlannerHeadsignBranchPairMeta(currentRide, hsRaw);
-    const splitHs = headsignAbBranchSplit(hsRaw);
+    const isFinalRide = toStopId === destStopId;
+    const hsRawEffective =
+      omitFinalRideDirection && isFinalRide ? "" : hsRaw;
+    const branchPair = routePlannerHeadsignBranchPairMeta(
+      currentRide,
+      hsRawEffective,
+    );
+    const splitHs = headsignAbBranchSplit(hsRawEffective);
     const letterMeta =
       rideBranchLetter === "A" || rideBranchLetter === "B"
         ? rideBranchLetter
@@ -1171,7 +1222,7 @@ function describeRouteResult(destStopId, dRes) {
       ? branchPair.base
       : splitHs
         ? splitHs.base
-        : hsRaw;
+        : hsRawEffective;
     const alightNameK = normalizeStopName(a?.stop_name || "");
     const arrivedByWalk =
       lastWalkArrivalStopId && rideFrom === lastWalkArrivalStopId;
@@ -1181,7 +1232,7 @@ function describeRouteResult(destStopId, dRes) {
       alightNameK === lastAlightNameKey;
     const omitMontez = arrivedByWalk || sameHubAsLastAlight;
     lastWalkArrivalStopId = null;
-    if (hsRaw) {
+    if (hsRawEffective) {
       if (omitMontez) {
         lines.push(`- Prenez ${take} en direction de « ${dirQuoted} ».`);
       } else {
@@ -1266,6 +1317,53 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
   addRouteMarker(gpsLat, gpsLon, "Départ");
   if (!dRes?.path?.length) return;
 
+  const nearestIndexOnCoords = (coords, lat, lon) => {
+    if (!coords || coords.length < 2) return -1;
+    const p = L.latLng(lat, lon);
+    let bestI = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < coords.length; i++) {
+      const c = coords[i];
+      if (!Array.isArray(c) || c.length < 2) continue;
+      const d = p.distanceTo(L.latLng(c[0], c[1]));
+      if (d < bestD) {
+        bestD = d;
+        bestI = i;
+      }
+    }
+    return bestI;
+  };
+
+  const sliceCoordsBetweenStops = (coords, fromStop, toStop) => {
+    if (!coords || coords.length < 2 || !fromStop || !toStop) return null;
+    const aI = nearestIndexOnCoords(coords, fromStop.lat, fromStop.lon);
+    const bI = nearestIndexOnCoords(coords, toStop.lat, toStop.lon);
+    if (aI < 0 || bI < 0) return null;
+    const lo = Math.min(aI, bI);
+    const hi = Math.max(aI, bI);
+    const seg = coords.slice(lo, hi + 1);
+    if (seg.length < 2) return null;
+    return aI <= bI ? seg : seg.slice().reverse();
+  };
+
+  const getNetworkGeometryForRide = (routeCode, fromStop, toStop) => {
+    const code = String(routeCode || "").trim();
+    if (!code || !fromStop || !toStop) return null;
+    const pseudoPattern = {
+      route_short_name: code,
+      coordinates: [
+        [fromStop.lat, fromStop.lon],
+        [toStop.lat, toStop.lon],
+      ],
+    };
+    // Essayez d'abord tram, puis bus.
+    return (
+      getTramNetworkGeometry(pseudoPattern) ||
+      getBusNetworkGeometry(pseudoPattern) ||
+      null
+    );
+  };
+
   for (const step of dRes.path) {
     const e = step.edge;
     if (!e || !e.to) continue;
@@ -1299,8 +1397,12 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
     } else if (e.kind === "ride") {
       const fromStop = idx.stopsById.get(step.from);
       if (!fromStop) continue;
+      const geom = getNetworkGeometryForRide(e.route, fromStop, toStop);
+      const rideCoords = geom
+        ? sliceCoordsBetweenStops(geom.coords, fromStop, toStop)
+        : null;
       addRoutePolyline(
-        [
+        rideCoords || [
           [fromStop.lat, fromStop.lon],
           [toStop.lat, toStop.lon],
         ],
@@ -1416,27 +1518,30 @@ function setupTamRoutePlannerUi() {
       els.result.textContent = "Ligne indisponible dans les données.";
       return;
     }
-    let targetId = lineStopId;
-    if (!targetId) {
-      let best = candidates[0];
-      let bestD = Infinity;
-      for (const st of candidates) {
-        const dm = approximateGeoDistMeters(lat, lon, st.lat, st.lon);
-        if (dm < bestD) {
-          bestD = dm;
-          best = st;
-        }
-      }
-      targetId = best.stop_id;
-    }
     const walkEdges = computeWalkEdgeCandidates(lat, lon, 1200);
-    const res = dijkstraRoutePlanner("__gps__", targetId, walkEdges);
-    const target = idx.stopsById.get(targetId);
-    const head =
-      lineStopId
-        ? `Rejoindre la ligne ${lineCode} vers ${target?.stop_name || "l’arrêt"}`
-        : `Rejoindre la ligne ${lineCode} (arrêt le plus proche)`;
-    els.result.textContent = `${head}\n\n${describeRouteResult(targetId, res)}`;
+    let targetId = lineStopId;
+    let res = null;
+    if (targetId) {
+      res = dijkstraRoutePlanner("__gps__", targetId, walkEdges);
+    } else {
+      // Objectif : atteindre la ligne (n’importe quel quai de la ligne), au plus vite,
+      // sans “voyager” sur la ligne cible (la personne choisit ensuite sa direction).
+      const goalSet = new Set([...set].map((sid) => String(sid || "").trim()).filter(Boolean));
+      res = dijkstraRoutePlanner("__gps__", goalSet, walkEdges, {
+        forbiddenRideRoutes: [lineCode],
+      });
+      targetId = String(res?.goalStopId || "").trim();
+    }
+    const target = targetId ? idx.stopsById.get(targetId) : null;
+    const head = lineStopId
+      ? `Rejoindre la ligne ${lineCode} vers ${target?.stop_name || "l’arrêt"}`
+      : `Rejoindre la ligne ${lineCode} (au plus rapide)`;
+    els.result.textContent = `${head}\n\n${describeRouteResult(targetId || lineStopId, res, {
+      // En mode « Peu importe l’arrêt », on doit quand même indiquer le sens
+      // des lignes empruntées (ex. ligne 11). La ligne cible est déjà interdite
+      // dans le graphe, donc on n’a pas besoin de masquer la direction du “dernier trajet”.
+      omitFinalRideDirection: false,
+    })}`;
     await drawRouteOnMapFromResult(lat, lon, res);
   });
 
@@ -1798,12 +1903,56 @@ function buildRoutePlannerGraph() {
   return routePlannerGraphCache;
 }
 
-function dijkstraRoutePlanner(startKey, goalStopId, extraStartEdges) {
+function dijkstraRoutePlanner(startKey, goalStopIdOrSet, extraStartEdges, opts) {
+  const o = opts || {};
   const { adj } = buildRoutePlannerGraph();
+  // L’attente n’est pas modélisée : on approxime via une pénalité à chaque (ré)embarquement.
+  // Pour éviter des enchaînements du type T2 → T1 → T2, on garde l’état « ligne en cours » dans Dijkstra.
   const dist = new Map();
   const prev = new Map();
   const prevEdge = new Map();
   const visited = new Set();
+
+  const goalSet =
+    goalStopIdOrSet && typeof goalStopIdOrSet !== "string"
+      ? goalStopIdOrSet
+      : null;
+  const goalStopId = goalSet ? "" : String(goalStopIdOrSet || "").trim();
+
+  const forbiddenRideRoutesRaw = Array.isArray(o.forbiddenRideRoutes)
+    ? o.forbiddenRideRoutes
+    : [];
+  const forbiddenRideRoutes = new Set(
+    forbiddenRideRoutesRaw.map((x) => String(x || "").trim()).filter(Boolean),
+  );
+
+  const routeTypeByCode = (() => {
+    const map = new Map();
+    for (const it of Array.isArray(lineOptions) ? lineOptions : []) {
+      const code = String(it?.route_short_name || "").trim();
+      if (!code || map.has(code)) continue;
+      map.set(code, String(it?.route_type || "").trim());
+    }
+    return map;
+  })();
+
+  const boardingPenaltySeconds = (routeCode) => {
+    const code = String(routeCode || "").trim();
+    const rt = routeTypeByCode.get(code) || "";
+    // GTFS: tram/metro/rail ~0 ; bus ~3. On met une pénalité plus forte en bus.
+    if (rt === "0") return 240; // ~4 min (tram)
+    if (code === "A") return 300; // navette
+    return 420; // ~7 min (bus / reste)
+  };
+
+  const nodeKey = (stopId, routeCode) =>
+    `${String(stopId || "").trim()}|||${String(routeCode || "").trim()}`;
+  const parseNodeKey = (k) => {
+    const raw = String(k || "");
+    const i = raw.indexOf("|||");
+    if (i < 0) return { stopId: raw, routeCode: "" };
+    return { stopId: raw.slice(0, i), routeCode: raw.slice(i + 3) };
+  };
 
   const pq = [];
   const push = (node, d) => {
@@ -1817,27 +1966,56 @@ function dijkstraRoutePlanner(startKey, goalStopId, extraStartEdges) {
     return pq.splice(best, 1)[0];
   };
 
-  dist.set(startKey, 0);
-  push(startKey, 0);
+  const startNode = nodeKey(startKey, "");
+  dist.set(startNode, 0);
+  push(startNode, 0);
+
+  let bestGoalNode = "";
+  let bestGoalDist = Infinity;
+  let bestGoalStopId = "";
 
   while (pq.length) {
     const cur = popMin();
     const u = cur.node;
     if (visited.has(u)) continue;
     visited.add(u);
-    if (u === goalStopId) break;
+    const pu = parseNodeKey(u);
+    const isGoal = goalSet
+      ? goalSet.has(pu.stopId)
+      : !!goalStopId && pu.stopId === goalStopId;
+    if (isGoal) {
+      bestGoalNode = u;
+      bestGoalDist = cur.d;
+      bestGoalStopId = pu.stopId;
+      break;
+    }
 
     const baseD = dist.get(u) ?? Infinity;
     const edges = [];
-    if (u === startKey && Array.isArray(extraStartEdges)) {
+    if (pu.stopId === startKey && Array.isArray(extraStartEdges) && !pu.routeCode) {
       for (const e of extraStartEdges) edges.push(e);
     }
-    const a = adj.get(u) || [];
+    const a = adj.get(pu.stopId) || [];
     for (const e of a) edges.push(e);
 
     for (const e of edges) {
-      const v = e.to;
-      const nd = baseD + Math.max(0, Number(e.w || 0));
+      const vStop = String(e.to || "").trim();
+      if (!vStop) continue;
+      const w = Math.max(0, Number(e.w || 0));
+
+      let vRoute = "";
+      let penalty = 0;
+      if (e.kind === "ride") {
+        vRoute = String(e.route || "").trim();
+        if (vRoute && forbiddenRideRoutes.has(vRoute)) {
+          continue;
+        }
+        if (vRoute && vRoute !== pu.routeCode) {
+          penalty = boardingPenaltySeconds(vRoute);
+        }
+      }
+      const v = nodeKey(vStop, vRoute);
+      const nd = baseD + w + penalty;
       if (nd < (dist.get(v) ?? Infinity)) {
         dist.set(v, nd);
         prev.set(v, u);
@@ -1847,18 +2025,20 @@ function dijkstraRoutePlanner(startKey, goalStopId, extraStartEdges) {
     }
   }
 
-  if (!dist.has(goalStopId)) return null;
+  if (!bestGoalNode || !Number.isFinite(bestGoalDist)) return null;
   const path = [];
-  let cur = goalStopId;
-  while (cur && cur !== startKey) {
-    const p = prev.get(cur);
-    const e = prevEdge.get(cur);
-    if (!p || !e) break;
-    path.push({ from: p, to: cur, edge: e });
-    cur = p;
+  let curN = bestGoalNode;
+  while (curN && curN !== startNode) {
+    const pN = prev.get(curN);
+    const e = prevEdge.get(curN);
+    if (!pN || !e) break;
+    const fromStopId = parseNodeKey(pN).stopId;
+    const toStopId = parseNodeKey(curN).stopId;
+    path.push({ from: fromStopId, to: toStopId, edge: e });
+    curN = pN;
   }
   path.reverse();
-  return { seconds: dist.get(goalStopId), path };
+  return { seconds: bestGoalDist, path, goalStopId: bestGoalStopId };
 }
 
 function buildCorrespondenceDirectionInfo(stopObj, routeItem) {
