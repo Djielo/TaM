@@ -1523,8 +1523,9 @@ function setupTamRoutePlannerUi() {
     }
     const [lat, lon] = pos;
 
-    // Nouveau calcul => remplace l'ancien tracé.
-    clearTamRouteOverlay();
+    // Nouveau calcul Itinéraire => réinitialise la carte, même si une mission est en cours.
+    // Itinéraire = GPS uniquement (pas de simu) : on coupe tout contexte mission.
+    resetMapForNewContext("route");
 
     const closePanelAfterCompute = () => {
       if (els.panel) els.panel.classList.remove("show");
@@ -3498,6 +3499,214 @@ function speakProchainArret(nom, forTest) {
   window.speechSynthesis.speak(u);
 }
 
+function deactivateRouteGuidance(opts) {
+  const o = opts || {};
+  routeGuidanceActive = false;
+  routeGuidanceRunning = false;
+  routeGuidanceSteps = [];
+  routeGuidanceStepIdx = 0;
+  routeGuidanceLastAnnouncedIdx = -1;
+  try {
+    hideMapRouteHud();
+  } catch (e) {
+    // ignore
+  }
+  if (o.stopGpsIfOwned && routeGuidanceOwnsGps) {
+    stopGpsTracking();
+  }
+  routeGuidanceOwnsGps = false;
+}
+
+/**
+ * Réinitialise la carte avant de démarrer une mission (Lignes/Déviations)
+ * ou un itinéraire. Cas important : un itinéraire doit pouvoir remplacer
+ * une mission en cours, même si elle est en GPS ou en simulation.
+ *
+ * Note : le mode Itinéraire est GPS uniquement (pas de simulation),
+ * donc on coupe systématiquement `running/currentPattern` pour éviter tout tick SIMU.
+ */
+function resetMapForNewContext(kind) {
+  const k = String(kind || "").trim();
+
+  // Coupe tout ce qui peut “animer” la carte.
+  try {
+    running = false;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    lastRafTime = 0;
+  } catch (e) {
+    // ignore
+  }
+  // Purge l’état mission pour éviter tout “résidu” au zoom (zoomend → applyMapVisualProfile → updateStopToStopOverlay).
+  try {
+    distanceAlongPathMeters = 0;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    lastVoiceDistance = 0;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    traceSource = "Aucune";
+  } catch (e) {
+    // ignore
+  }
+  try {
+    activeCoordinates = [];
+  } catch (e) {
+    // ignore
+  }
+  try {
+    pathCumMeters = [];
+    pathTotalMeters = 0;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    stopMetersAlong = [];
+  } catch (e) {
+    // ignore
+  }
+  try {
+    activeStopMetersForGuide = [];
+  } catch (e) {
+    // ignore
+  }
+  try {
+    servedGuideSnapshot = [];
+  } catch (e) {
+    // ignore
+  }
+
+  // Coupe le guidage itinéraire + surcouche itinéraire.
+  try {
+    deactivateRouteGuidance({ stopGpsIfOwned: true });
+  } catch (e) {
+    // ignore
+  }
+  try {
+    clearTamRouteOverlay();
+  } catch (e) {
+    // ignore
+  }
+
+  // Coupe la mission (Lignes/Déviations) + nettoie ses calques.
+  try {
+    previewOnlyMode = false;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    mapMissionHudSessionActive = false;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    hideMapMissionHud();
+  } catch (e) {
+    // ignore
+  }
+  try {
+    stopManualDrawMode({ keepPoints: false });
+  } catch (e) {
+    // ignore
+  }
+  try {
+    if (typeof clearManualRouteOverlayLayers === "function") {
+      clearManualRouteOverlayLayers();
+    }
+  } catch (e) {
+    // ignore
+  }
+  // Surcouches “déviation manuelle” : elles vivent dans des layerGroups séparés.
+  try {
+    if (
+      typeof manualBypassOverlays !== "undefined" &&
+      manualBypassOverlays?.clearLayers
+    ) {
+      manualBypassOverlays.clearLayers();
+    }
+    if (
+      typeof manualDetourOverlays !== "undefined" &&
+      manualDetourOverlays?.clearLayers
+    ) {
+      manualDetourOverlays.clearLayers();
+    }
+    if (typeof manualDraftLayer !== "undefined" && manualDraftLayer?.clearLayers) {
+      manualDraftLayer.clearLayers();
+    }
+  } catch (e) {
+    // ignore
+  }
+  try {
+    if (typeof allStopsLayer !== "undefined" && allStopsLayer?.clearLayers) {
+      allStopsLayer.clearLayers();
+    }
+    if (
+      typeof skippedStopsLayer !== "undefined" &&
+      skippedStopsLayer?.clearLayers
+    ) {
+      skippedStopsLayer.clearLayers();
+    }
+    if (
+      typeof provisionalStopsLayer !== "undefined" &&
+      provisionalStopsLayer?.clearLayers
+    ) {
+      provisionalStopsLayer.clearLayers();
+    }
+    if (typeof stopToStopLayer !== "undefined" && stopToStopLayer?.clearLayers) {
+      stopToStopLayer.clearLayers();
+      stopToStopLayer.__tamSegIdx = -1;
+    }
+  } catch (e) {
+    // ignore
+  }
+  try {
+    if (typeof fullLine !== "undefined" && fullLine?.setLatLngs) {
+      fullLine.setLatLngs([]);
+    }
+    if (typeof doneLine !== "undefined" && doneLine?.setLatLngs) {
+      doneLine.setLatLngs([]);
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // Itinéraire => GPS uniquement : on coupe le GPS “mission”.
+  // La mission (Lignes/Déviations) relancera le GPS si DRIVE_MODE.REAL.
+  if (k === "route" || k === "itinerary") {
+    try {
+      stopGpsTracking();
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  try {
+    currentPattern = null;
+  } catch (e) {
+    // ignore
+  }
+
+  // Masque explicitement le rail d’arrêts mission (sinon il peut rester affiché
+  // jusqu’au prochain refresh lié à une mission).
+  try {
+    refreshStopRail();
+  } catch (e) {
+    // ignore
+  }
+
+  try {
+    refreshMapLayout();
+  } catch (e) {
+    // ignore
+  }
+}
+
 function speakRouteInstruction(text, forTest) {
   if (!forTest && !voiceEnabledEl.checked) {
     return;
@@ -5242,12 +5451,12 @@ function showMapRouteHud() {
   root.classList.remove("map-mission-hud--collapsed");
   root.setAttribute("aria-hidden", "false");
   refreshMapRouteHudState();
-  refreshMapHudToggleIcon("#mapRouteHud", "mapRouteHudToggleBtn");
+  refreshMapHudToggleIconForRoot("#mapRouteHud", "mapRouteHudToggleBtn");
   refreshMapRouteHudNextStepLabel();
   refreshMapLayout();
 }
 
-function refreshMapHudToggleIcon(rootSel, toggleId) {
+function refreshMapHudToggleIconForRoot(rootSel, toggleId) {
   const root = document.querySelector(rootSel);
   const toggleB = document.getElementById(toggleId);
   if (!root || !toggleB) return;
@@ -5271,7 +5480,7 @@ function setupMapRouteHud() {
   const mapHeading = document.getElementById("mapRouteHudHeadingUp");
   if (!root || !toggleB || !voiceB || !pauseB || !mapHeading) return;
 
-  refreshMapHudToggleIcon("#mapRouteHud", "mapRouteHudToggleBtn");
+  refreshMapHudToggleIconForRoot("#mapRouteHud", "mapRouteHudToggleBtn");
   refreshMapRouteHudState();
 
   voiceB.addEventListener("click", () => {
@@ -5282,7 +5491,7 @@ function setupMapRouteHud() {
 
   toggleB.addEventListener("click", () => {
     root.classList.toggle("map-mission-hud--collapsed");
-    refreshMapHudToggleIcon("#mapRouteHud", "mapRouteHudToggleBtn");
+    refreshMapHudToggleIconForRoot("#mapRouteHud", "mapRouteHudToggleBtn");
     refreshMapLayout();
   });
 
@@ -5521,6 +5730,8 @@ function tickRaf(now) {
 startBtn.addEventListener("click", () => {
   const p = selectedPattern();
   if (!p) return;
+  // Démarrage Lignes/Déviations : on repart d’une carte “propre” (efface itinéraire et mission précédente).
+  resetMapForNewContext("mission");
   speed = Number(speedSelect.value) || 1;
   const token = ++previewMissionToken;
   running = false;
