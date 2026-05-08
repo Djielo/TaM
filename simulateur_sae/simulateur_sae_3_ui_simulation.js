@@ -5756,6 +5756,8 @@ function updateRouteGuidanceMarkerFromGps() {
   // Ne jamais interférer avec une mission en cours.
   if (currentPattern) return;
   if (!routeGuidanceActive) return;
+  // En pause, on ne recentre pas la carte automatiquement.
+  if (!routeGuidanceRunning) return;
   if (!Array.isArray(lastGpsLatLng) || lastGpsLatLng.length < 2) return;
   const lat = Number(lastGpsLatLng[0]);
   const lon = Number(lastGpsLatLng[1]);
@@ -5764,6 +5766,15 @@ function updateRouteGuidanceMarkerFromGps() {
   try {
     if (typeof marker !== "undefined" && marker?.setLatLng) {
       marker.setLatLng([lat, lon]);
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  // Comme en mission : curseur centré (Nord ou Cap).
+  try {
+    if (map && typeof map.setView === "function") {
+      map.setView([lat, lon], map.getZoom(), { animate: false });
     }
   } catch (e) {
     // ignore
