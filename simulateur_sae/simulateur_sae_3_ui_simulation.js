@@ -1803,7 +1803,10 @@ function ensureTamRouteOverlayLayer() {
   if (typeof L === "undefined" || !map) return null;
   // Pane dédié pour éviter toute interaction avec les calques mission.
   if (typeof map.getPane === "function" && !map.getPane("tamRoutePane")) {
-    map.createPane("tamRoutePane");
+    // Sur mobile (rotate/zoom), certains plugins ne transforment pas les panes “custom”
+    // créés au niveau racine : on l’attache à l’overlayPane pour hériter des transforms Leaflet.
+    const parent = map.getPane("overlayPane") || undefined;
+    map.createPane("tamRoutePane", parent);
     const p = map.getPane("tamRoutePane");
     if (p && p.style) {
       // Au-dessus des overlays par défaut (mission), sous les contrôles UI.
@@ -3679,6 +3682,14 @@ function resetMapForNewContext(kind) {
   // Itinéraire => GPS uniquement : on coupe le GPS “mission”.
   // La mission (Lignes/Déviations) relancera le GPS si DRIVE_MODE.REAL.
   if (k === "route" || k === "itinerary") {
+    // En itinéraire, on repart sans rotation imposée par une mission précédente.
+    try {
+      if (map && typeof map.setBearing === "function") {
+        map.setBearing(0);
+      }
+    } catch (e) {
+      // ignore
+    }
     try {
       stopGpsTracking();
     } catch (e) {
