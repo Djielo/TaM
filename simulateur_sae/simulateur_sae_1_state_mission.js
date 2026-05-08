@@ -189,6 +189,7 @@ const missionContextBar = document.getElementById("missionContextBar");
 const missionContextScroll = document.getElementById(
   "missionContextScroll",
 );
+const missionContextKind = document.getElementById("missionContextKind");
 const missionContextPill = document.getElementById("missionContextPill");
 const missionContextDest = document.getElementById("missionContextDest");
 const MISSION_PAN_LONG_MS = 700;

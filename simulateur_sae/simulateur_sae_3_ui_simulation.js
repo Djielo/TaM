@@ -1569,6 +1569,12 @@ function setupTamRoutePlannerUi() {
       const res = dijkstraRoutePlanner("__gps__", destStopId, walkEdges);
       els.result.textContent = describeRouteResult(destStopId, res);
       await drawRouteOnMapFromResult(lat, lon, res);
+      const destName = idx.stopsById.get(destStopId)?.stop_name || "";
+      setContextBarPayload({
+        kind: "Itinéraire",
+        routeCode: "",
+        destLabel: destName || "Destination",
+      });
       closePanelAfterCompute();
       activateRouteGuidance(destStopId, res);
       return;
@@ -1611,6 +1617,12 @@ function setupTamRoutePlannerUi() {
       omitFinalRideDirection: false,
     })}`;
     await drawRouteOnMapFromResult(lat, lon, res);
+    const destName = target?.stop_name || "";
+    setContextBarPayload({
+      kind: "Itinéraire",
+      routeCode: lineCode,
+      destLabel: destName || "Rejoindre la ligne",
+    });
     closePanelAfterCompute();
     // Mode ligne : en « Peu importe l’arrêt », on guide jusqu’au point d’accès à la ligne.
     activateRouteGuidance(targetId || lineStopId, res);
@@ -3037,45 +3049,93 @@ function parseHeadsignForContextBar(optionText) {
   return raw.slice(idx + 2).trim();
 }
 
-function updateMissionContextBar() {
+function lineItemByRouteCodeOrNull(routeCode) {
+  const code = String(routeCode || "").trim();
+  if (!code) return null;
+  if (Array.isArray(lineOptionLookup) && lineOptionLookup.length) {
+    const found = lineOptionLookup.find(
+      (it) => String(it?.route_short_name || "").trim() === code,
+    );
+    if (found) return found;
+  }
+  const pats = data?.patterns;
+  if (Array.isArray(pats) && pats.length) {
+    const p = pats.find((it) => String(it?.route_short_name || "").trim() === code);
+    if (p) {
+      return {
+        route_short_name: String(p.route_short_name || "").trim(),
+        route_type: String(p.route_type || "").trim(),
+        route_color: String(p.route_color || "").trim(),
+      };
+    }
+  }
+  return null;
+}
+
+function setContextBarPayload({ kind, routeCode, destLabel }) {
   if (!missionContextBar || !missionContextPill || !missionContextDest) {
     return;
   }
-  if (typeof data === "undefined" || !data || !lineOptionLookup.length) {
-    if (missionContextScroll) {
-      missionContextScroll.classList.remove("mission-context-scroll--pan");
-      missionContextScroll.scrollLeft = 0;
-    }
-    missionContextBar.hidden = true;
-    return;
-  }
-  const val = lineSelect.value;
-  const item = lineOptionLookup[Number(val)];
-  if (!item) {
-    if (missionContextScroll) {
-      missionContextScroll.classList.remove("mission-context-scroll--pan");
-      missionContextScroll.scrollLeft = 0;
-    }
-    missionContextBar.hidden = true;
-    return;
-  }
+  const k = String(kind || "").trim();
+  const code = String(routeCode || "").trim();
+  const dest = String(destLabel || "").trim();
+
   if (missionContextScroll) {
     missionContextScroll.classList.remove("mission-context-scroll--pan");
     missionContextScroll.scrollLeft = 0;
   }
+  if (typeof missionContextKind !== "undefined" && missionContextKind) {
+    missionContextKind.textContent = k ? `${k}:` : "";
+    missionContextKind.style.display = k ? "" : "none";
+  }
+
+  if (!code && !dest && !k) {
+    missionContextBar.hidden = true;
+    return;
+  }
   missionContextBar.hidden = false;
-  missionContextPill.textContent = displayLineLabel(item);
-  applyLineColorStyling(missionContextPill, item, "contextPill");
-  const headOpt =
-    headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
-  const dest = parseHeadsignForContextBar(headOpt);
+
+  const item = lineItemByRouteCodeOrNull(code);
+  if (item) {
+    missionContextPill.textContent = displayLineLabel(item);
+    applyLineColorStyling(missionContextPill, item, "contextPill");
+  } else {
+    missionContextPill.textContent = code || "—";
+    applyLineColorStyling(missionContextPill, null, "contextPill");
+  }
+
   if (dest) {
-    missionContextDest.textContent = "\u00a0\u2014\u00a0" + dest;
+    const sep = k ? "\u00a0\u2192\u00a0" : "\u00a0\u2014\u00a0";
+    missionContextDest.textContent = sep + dest;
     missionContextDest.setAttribute("title", dest);
   } else {
     missionContextDest.textContent = "";
     missionContextDest.removeAttribute("title");
   }
+}
+
+function updateMissionContextBar() {
+  if (!missionContextBar || !missionContextPill || !missionContextDest) {
+    return;
+  }
+  if (typeof data === "undefined" || !data || !lineOptionLookup.length) {
+    setContextBarPayload({ kind: "", routeCode: "", destLabel: "" });
+    return;
+  }
+  const val = lineSelect.value;
+  const item = lineOptionLookup[Number(val)];
+  if (!item) {
+    setContextBarPayload({ kind: "", routeCode: "", destLabel: "" });
+    return;
+  }
+  const headOpt =
+    headsignSelect.options[headsignSelect.selectedIndex]?.textContent || "";
+  const dest = parseHeadsignForContextBar(headOpt);
+  setContextBarPayload({
+    kind: "",
+    routeCode: String(item?.route_short_name || "").trim(),
+    destLabel: dest,
+  });
 }
 
 function selectedPattern() {
@@ -3716,6 +3776,16 @@ function resetMapForNewContext(kind) {
 
   try {
     refreshMapLayout();
+  } catch (e) {
+    // ignore
+  }
+
+  // Si on quitte un contexte, on évite de laisser un bandeau "mission" affiché
+  // tant qu’un nouvel affichage ne l’a pas explicitement mis à jour.
+  try {
+    if (k === "route" || k === "itinerary") {
+      setContextBarPayload({ kind: "", routeCode: "", destLabel: "" });
+    }
   } catch (e) {
     // ignore
   }
