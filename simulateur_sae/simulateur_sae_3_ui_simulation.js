@@ -951,6 +951,9 @@ function ensureTamRouteUiEls() {
     line: document.getElementById("mapHudRouteLine"),
     lineStop: document.getElementById("mapHudRouteLineStop"),
     stop: document.getElementById("mapHudRouteStop"),
+    stopCombo: document.getElementById("mapHudRouteStopCombo"),
+    stopInput: document.getElementById("mapHudRouteStopInput"),
+    stopListbox: document.getElementById("mapHudRouteStopListbox"),
     go: document.getElementById("mapHudRouteGoBtn"),
     close: document.getElementById("mapHudRouteCloseBtn"),
     result: document.getElementById("mapHudRouteResult"),
@@ -1481,6 +1484,444 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
   if (dest) addRouteMarker(dest.lat, dest.lon, "Arrivée");
 }
 
+/* =========================================================================
+ * Combobox d'arrêt de destination (panneau Itinéraire) — recherche + suggestions
+ * « Près de vous » via GPS, avec pastilles de lignes colorées (mêmes couleurs
+ * que dans « Rejoindre une ligne »). Remplace l'ancien <select> linéaire
+ * (~1 500 arrêts) par une UX façon Citymapper / IDFM Mobilités.
+ *
+ * Le <select id="mapHudRouteStop"> reste en DOM, masqué : il sert de support
+ * de valeur (`els.stop.value`) lue par le bouton « Calculer » → 0 changement
+ * dans la logique Dijkstra existante.
+ * ========================================================================= */
+let tamRouteUiCachedGpsLatLng = null;
+let tamRouteUiGpsRequestInFlight = false;
+let tamStopComboboxActiveIdx = -1;
+let tamStopComboboxOptionEls = [];
+
+/**
+ * Renseigne `tamRouteUiCachedGpsLatLng` à partir de la dernière position
+ * connue (mission/itinéraire en cours), et complète au besoin via un fix
+ * one-shot. Un re-render est déclenché si la listbox est ouverte.
+ */
+function prepareTamRouteUiGpsCache() {
+  if (Array.isArray(lastGpsLatLng) && lastGpsLatLng.length === 2) {
+    const lat = Number(lastGpsLatLng[0]);
+    const lon = Number(lastGpsLatLng[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      tamRouteUiCachedGpsLatLng = [lat, lon];
+    }
+  }
+  if (tamRouteUiCachedGpsLatLng) return;
+  if (tamRouteUiGpsRequestInFlight) return;
+  tamRouteUiGpsRequestInFlight = true;
+  getOneShotGeolocationLatLngOrNull()
+    .then((p) => {
+      tamRouteUiGpsRequestInFlight = false;
+      if (!p) return;
+      tamRouteUiCachedGpsLatLng = [Number(p[0]), Number(p[1])];
+      const els = ensureTamRouteUiEls();
+      if (els.stopListbox && !els.stopListbox.hidden) {
+        renderStopComboboxList(els.stopInput?.value || "");
+      }
+    })
+    .catch(() => {
+      tamRouteUiGpsRequestInFlight = false;
+    });
+}
+
+function formatStopComboboxDistance(meters) {
+  const m = Number(meters);
+  if (!Number.isFinite(m)) return "";
+  if (m < 1000) return `${Math.round(m)} m`;
+  if (m < 10000) return `${(m / 1000).toFixed(1)} km`;
+  return `${Math.round(m / 1000)} km`;
+}
+
+/**
+ * Distance minimale entre `gps` et l'un des quais (`stop_ids`) regroupés sous
+ * un même nom (les arrêts de tram ont des quais séparés à quelques mètres).
+ */
+function bestStopDestDistanceMeters(opt, idx, gps) {
+  if (!gps || !Array.isArray(opt?.stop_ids)) return null;
+  let bestD = Infinity;
+  for (const sid of opt.stop_ids) {
+    const st = idx.stopsById.get(sid);
+    if (!st) continue;
+    const dm = approximateGeoDistMeters(gps[0], gps[1], st.lat, st.lon);
+    if (Number.isFinite(dm) && dm < bestD) bestD = dm;
+  }
+  return bestD === Infinity ? null : bestD;
+}
+
+/**
+ * Construit un élément <li role="option"> stylé avec : nom de l'arrêt,
+ * pastilles colorées des lignes desservies, et distance GPS si dispo.
+ */
+function buildStopComboboxOptionEl(opt, dist, showDist) {
+  const li = document.createElement("li");
+  li.className = "tam-stop-combobox__option";
+  li.setAttribute("role", "option");
+  li.setAttribute("aria-selected", "false");
+  li.dataset.value = opt.value;
+  li.dataset.stopName = opt.stop_name;
+
+  // Nom + distance regroupés à gauche (la distance qualifie l'arrêt, on la lit
+  // tout de suite après son nom, avant les pastilles de lignes).
+  const main = document.createElement("div");
+  main.className = "tam-stop-combobox__optionMain";
+
+  const name = document.createElement("span");
+  name.className = "tam-stop-combobox__optionName";
+  name.textContent = opt.stop_name;
+  main.appendChild(name);
+
+  if (showDist && Number.isFinite(dist)) {
+    const d = document.createElement("span");
+    d.className = "tam-stop-combobox__optionDist";
+    d.textContent = formatStopComboboxDistance(dist);
+    main.appendChild(d);
+  }
+
+  li.appendChild(main);
+
+  if (Array.isArray(opt.routeItems) && opt.routeItems.length) {
+    const pills = document.createElement("div");
+    pills.className = "tam-stop-combobox__optionPills";
+    for (const r of opt.routeItems) {
+      const pill = document.createElement("span");
+      pill.className = "mission-context-pill tam-stop-combobox__pill";
+      pill.textContent = displayLineLabel(r) || "?";
+      applyLineColorStyling(pill, r, "routePlannerPill");
+      pills.appendChild(pill);
+    }
+    li.appendChild(pills);
+  }
+
+  return li;
+}
+
+function appendStopComboboxSection(listbox, title, entries, showDist) {
+  if (!entries.length) return;
+  if (title) {
+    const sep = document.createElement("li");
+    sep.className = "tam-stop-combobox__sep";
+    sep.setAttribute("role", "presentation");
+    sep.textContent = title;
+    listbox.appendChild(sep);
+  }
+  for (const { opt, dist } of entries) {
+    listbox.appendChild(buildStopComboboxOptionEl(opt, dist, showDist));
+  }
+}
+
+/**
+ * Filtrage + scoring : préfixe (1000) > mot-préfixe (500) > sous-chaîne (100) >
+ * dans la liste des lignes (30). Bonus de proximité GPS jusqu'à +200 (très proche).
+ * Tri secondaire par distance puis par nom (FR-aware).
+ */
+function getStopComboboxScoredEntries(query, idx, gps) {
+  const norm = normalizeText(String(query || ""));
+  const tokens = norm.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
+
+  const out = [];
+  const all = idx.stopDestOptions || [];
+  for (const opt of all) {
+    const nameNorm = normalizeText(opt.stop_name || "");
+    const labelNorm = normalizeText(opt.label || "");
+    let score = 0;
+    let allMatch = true;
+    for (const tk of tokens) {
+      const inName = nameNorm.includes(tk);
+      const inLabel = labelNorm.includes(tk);
+      if (!inName && !inLabel) {
+        allMatch = false;
+        break;
+      }
+      if (nameNorm.startsWith(tk)) {
+        score += 1000;
+      } else if (new RegExp("(^|\\s|-|/)" + tk).test(nameNorm)) {
+        score += 500;
+      } else if (inName) {
+        score += 100;
+      } else {
+        score += 30;
+      }
+    }
+    if (!allMatch) continue;
+    const dist = bestStopDestDistanceMeters(opt, idx, gps);
+    if (Number.isFinite(dist)) {
+      score += Math.max(0, 200 - Math.min(200, dist / 50));
+    }
+    out.push({ opt, score, dist });
+  }
+  out.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.dist != null && b.dist != null) return a.dist - b.dist;
+    if (a.dist != null) return -1;
+    if (b.dist != null) return 1;
+    return String(a.opt.stop_name).localeCompare(String(b.opt.stop_name), "fr");
+  });
+  return out.slice(0, 12);
+}
+
+function renderStopComboboxList(query) {
+  const els = ensureTamRouteUiEls();
+  if (!els.stopListbox) return;
+  els.stopListbox.innerHTML = "";
+  tamStopComboboxActiveIdx = -1;
+  tamStopComboboxOptionEls = [];
+
+  const idx = buildRoutePlannerIndexes();
+  const gps = tamRouteUiCachedGpsLatLng;
+  const showDist = !!gps;
+
+  const scored = getStopComboboxScoredEntries(query, idx, gps);
+  if (scored != null) {
+    if (!scored.length) {
+      const li = document.createElement("li");
+      li.className = "tam-stop-combobox__empty";
+      li.textContent = "Aucun arrêt ne correspond.";
+      els.stopListbox.appendChild(li);
+    } else {
+      appendStopComboboxSection(els.stopListbox, "", scored, showDist);
+    }
+  } else {
+    // Pas de requête : « Près de vous » (top 8 GPS) puis « Tous les arrêts (A→Z) ».
+    if (gps) {
+      const all = idx.stopDestOptions || [];
+      const distArr = [];
+      for (const opt of all) {
+        const d = bestStopDestDistanceMeters(opt, idx, gps);
+        if (Number.isFinite(d)) distArr.push({ opt, dist: d });
+      }
+      distArr.sort((a, b) => a.dist - b.dist);
+      appendStopComboboxSection(
+        els.stopListbox,
+        "Près de vous",
+        distArr.slice(0, 8),
+        true,
+      );
+    }
+    const all = idx.stopDestOptions || [];
+    appendStopComboboxSection(
+      els.stopListbox,
+      gps ? "Tous les arrêts (A→Z)" : "",
+      all.slice(0, 30).map((opt) => ({ opt, dist: null })),
+      showDist,
+    );
+  }
+
+  tamStopComboboxOptionEls = Array.from(
+    els.stopListbox.querySelectorAll('[role="option"]'),
+  );
+  // Pré-sélectionne la 1re option pour Enter direct.
+  if (tamStopComboboxOptionEls.length) {
+    setActiveStopComboboxOption(0, { scroll: false });
+  }
+}
+
+/**
+ * Positionne la listbox d'arrêt en `position: fixed` (top/left/width inline)
+ * avec une `max-height` qui va jusqu'au bas du conteneur carte, moins une
+ * petite marge. Permet à la listbox de sortir du clipping du panel parent
+ * (qui a `overflow: auto`) et d'occuper ~2× la place de l'ancienne version.
+ *
+ * Appelée à chaque ouverture, et sur resize/scroll (capture) tant qu'elle
+ * est visible.
+ */
+function positionStopComboboxListbox() {
+  const els = ensureTamRouteUiEls();
+  if (!els.stopInput || !els.stopListbox || els.stopListbox.hidden) return;
+  const ir = els.stopInput.getBoundingClientRect();
+  const mapEl = document.getElementById("map");
+  const vH = window.innerHeight || document.documentElement.clientHeight || 0;
+  const vW = window.innerWidth || document.documentElement.clientWidth || 0;
+  const mr = mapEl
+    ? mapEl.getBoundingClientRect()
+    : { top: 0, bottom: vH, left: 0, right: vW };
+  const margin = 16;
+  const top = Math.round(ir.bottom + 4);
+  const bottomLimit = Math.min(mr.bottom, vH);
+  const maxH = Math.max(180, Math.floor(bottomLimit - top - margin));
+  // Largeur : on s'aligne sur l'input. Sur la carte, on ne dépasse jamais à droite.
+  const left = Math.round(Math.max(mr.left + 4, ir.left));
+  const maxRight = Math.min(mr.right - 4, vW - 4);
+  const width = Math.round(Math.max(160, Math.min(ir.width, maxRight - left)));
+  els.stopListbox.style.left = `${left}px`;
+  els.stopListbox.style.top = `${top}px`;
+  els.stopListbox.style.width = `${width}px`;
+  els.stopListbox.style.maxHeight = `${maxH}px`;
+}
+
+function openStopCombobox() {
+  const els = ensureTamRouteUiEls();
+  if (!els.stopListbox || !els.stopInput) return;
+  prepareTamRouteUiGpsCache();
+  renderStopComboboxList(els.stopInput.value || "");
+  els.stopListbox.hidden = false;
+  els.stopInput.setAttribute("aria-expanded", "true");
+  positionStopComboboxListbox();
+}
+
+function closeStopCombobox() {
+  const els = ensureTamRouteUiEls();
+  if (!els.stopListbox || !els.stopInput) return;
+  els.stopListbox.hidden = true;
+  els.stopInput.setAttribute("aria-expanded", "false");
+  els.stopInput.removeAttribute("aria-activedescendant");
+  tamStopComboboxActiveIdx = -1;
+  tamStopComboboxOptionEls = [];
+}
+
+function setActiveStopComboboxOption(nextIdx, opts) {
+  const o = opts || {};
+  const els = ensureTamRouteUiEls();
+  if (!els.stopInput) return;
+  const list = tamStopComboboxOptionEls;
+  if (!list.length) {
+    tamStopComboboxActiveIdx = -1;
+    els.stopInput.removeAttribute("aria-activedescendant");
+    return;
+  }
+  const wrapped = ((nextIdx % list.length) + list.length) % list.length;
+  if (tamStopComboboxActiveIdx >= 0 && list[tamStopComboboxActiveIdx]) {
+    list[tamStopComboboxActiveIdx].classList.remove("is-active");
+  }
+  tamStopComboboxActiveIdx = wrapped;
+  const cur = list[wrapped];
+  if (!cur) return;
+  cur.classList.add("is-active");
+  // Garantit un id pour aria-activedescendant.
+  if (!cur.id) cur.id = `mapHudRouteStopOpt-${wrapped}`;
+  els.stopInput.setAttribute("aria-activedescendant", cur.id);
+  if (o.scroll !== false && typeof cur.scrollIntoView === "function") {
+    cur.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function commitStopComboboxOption(li) {
+  if (!li) return;
+  const els = ensureTamRouteUiEls();
+  if (!els.stopInput || !els.stop) return;
+  const value = li.dataset?.value || "";
+  const stopName = li.dataset?.stopName || "";
+  if (!value) return;
+  els.stop.value = value;
+  els.stopInput.value = stopName;
+  for (const x of tamStopComboboxOptionEls) {
+    x.setAttribute("aria-selected", x === li ? "true" : "false");
+  }
+  closeStopCombobox();
+}
+
+/**
+ * Si l'utilisateur tape puis clique « Calculer » sans valider explicitement,
+ * on prend la 1re option qui correspond — UX standard combobox.
+ */
+function ensureStopComboboxSelectionFromInput() {
+  const els = ensureTamRouteUiEls();
+  if (!els.stopInput || !els.stop) return;
+  if (els.stop.value) return; // déjà choisi explicitement
+  const q = String(els.stopInput.value || "").trim();
+  if (!q) return;
+  const idx = buildRoutePlannerIndexes();
+  const scored = getStopComboboxScoredEntries(q, idx, tamRouteUiCachedGpsLatLng);
+  if (!scored || !scored.length) return;
+  const first = scored[0].opt;
+  els.stop.value = first.value;
+  els.stopInput.value = first.stop_name;
+}
+
+function setupStopCombobox() {
+  const els = ensureTamRouteUiEls();
+  if (!els.stopInput || !els.stopListbox || !els.stopCombo) return;
+
+  els.stopInput.addEventListener("focus", () => {
+    openStopCombobox();
+  });
+  els.stopInput.addEventListener("input", () => {
+    // L'utilisateur édite → on invalide la sélection précédente jusqu'à validation.
+    if (els.stop) els.stop.value = "";
+    openStopCombobox();
+  });
+  els.stopInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      if (els.stopListbox.hidden) {
+        openStopCombobox();
+      } else {
+        setActiveStopComboboxOption(tamStopComboboxActiveIdx + 1);
+      }
+      return;
+    }
+    if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (els.stopListbox.hidden) {
+        openStopCombobox();
+      } else {
+        setActiveStopComboboxOption(tamStopComboboxActiveIdx - 1);
+      }
+      return;
+    }
+    if (ev.key === "Enter") {
+      if (!els.stopListbox.hidden && tamStopComboboxOptionEls.length) {
+        ev.preventDefault();
+        const i = tamStopComboboxActiveIdx >= 0 ? tamStopComboboxActiveIdx : 0;
+        commitStopComboboxOption(tamStopComboboxOptionEls[i]);
+      }
+      return;
+    }
+    if (ev.key === "Escape") {
+      if (!els.stopListbox.hidden) {
+        ev.preventDefault();
+        closeStopCombobox();
+      }
+      return;
+    }
+    if (ev.key === "Tab") {
+      closeStopCombobox();
+    }
+  });
+
+  // mousedown plutôt que click : évite que le blur de l'input ne ferme la listbox avant le clic.
+  els.stopListbox.addEventListener("mousedown", (ev) => {
+    const li = ev.target instanceof Element ? ev.target.closest('[role="option"]') : null;
+    if (!li) return;
+    ev.preventDefault();
+    commitStopComboboxOption(li);
+  });
+  // Touche : iOS/Android, certains navigateurs ne bouchent pas le click via mousedown.
+  els.stopListbox.addEventListener("click", (ev) => {
+    const li = ev.target instanceof Element ? ev.target.closest('[role="option"]') : null;
+    if (!li) return;
+    commitStopComboboxOption(li);
+  });
+
+  document.addEventListener("click", (ev) => {
+    const root = els.stopCombo;
+    if (!root) return;
+    if (els.stopListbox.hidden) return;
+    if (root.contains(ev.target)) return;
+    closeStopCombobox();
+  });
+
+  // La listbox est en position fixed : il faut la repositionner si la fenêtre
+  // change de taille ou si l'un des conteneurs (panel itinéraire, carte, page)
+  // scrolle. `capture: true` pour le scroll attrape les événements internes,
+  // pas seulement window.
+  window.addEventListener("resize", positionStopComboboxListbox);
+  window.addEventListener("scroll", positionStopComboboxListbox, {
+    capture: true,
+    passive: true,
+  });
+  if (window.visualViewport && typeof window.visualViewport.addEventListener === "function") {
+    window.visualViewport.addEventListener("resize", positionStopComboboxListbox);
+    window.visualViewport.addEventListener("scroll", positionStopComboboxListbox);
+  }
+}
+
 function setupTamRoutePlannerUi() {
   const els = ensureTamRouteUiEls();
   if (
@@ -1501,8 +1942,11 @@ function setupTamRoutePlannerUi() {
 
   els.close.addEventListener("click", () => {
     els.panel.classList.remove("show");
+    closeStopCombobox();
   });
   els.mode.addEventListener("change", () => routePanelSetMode(els.mode.value));
+
+  setupStopCombobox();
 
   els.go.addEventListener("click", async () => {
     if (!data?.patterns?.length) {
@@ -1537,6 +1981,9 @@ function setupTamRoutePlannerUi() {
     const mode = String(els.mode.value || "stop");
     const idx = buildRoutePlannerIndexes();
     if (mode === "stop") {
+      // Si l'utilisateur a tapé un nom mais n'a pas validé dans la listbox,
+      // on auto-sélectionne le 1er match — comportement attendu d'un combobox.
+      ensureStopComboboxSelectionFromInput();
       const raw = String(els.stop.value || "").trim();
       if (!raw) {
         els.result.textContent = "Choisissez un arrêt de destination.";
@@ -1668,6 +2115,7 @@ function setupTamRoutePlannerUi() {
         if (!tamRouteUiIsVisible()) return;
         if (els.panel.classList.contains("show")) {
           els.panel.classList.remove("show");
+          closeStopCombobox();
           return;
         }
         // Réouverture : ne pas réinitialiser les choix/résultats.
@@ -1678,6 +2126,8 @@ function setupTamRoutePlannerUi() {
         routePanelSetMode(els.mode.value);
         positionPanelUnderButton();
         els.panel.classList.add("show");
+        // Pré-charge la position GPS pour que « Près de vous » soit prêt dès le 1er focus.
+        prepareTamRouteUiGpsCache();
       });
       return div;
     };
@@ -1767,6 +2217,44 @@ function buildRoutePlannerIndexes() {
     return arr.join(", ");
   }
 
+  // Métadonnées des lignes (couleur / type) indexées par code, pour pouvoir construire
+  // des pastilles colorées dans le combobox de destination (mêmes pastilles que dans
+  // « Rejoindre une ligne »).
+  const routeMetaByCode = new Map();
+  for (const p of patterns) {
+    const code = String(p?.route_short_name || "").trim();
+    if (!code) continue;
+    if (!routeMetaByCode.has(code)) {
+      routeMetaByCode.set(code, {
+        route_short_name: code,
+        route_color: String(p?.route_color || ""),
+        route_type: String(p?.route_type || ""),
+      });
+      continue;
+    }
+    // Si la 1re occurrence n'a pas de couleur, on prend la suivante qui en a une.
+    const existing = routeMetaByCode.get(code);
+    if (!existing.route_color && p?.route_color) {
+      existing.route_color = String(p.route_color || "");
+    }
+    if (!existing.route_type && p?.route_type) {
+      existing.route_type = String(p.route_type || "");
+    }
+  }
+  function sortedRouteItems(routesSet) {
+    const arr = [...routesSet].filter(Boolean);
+    arr.sort((a, b) => {
+      const ka = routeSortKey(a);
+      const kb = routeSortKey(b);
+      if (ka.group !== kb.group) return ka.group - kb.group;
+      if (ka.n !== kb.n) return ka.n - kb.n;
+      return ka.s.localeCompare(kb.s, "fr");
+    });
+    return arr
+      .map((c) => routeMetaByCode.get(c) || { route_short_name: c, route_color: "", route_type: "" })
+      .filter(Boolean);
+  }
+
   /** Options de destination par nom d’arrêt (évite doublons de quais). */
   const stopDestOptions = [];
   for (const [key, set] of nameKeyToStopIds.entries()) {
@@ -1788,6 +2276,7 @@ function buildRoutePlannerIndexes() {
       label,
       stop_name: first.stop_name,
       stop_ids: ids,
+      routeItems: sortedRouteItems(routes),
     });
   }
   stopDestOptions.sort((a, b) =>

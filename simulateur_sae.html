@@ -1081,6 +1081,138 @@
         font-weight: 600;
         color: #1b1f24;
       }
+      /* Combobox d'arrêt (recherche + suggestions GPS) — remplace le long <select> linéaire. */
+      .tam-stop-combobox {
+        position: relative;
+        margin: 0 0 8px;
+      }
+      .tam-stop-combobox__input {
+        width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1b1f24;
+        font-family: inherit;
+      }
+      .tam-stop-combobox__input:focus {
+        outline: 2px solid #005ca9;
+        outline-offset: 1px;
+      }
+      .tam-stop-combobox__listbox[hidden] {
+        display: none !important;
+      }
+      /*
+       * `position: fixed` (et non absolute) : permet à la listbox de sortir
+       * de l'overflow du panel itinéraire (qui a `overflow: auto` + max-height
+       * limitée), donc d'aller jusqu'en bas de la carte. La position et la
+       * hauteur max sont calculées en JS (`positionStopComboboxListbox`).
+       */
+      .tam-stop-combobox__listbox {
+        position: fixed;
+        z-index: 6000;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid #c5cdd6;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        padding: 6px 6px 8px;
+        margin: 0;
+        list-style: none;
+      }
+      .tam-stop-combobox__sep {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+        font-weight: 700;
+        padding: 8px 6px 4px;
+        margin: 0;
+      }
+      .tam-stop-combobox__sep:first-child {
+        padding-top: 2px;
+      }
+      .tam-stop-combobox__option {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        background: transparent;
+        margin-bottom: 2px;
+      }
+      .tam-stop-combobox__option:hover,
+      .tam-stop-combobox__option.is-active {
+        background: #eef2f7;
+      }
+      .tam-stop-combobox__option[aria-selected="true"] {
+        background: #dde6f3;
+      }
+      /*
+       * Bloc principal : nom de l'arrêt + distance, sur une même ligne, à gauche.
+       * Les pastilles de lignes sont à droite (flex auto). On garde min-width: 0
+       * pour que le nom puisse être tronqué proprement si trop long.
+       */
+      .tam-stop-combobox__optionMain {
+        flex: 1 1 60%;
+        min-width: 0;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .tam-stop-combobox__optionName {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 700;
+        color: #1b1f24;
+        line-height: 1.2;
+      }
+      .tam-stop-combobox__optionDist {
+        flex: 0 0 auto;
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .tam-stop-combobox__optionPills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        flex: 0 0 auto;
+      }
+      .tam-stop-combobox__pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1px 6px;
+        border-radius: 6px;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 1.4;
+        height: 18px;
+        min-width: 22px;
+        border: 1px solid rgba(15, 23, 42, 0.18);
+        font-variant-numeric: tabular-nums;
+        user-select: none;
+      }
+      .tam-stop-combobox__empty {
+        padding: 12px 10px;
+        font-size: 12px;
+        color: #64748b;
+        text-align: center;
+      }
       .tam-route-ui__linePills {
         --tam-route-pill: 40px;
         display: flex;
@@ -2195,8 +2327,34 @@
                 <select id="mapHudRouteLineStop"></select>
               </div>
               <div id="mapHudRouteStopBlock">
-                <label for="mapHudRouteStop">Arrêt de destination</label>
-                <select id="mapHudRouteStop"></select>
+                <label for="mapHudRouteStopInput">Arrêt de destination</label>
+                <div class="tam-stop-combobox" id="mapHudRouteStopCombo">
+                  <input
+                    type="text"
+                    id="mapHudRouteStopInput"
+                    class="tam-stop-combobox__input"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-controls="mapHudRouteStopListbox"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Tapez un nom d’arrêt…"
+                  />
+                  <ul
+                    id="mapHudRouteStopListbox"
+                    class="tam-stop-combobox__listbox"
+                    role="listbox"
+                    hidden
+                  ></ul>
+                </div>
+                <select
+                  id="mapHudRouteStop"
+                  hidden
+                  aria-hidden="true"
+                  tabindex="-1"
+                ></select>
               </div>
               <div class="tam-route-ui__panelBtns">
                 <button type="button" id="mapHudRouteCloseBtn">Annuler</button>
