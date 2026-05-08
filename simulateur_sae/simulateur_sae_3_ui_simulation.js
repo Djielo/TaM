@@ -2,6 +2,9 @@
  * S’appuie sur les fichiers 1 et 2. */
 
 let previewMissionToken = 0;
+// Au chargement, on ne veut pas afficher un tracé (T1 par défaut) : la carte doit être vierge.
+// On n’active l’aperçu mission qu’après une interaction utilisateur explicite.
+let missionPreviewEnabled = false;
 /** Signature `pattern_id:nbArrêts` pour éviter de reconstruire le rail à chaque frame. */
 let tamStopRailBuiltFor = "";
 /** Dernier indice guidage pour lequel on a appliqué l’auto-scroll (mode compact uniquement). */
@@ -1317,6 +1320,9 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
   addRouteMarker(gpsLat, gpsLon, "Départ");
   if (!dRes?.path?.length) return;
 
+  const markedStopIds = new Set();
+  let lastRideRoute = "";
+
   const nearestIndexOnCoords = (coords, lat, lon) => {
     if (!coords || coords.length < 2) return -1;
     const p = L.latLng(lat, lon);
@@ -1344,6 +1350,25 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
     const seg = coords.slice(lo, hi + 1);
     if (seg.length < 2) return null;
     return aI <= bI ? seg : seg.slice().reverse();
+  };
+
+  const polylineHasSuspiciousJumps = (coords) => {
+    if (!coords || coords.length < 2) return true;
+    for (let i = 0; i < coords.length; i++) {
+      const c = coords[i];
+      if (!Array.isArray(c) || c.length < 2) return true;
+      const lat = Number(c[0]);
+      const lon = Number(c[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return true;
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return true;
+      if (i > 0) {
+        const p = coords[i - 1];
+        const d = L.latLng(lat, lon).distanceTo(L.latLng(p[0], p[1]));
+        // Saut énorme => géométrie probablement mauvaise (branche non reliée / coord inversées)
+        if (d > 8000) return true;
+      }
+    }
+    return false;
   };
 
   const getNetworkGeometryForRide = (routeCode, fromStop, toStop) => {
@@ -1393,16 +1418,41 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
         dashArray: e.kind === "transfer" ? "6 6" : null,
         lineCap: "round",
       });
-      addRouteMarker(toStop.lat, toStop.lon, toStop.stop_name);
+      // Point d’étape (arrivée de marche / changement de quai)
+      if (!markedStopIds.has(step.to)) {
+        addRouteMarker(toStop.lat, toStop.lon, toStop.stop_name);
+        markedStopIds.add(step.to);
+      }
     } else if (e.kind === "ride") {
       const fromStop = idx.stopsById.get(step.from);
       if (!fromStop) continue;
-      const geom = getNetworkGeometryForRide(e.route, fromStop, toStop);
+      const curRoute = String(e.route || "").trim();
+      // Pastille de correspondance/embarquement : certains changements de ligne n’ont pas d’arête "transfer".
+      if (curRoute && curRoute !== lastRideRoute && step.from !== "__gps__") {
+        if (!markedStopIds.has(step.from)) {
+          addRouteMarker(fromStop.lat, fromStop.lon, fromStop.stop_name);
+          markedStopIds.add(step.from);
+        }
+        lastRideRoute = curRoute;
+      } else if (curRoute && !lastRideRoute) {
+        lastRideRoute = curRoute;
+      }
+      // Choix de la branche réseau : se baser sur les endpoints du pattern qui a produit l’arc,
+      // plutôt que sur 2 arrêts (trop ambigu sur certaines lignes).
+      const endpoints =
+        Array.isArray(e.patternEndpoints) && e.patternEndpoints.length === 2
+          ? e.patternEndpoints
+          : null;
+      const geom = endpoints
+        ? getNetworkGeometryForRide(e.route, { lat: endpoints[0][0], lon: endpoints[0][1] }, { lat: endpoints[1][0], lon: endpoints[1][1] })
+        : getNetworkGeometryForRide(e.route, fromStop, toStop);
       const rideCoords = geom
         ? sliceCoordsBetweenStops(geom.coords, fromStop, toStop)
         : null;
+      const safeRideCoords =
+        rideCoords && !polylineHasSuspiciousJumps(rideCoords) ? rideCoords : null;
       addRoutePolyline(
-        rideCoords || [
+        safeRideCoords || [
           [fromStop.lat, fromStop.lon],
           [toStop.lat, toStop.lon],
         ],
@@ -1468,6 +1518,10 @@ function setupTamRoutePlannerUi() {
     // Nouveau calcul => remplace l'ancien tracé.
     clearTamRouteOverlay();
 
+    const closePanelAfterCompute = () => {
+      if (els.panel) els.panel.classList.remove("show");
+    };
+
     const mode = String(els.mode.value || "stop");
     const idx = buildRoutePlannerIndexes();
     if (mode === "stop") {
@@ -1503,6 +1557,7 @@ function setupTamRoutePlannerUi() {
       const res = dijkstraRoutePlanner("__gps__", destStopId, walkEdges);
       els.result.textContent = describeRouteResult(destStopId, res);
       await drawRouteOnMapFromResult(lat, lon, res);
+      closePanelAfterCompute();
       return;
     }
 
@@ -1543,6 +1598,7 @@ function setupTamRoutePlannerUi() {
       omitFinalRideDirection: false,
     })}`;
     await drawRouteOnMapFromResult(lat, lon, res);
+    closePanelAfterCompute();
   });
 
   // Contrôle Leaflet (bouton) : visible seulement hors mission.
@@ -1766,13 +1822,11 @@ async function fetchOsrmFootRouteGeojson(fromLat, fromLon, toLat, toLon) {
   ) {
     return null;
   }
-  const key = `${aLat.toFixed(6)},${aLon.toFixed(6)}->${bLat.toFixed(6)},${bLon.toFixed(6)}`;
+  const baseKey = `${aLat.toFixed(6)},${aLon.toFixed(6)}->${bLat.toFixed(6)},${bLon.toFixed(6)}`;
   const now = Date.now();
-  const cached = TAM_ROUTE_OSRM_CACHE.get(key);
-  if (cached && cached.expiresAt > now) return cached.payload;
 
-  const url =
-    `${TAM_ROUTE_OSRM_BASE}/route/v1/foot/` +
+  const mkUrl = (profile) =>
+    `${TAM_ROUTE_OSRM_BASE}/route/v1/${profile}/` +
     `${aLon},${aLat};${bLon},${bLat}` +
     `?overview=full&geometries=geojson&steps=false&alternatives=false`;
 
@@ -1781,7 +1835,11 @@ async function fetchOsrmFootRouteGeojson(fromLat, fromLon, toLat, toLon) {
   const tid = ctrl
     ? window.setTimeout(() => ctrl.abort(), TAM_ROUTE_OSRM_TIMEOUT_MS)
     : 0;
-  try {
+  const tryFetch = async (profile) => {
+    const cacheKey = `${profile}|||${baseKey}`;
+    const cached = TAM_ROUTE_OSRM_CACHE.get(cacheKey);
+    if (cached && cached.expiresAt > now) return cached.payload;
+    const url = mkUrl(profile);
     const resp = await fetch(url, {
       cache: "no-store",
       signal: ctrl ? ctrl.signal : undefined,
@@ -1794,12 +1852,37 @@ async function fetchOsrmFootRouteGeojson(fromLat, fromLon, toLat, toLon) {
     const latlngs = coords
       .map((c) => [Number(c?.[1]), Number(c?.[0])])
       .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
-    if (latlngs.length < 2) return null;
-    TAM_ROUTE_OSRM_CACHE.set(key, {
-      expiresAt: now + 10 * 60_000,
-      payload: latlngs,
-    });
-    return latlngs;
+    const out = latlngs.length >= 2 ? latlngs : null;
+    if (out) {
+      // Si le profil piéton renvoie un détour “voiture-like” (sens uniques / pas de chemin piéton),
+      // on préfère tracer une liaison directe plutôt qu’un itinéraire aberrant.
+      const direct = approximateGeoDistMeters(aLat, aLon, bLat, bLon);
+      if (Number.isFinite(direct) && direct > 0) {
+        let routeD = 0;
+        for (let i = 0; i < out.length - 1; i++) {
+          routeD += L.latLng(out[i][0], out[i][1]).distanceTo(
+            L.latLng(out[i + 1][0], out[i + 1][1]),
+          );
+        }
+        // Cas observé : OSRM demo renvoie parfois un trajet identique à la voiture.
+        // Pour la marche dans le simulateur, on applique un filtre strict :
+        // si le détour dépasse ~35%, on considère la géométrie non fiable et on retombe en vol d’oiseau.
+        if (routeD > direct * 1.35) {
+          return null;
+        }
+      }
+      TAM_ROUTE_OSRM_CACHE.set(cacheKey, {
+        expiresAt: now + 10 * 60_000,
+        payload: out,
+      });
+    }
+    return out;
+  };
+
+  try {
+    // Sur le serveur OSRM public, le profil "walking" est le plus fiable pour la marche.
+    // Fallback "foot" selon le déploiement.
+    return (await tryFetch("walking")) || (await tryFetch("foot"));
   } catch {
     return null;
   } finally {
@@ -1838,9 +1921,18 @@ function buildRoutePlannerGraph() {
   const { stopsById, nameKeyToStopIds } = buildRoutePlannerIndexes();
   const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
 
-  /** @type {Map<string, { to: string, w: number, kind: string, route: string, headsign: string, branchLetter: string }[]>} */
+  /** @type {Map<string, { to: string, w: number, kind: string, route: string, headsign: string, branchLetter: string, patternEndpoints: any }[]>} */
   const adj = new Map();
-  const addEdge = (from, to, w, kind, route, headsign, branchLetter) => {
+  const addEdge = (
+    from,
+    to,
+    w,
+    kind,
+    route,
+    headsign,
+    branchLetter,
+    patternEndpoints,
+  ) => {
     if (!from || !to || from === to) return;
     if (!adj.has(from)) adj.set(from, []);
     const hs =
@@ -1850,6 +1942,10 @@ function buildRoutePlannerGraph() {
         ? String(branchLetter == null ? "" : branchLetter).trim().toUpperCase()
         : "";
     const brOk = brRaw === "A" || brRaw === "B" ? brRaw : "";
+    const pe =
+      kind === "ride" && Array.isArray(patternEndpoints) && patternEndpoints.length === 2
+        ? patternEndpoints
+        : null;
     adj.get(from).push({
       to,
       w,
@@ -1857,6 +1953,7 @@ function buildRoutePlannerGraph() {
       route: route || "",
       headsign: hs,
       branchLetter: brOk,
+      patternEndpoints: pe,
     });
   };
 
@@ -1870,12 +1967,16 @@ function buildRoutePlannerGraph() {
     const leg = model.legSec;
     const headsign = String(p?.headsign || "").trim();
     const t4Br = route === "4" ? t4BranchLetterFromPatternStops(p) : "";
+    // Sert à choisir la bonne branche de géométrie réseau (même logique que setMission()).
+    const pCoords = Array.isArray(p?.coordinates) ? p.coordinates : [];
+    const endpoints =
+      pCoords.length >= 2 ? [pCoords[0], pCoords[pCoords.length - 1]] : null;
     for (let i = 0; i < stops.length - 1; i++) {
       const a = String(stops[i]?.stop_id || "").trim();
       const b = String(stops[i + 1]?.stop_id || "").trim();
       if (!stopsById.has(a) || !stopsById.has(b)) continue;
       const w = Math.max(30, Number(leg[i] || 120));
-      addEdge(a, b, w, "ride", route, headsign, t4Br);
+      addEdge(a, b, w, "ride", route, headsign, t4Br, endpoints);
     }
   }
 
@@ -1894,7 +1995,7 @@ function buildRoutePlannerGraph() {
         if (!b) continue;
         const dm = approximateGeoDistMeters(a.lat, a.lon, b.lat, b.lon);
         if (!Number.isFinite(dm) || dm > transferMaxMeters) continue;
-        addEdge(ids[i], ids[j], transferW, "transfer", "", "", "");
+        addEdge(ids[i], ids[j], transferW, "transfer", "", "", "", null);
       }
     }
   }
@@ -2898,9 +2999,11 @@ function updateVariants() {
   if (!running) {
     ensureOpsTargetPattern();
   }
-  previewSelectedMission().catch((e) => {
-    console.warn("Preview mission failed:", e);
-  });
+  if (missionPreviewEnabled) {
+    previewSelectedMission().catch((e) => {
+      console.warn("Preview mission failed:", e);
+    });
+  }
 }
 
 /** Texte apres "->" dans l’option 2) Terminus (libelle destination pour le bandeau). */
@@ -5580,6 +5683,9 @@ refreshMapHudSpeedLabel();
 lineSelect.addEventListener("change", updateHeadsigns);
 lineSelect.addEventListener("change", syncLineCustomTrigger);
 lineSelect.addEventListener("change", refreshSavedDeviationSelectOptions);
+lineSelect.addEventListener("change", () => {
+  missionPreviewEnabled = true;
+});
 lineSelectTrigger?.addEventListener("click", (e) => {
   e.stopPropagation();
   if (!lineSelectListbox) {
@@ -5616,6 +5722,7 @@ document.addEventListener("keydown", (e) => {
 });
 headsignSelect.addEventListener("change", updateVariants);
 variantSelect.addEventListener("change", () => {
+  missionPreviewEnabled = true;
   previewSelectedMission().catch((e) => {
     console.warn("Preview mission failed:", e);
   });
