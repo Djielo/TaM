@@ -606,6 +606,17 @@
         width: 100%;
         min-width: 0;
       }
+      .mission-context-kind {
+        flex: 0 0 auto;
+        margin-right: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        text-transform: none;
+        color: #0b2a4a;
+        opacity: 0.9;
+        white-space: nowrap;
+      }
       .mission-context-scroll--pan .mission-context-row-inner {
         width: max-content;
         min-width: 100%;
@@ -1430,6 +1441,11 @@
             aria-label="Ligne et direction, appui long pour defiler le texte"
           >
             <div class="mission-context-row-inner">
+              <span
+                id="missionContextKind"
+                class="mission-context-kind"
+                aria-hidden="true"
+              ></span>
               <span id="missionContextPill" class="mission-context-pill"></span
               ><span
                 id="missionContextDest"
