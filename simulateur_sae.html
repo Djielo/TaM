@@ -782,6 +782,24 @@
       .map-mission-hud.map-mission-hud--inactive {
         display: none;
       }
+      /* Mini HUD itinéraire (carte) : reprend le style, avec moins de commandes. */
+      .map-route-hud .map-mission-hud__inner {
+        gap: 6px;
+      }
+      /* Mini HUD : boutons collés au toggle (pas centrés dans toute la largeur). */
+      #mapRouteHud .map-mission-hud__stripWrap {
+        justify-content: flex-end;
+      }
+      #mapRouteHud .map-mission-hud__rail {
+        gap: 2px;
+      }
+      .map-route-hud .map-mission-hud__nextStrip-kicker {
+        margin-bottom: 2px;
+      }
+      .map-route-hud .map-mission-hud__nextStrip-name {
+        line-clamp: 3;
+        -webkit-line-clamp: 3;
+      }
       /*
        * Rail : toggle toujours au même endroit (premier enfant + row-reverse → bord droit).
        * Le bandeau occupe toute la largeur à gauche du toggle ; son contenu est centré dans cette zone.
@@ -2264,6 +2282,59 @@
                   <label class="map-mission-hud__heading">
                     <input type="checkbox" id="mapHudHeadingUp" />
                     <span id="mapHudHeadingCaption">Cap</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            id="mapRouteHud"
+            class="map-mission-hud map-route-hud map-mission-hud--inactive"
+            aria-hidden="true"
+          >
+            <div
+              class="map-mission-hud__nextStrip"
+              role="status"
+              aria-live="polite"
+              aria-label="Prochaine étape annoncée"
+            >
+              <p class="map-mission-hud__nextStrip-kicker">Prochaine étape</p>
+              <p id="mapRouteHudNextLine" class="map-mission-hud__nextStrip-name">
+                —
+              </p>
+            </div>
+            <div class="map-mission-hud__rail">
+              <button
+                type="button"
+                id="mapRouteHudToggleBtn"
+                class="map-mission-hud__toggle"
+                aria-label="Afficher ou masquer les commandes"
+                title="Afficher les commandes"
+              ></button>
+              <div class="map-mission-hud__stripWrap">
+                <div
+                  class="map-mission-hud__inner"
+                  role="toolbar"
+                  aria-label="Commandes itinéraire"
+                >
+                  <button
+                    type="button"
+                    id="mapRouteHudVoiceBtn"
+                    class="map-mission-hud__voice-icon map-mission-hud__voice-icon--on"
+                    aria-label="Annonces vocales"
+                    aria-pressed="true"
+                    title="Annonces vocales"
+                  ></button>
+                  <button
+                    type="button"
+                    id="mapRouteHudPauseBtn"
+                    class="map-mission-hud__btn map-mission-hud__btn--primary"
+                    aria-label="Pause ou reprendre"
+                    title="Pause / Reprendre"
+                  ></button>
+                  <label class="map-mission-hud__heading">
+                    <input type="checkbox" id="mapRouteHudHeadingUp" />
+                    <span id="mapRouteHudHeadingCaption">Cap</span>
                   </label>
                 </div>
               </div>

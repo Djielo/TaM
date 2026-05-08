@@ -5,6 +5,14 @@ let previewMissionToken = 0;
 // Au chargement, on ne veut pas afficher un tracé (T1 par défaut) : la carte doit être vierge.
 // On n’active l’aperçu mission qu’après une interaction utilisateur explicite.
 let missionPreviewEnabled = false;
+
+// Guidage "Itinéraire" (carte) : mini HUD + GPS + annonces vocales.
+let routeGuidanceActive = false;
+let routeGuidanceRunning = false;
+let routeGuidanceOwnsGps = false;
+let routeGuidanceSteps = [];
+let routeGuidanceStepIdx = 0;
+let routeGuidanceLastAnnouncedIdx = -1;
 /** Signature `pattern_id:nbArrêts` pour éviter de reconstruire le rail à chaque frame. */
 let tamStopRailBuiltFor = "";
 /** Dernier indice guidage pour lequel on a appliqué l’auto-scroll (mode compact uniquement). */
@@ -1558,6 +1566,7 @@ function setupTamRoutePlannerUi() {
       els.result.textContent = describeRouteResult(destStopId, res);
       await drawRouteOnMapFromResult(lat, lon, res);
       closePanelAfterCompute();
+      activateRouteGuidance(destStopId, res);
       return;
     }
 
@@ -1599,6 +1608,8 @@ function setupTamRoutePlannerUi() {
     })}`;
     await drawRouteOnMapFromResult(lat, lon, res);
     closePanelAfterCompute();
+    // Mode ligne : en « Peu importe l’arrêt », on guide jusqu’au point d’accès à la ligne.
+    activateRouteGuidance(targetId || lineStopId, res);
   });
 
   // Contrôle Leaflet (bouton) : visible seulement hors mission.
@@ -3487,6 +3498,34 @@ function speakProchainArret(nom, forTest) {
   window.speechSynthesis.speak(u);
 }
 
+function speakRouteInstruction(text, forTest) {
+  if (!forTest && !voiceEnabledEl.checked) {
+    return;
+  }
+  const raw = String(text || "").trim();
+  if (!raw) return;
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    return;
+  }
+  const voice = resolveCurrentVoice();
+  try {
+    window.speechSynthesis.cancel();
+  } catch (e) {
+    // ignore
+  }
+  const u = new SpeechSynthesisUtterance(raw);
+  if (voice) {
+    u.voice = voice;
+    u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
+  } else {
+    u.lang = "fr-FR";
+  }
+  u.rate = 0.95;
+  u.pitch = 1.0;
+  u.volume = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
 function resyncVoixForPosition(d) {
   if (!stopMetersAlong.length || !currentPattern || !currentPattern.stops) {
     return;
@@ -5147,6 +5186,279 @@ function setupMapMissionHud() {
   });
 }
 
+function refreshMapRouteHudVoiceBtn() {
+  const btn = document.getElementById("mapRouteHudVoiceBtn");
+  const root = document.getElementById("mapRouteHud");
+  if (!btn || !voiceEnabledEl || root?.classList.contains("map-mission-hud--inactive")) {
+    return;
+  }
+  const on = !!voiceEnabledEl.checked;
+  btn.innerHTML = on ? HUD_ICON_VOICE_ON : HUD_ICON_VOICE_OFF;
+  btn.classList.toggle("map-mission-hud__voice-icon--on", on);
+  btn.classList.toggle("map-mission-hud__voice-icon--off", !on);
+  btn.title = on
+    ? "Annonces vocales activées (clic pour couper)"
+    : "Annonces vocales coupées (clic pour activer)";
+  btn.setAttribute(
+    "aria-label",
+    on ? "Désactiver les annonces vocales" : "Activer les annonces vocales",
+  );
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+function syncMapRouteHudHeadingCheckboxFromMain() {
+  const mapHeading = document.getElementById("mapRouteHudHeadingUp");
+  const cap = document.getElementById("mapRouteHudHeadingCaption");
+  if (mapHeading) mapHeading.checked = !!headingUpEl.checked;
+  if (cap) cap.textContent = headingUpEl.checked ? "Cap" : "Nord";
+}
+
+function refreshMapRouteHudState() {
+  const root = document.getElementById("mapRouteHud");
+  const pauseB = document.getElementById("mapRouteHudPauseBtn");
+  if (!root || !pauseB || root.classList.contains("map-mission-hud--inactive")) {
+    return;
+  }
+  const showPause = !!routeGuidanceRunning;
+  pauseB.innerHTML = showPause ? HUD_ICON_PAUSE : HUD_ICON_PLAY;
+  pauseB.setAttribute("aria-label", showPause ? "Pause" : "Reprendre");
+  pauseB.title = showPause ? "Pause" : "Reprendre";
+  refreshMapRouteHudVoiceBtn();
+  syncMapRouteHudHeadingCheckboxFromMain();
+}
+
+function hideMapRouteHud() {
+  const root = document.getElementById("mapRouteHud");
+  if (!root) return;
+  root.classList.add("map-mission-hud--inactive");
+  root.classList.remove("map-mission-hud--collapsed");
+  root.setAttribute("aria-hidden", "true");
+}
+
+function showMapRouteHud() {
+  const root = document.getElementById("mapRouteHud");
+  if (!root) return;
+  root.classList.remove("map-mission-hud--inactive");
+  root.classList.remove("map-mission-hud--collapsed");
+  root.setAttribute("aria-hidden", "false");
+  refreshMapRouteHudState();
+  refreshMapHudToggleIcon("#mapRouteHud", "mapRouteHudToggleBtn");
+  refreshMapRouteHudNextStepLabel();
+  refreshMapLayout();
+}
+
+function refreshMapHudToggleIcon(rootSel, toggleId) {
+  const root = document.querySelector(rootSel);
+  const toggleB = document.getElementById(toggleId);
+  if (!root || !toggleB) return;
+  const collapsed = root.classList.contains("map-mission-hud--collapsed");
+  toggleB.innerHTML = collapsed ? HUD_CHEVRON_L : HUD_CHEVRON_R;
+  toggleB.title = collapsed ? "Afficher les commandes" : "Masquer les commandes";
+}
+
+function refreshMapRouteHudNextStepLabel() {
+  const line = document.getElementById("mapRouteHudNextLine");
+  if (!line) return;
+  const cur = routeGuidanceSteps[routeGuidanceStepIdx] || null;
+  line.textContent = cur ? String(cur.label || "—") : "—";
+}
+
+function setupMapRouteHud() {
+  const root = document.getElementById("mapRouteHud");
+  const toggleB = document.getElementById("mapRouteHudToggleBtn");
+  const voiceB = document.getElementById("mapRouteHudVoiceBtn");
+  const pauseB = document.getElementById("mapRouteHudPauseBtn");
+  const mapHeading = document.getElementById("mapRouteHudHeadingUp");
+  if (!root || !toggleB || !voiceB || !pauseB || !mapHeading) return;
+
+  refreshMapHudToggleIcon("#mapRouteHud", "mapRouteHudToggleBtn");
+  refreshMapRouteHudState();
+
+  voiceB.addEventListener("click", () => {
+    voiceEnabledEl.checked = !voiceEnabledEl.checked;
+    voiceEnabledEl.dispatchEvent(new Event("change", { bubbles: true }));
+    refreshMapRouteHudVoiceBtn();
+  });
+
+  toggleB.addEventListener("click", () => {
+    root.classList.toggle("map-mission-hud--collapsed");
+    refreshMapHudToggleIcon("#mapRouteHud", "mapRouteHudToggleBtn");
+    refreshMapLayout();
+  });
+
+  pauseB.addEventListener("click", () => {
+    setRouteGuidanceRunning(!routeGuidanceRunning);
+  });
+
+  mapHeading.addEventListener("change", () => {
+    headingUpEl.checked = mapHeading.checked;
+    headingUpEl.dispatchEvent(new Event("change", { bubbles: true }));
+    syncMapRouteHudHeadingCheckboxFromMain();
+  });
+}
+
+function setRouteGuidanceRunning(next) {
+  const want = !!next;
+  routeGuidanceRunning = want;
+  if (routeGuidanceActive) {
+    if (want) {
+      if (typeof gpsWatchId !== "undefined" && gpsWatchId == null) {
+        const ok = startGpsTracking();
+        if (ok) {
+          routeGuidanceOwnsGps = true;
+        }
+      }
+    } else {
+      if (routeGuidanceOwnsGps) {
+        stopGpsTracking();
+        routeGuidanceOwnsGps = false;
+      }
+    }
+  }
+  refreshMapRouteHudState();
+}
+
+function buildRouteGuidanceStepsFromResult(destStopId, dRes) {
+  const idx = buildRoutePlannerIndexes();
+  if (!dRes?.path?.length) return [];
+  const steps = [];
+
+  // Regroupe les "ride" consécutifs par ligne.
+  let currentRide = null;
+  let rideFrom = null;
+  let rideHeadsign = "";
+  let rideBranchLetter = "";
+
+  const pushRide = (toStopId) => {
+    if (!currentRide || !rideFrom) return;
+    const a = idx.stopsById.get(rideFrom);
+    const b = idx.stopsById.get(toStopId);
+    const hsRaw = String(rideHeadsign || "").trim();
+    const splitHs = headsignAbBranchSplit(hsRaw);
+    const take = routePlannerTakeLinePhrase(
+      currentRide,
+      rideBranchLetter || null,
+    );
+    const dirQuoted = splitHs ? splitHs.base : hsRaw;
+    const takeTxt = hsRaw
+      ? `Prenez ${take} en direction de « ${dirQuoted} ».`
+      : `Prenez ${take}.`;
+    if (a) {
+      steps.push({
+        stopId: rideFrom,
+        lat: a.lat,
+        lon: a.lon,
+        label: takeTxt,
+        speak: takeTxt,
+      });
+    }
+    if (b) {
+      const alightTxt = `Descendez à ${b.stop_name}.`;
+      steps.push({
+        stopId: toStopId,
+        lat: b.lat,
+        lon: b.lon,
+        label: alightTxt,
+        speak: alightTxt,
+      });
+    }
+    currentRide = null;
+    rideFrom = null;
+    rideHeadsign = "";
+    rideBranchLetter = "";
+  };
+
+  for (const st of dRes.path) {
+    const e = st.edge;
+    if (!e) continue;
+    if (e.kind === "walk") {
+      pushRide(st.from);
+      const b = idx.stopsById.get(st.to);
+      const txt = b
+        ? `Marchez jusqu’à ${b.stop_name}.`
+        : "Marchez jusqu’à l’arrêt suivant.";
+      if (b) {
+        steps.push({
+          stopId: st.to,
+          lat: b.lat,
+          lon: b.lon,
+          label: txt,
+          speak: txt,
+        });
+      }
+    } else if (e.kind === "transfer") {
+      pushRide(st.from);
+      const a = idx.stopsById.get(st.from);
+      const b = idx.stopsById.get(st.to);
+      const txt = a
+        ? `Changement de quai à ${a.stop_name}.`
+        : "Changement de quai.";
+      if (b) {
+        steps.push({
+          stopId: st.to,
+          lat: b.lat,
+          lon: b.lon,
+          label: txt,
+          speak: txt,
+        });
+      }
+    } else if (e.kind === "ride") {
+      const r = String(e.route || "").trim();
+      if (!r) continue;
+      if (currentRide !== r) {
+        pushRide(st.from);
+        currentRide = r;
+        rideFrom = st.from;
+        rideHeadsign = String(e.headsign || "").trim();
+        const br = String(e.branchLetter || "")
+          .trim()
+          .toUpperCase()
+          .slice(0, 1);
+        rideBranchLetter = br === "A" || br === "B" ? br : "";
+      }
+    }
+  }
+  pushRide(destStopId);
+  return steps;
+}
+
+function activateRouteGuidance(destStopId, dRes) {
+  routeGuidanceActive = true;
+  routeGuidanceSteps = buildRouteGuidanceStepsFromResult(destStopId, dRes);
+  routeGuidanceStepIdx = 0;
+  routeGuidanceLastAnnouncedIdx = -1;
+  routeGuidanceOwnsGps = false;
+  showMapRouteHud();
+  setRouteGuidanceRunning(true);
+  // Annonce immédiate de la première étape.
+  const cur = routeGuidanceSteps[0];
+  if (cur) {
+    speakRouteInstruction(cur.speak, false);
+    routeGuidanceLastAnnouncedIdx = 0;
+  }
+}
+
+function maybeAdvanceRouteGuidance() {
+  if (!routeGuidanceActive || !routeGuidanceRunning) return;
+  if (!Array.isArray(lastGpsLatLng) || lastGpsLatLng.length < 2) return;
+  const cur = routeGuidanceSteps[routeGuidanceStepIdx];
+  if (!cur) return;
+  const lat = Number(lastGpsLatLng[0]);
+  const lon = Number(lastGpsLatLng[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  const d = L.latLng(lat, lon).distanceTo(L.latLng(cur.lat, cur.lon));
+  if (d > 45) return;
+  const nextIdx = Math.min(routeGuidanceSteps.length - 1, routeGuidanceStepIdx + 1);
+  if (nextIdx === routeGuidanceStepIdx) return;
+  routeGuidanceStepIdx = nextIdx;
+  refreshMapRouteHudNextStepLabel();
+  const nxt = routeGuidanceSteps[routeGuidanceStepIdx];
+  if (nxt && routeGuidanceLastAnnouncedIdx !== routeGuidanceStepIdx) {
+    speakRouteInstruction(nxt.speak, false);
+    routeGuidanceLastAnnouncedIdx = routeGuidanceStepIdx;
+  }
+}
+
 /**
  * Recalcule skips + guide puis redraw pastilles/overlays carte (sans stats ni tronçon stop-to-stop) —
  * utilisé avant repositionnement lignes carte dans `setMission`.
@@ -5198,6 +5510,12 @@ function tickRaf(now) {
     }
   }
   requestAnimationFrame(tickRaf);
+  // Guidage itinéraire (GPS + annonces).
+  try {
+    maybeAdvanceRouteGuidance();
+  } catch (e) {
+    // ne pas casser la boucle raf
+  }
 }
 
 startBtn.addEventListener("click", () => {
@@ -5858,6 +6176,7 @@ if (driveModeSelect) {
 refreshDriveModeUi();
 refreshManualDrawUi();
 setupMapMissionHud();
+setupMapRouteHud();
 setupTamRoutePlannerUi();
 burgerMenuBtn?.addEventListener("click", () => openControlPanel());
 recapToggleBtn?.addEventListener("click", () => {
