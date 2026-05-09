@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-05-08T13:45:24Z",
-    "dataset_digest": "64be4ebfa4da2dae256a874b9e5f715ddc85f1e37901a36fa4ce12ba7c92c1c9",
+    "generated_at": "2026-05-09T01:36:53Z",
+    "dataset_digest": "ae12d3504650d290ce42487f77a7298c1d633d5e1d186e8a3853bae18726d5a8",
     "route_count": 55,
     "pattern_count": 146,
     "bus_network_feature_count": 91,
