@@ -153,7 +153,16 @@ def build_perturbations_payload() -> dict:
     }
 
 
+_REPO_ROOT = str(Path(__file__).resolve().parent)
+
+
 class TamHandler(SimpleHTTPRequestHandler):
+    """Sert toujours les fichiers depuis la racine du dépôt (indépendant du répertoire courant)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        kwargs["directory"] = _REPO_ROOT
+        super().__init__(*args, **kwargs)
+
     def _send_json(self, status: int, payload: dict) -> None:
         blob = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -164,6 +173,12 @@ class TamHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path in ("/", ""):
+            self.send_response(302)
+            self.send_header("Location", "/simulateur_sae.html")
+            self.end_headers()
+            return
 
         if parsed.path == "/api/tam/perturbations":
             try:
@@ -196,9 +211,12 @@ class TamHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    root = Path(__file__).resolve().parent
+    root = Path(_REPO_ROOT)
     print(f"Serving from: {root}")
-    print(f"Listening on {HOST}:{PORT} — ex. http://127.0.0.1:{PORT}/ ou IP publique si bind 0.0.0.0")
+    print(
+        f"Listening on {HOST}:{PORT} — ouvrir : http://127.0.0.1:{PORT}/ "
+        f"(redirige vers simulateur_sae.html) ou IP publique si bind 0.0.0.0",
+    )
     server = ThreadingHTTPServer((HOST, PORT), TamHandler)
     try:
         server.serve_forever()

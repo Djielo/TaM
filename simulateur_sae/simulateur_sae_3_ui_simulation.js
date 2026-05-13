@@ -7024,6 +7024,9 @@ refreshManualDrawUi();
 setupMapMissionHud();
 setupMapRouteHud();
 setupTamRoutePlannerUi();
+if (typeof tamInstallBasemapToggleControl === "function") {
+  tamInstallBasemapToggleControl();
+}
 burgerMenuBtn?.addEventListener("click", () => openControlPanel());
 recapToggleBtn?.addEventListener("click", () => {
   const isOn = !!mapRecapEl?.classList.contains("show");
