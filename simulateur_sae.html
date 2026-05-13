@@ -402,6 +402,46 @@
         border-radius: 10px;
         overflow: hidden;
       }
+      /* Bascule fond / satellite : comme Itinéraire — <a> dans .leaflet-bar, pas de surcharges d’arrondi / ombre. */
+      .tam-basemap-control .tam-basemap-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        /* Largeurs héritées de .leaflet-bar a (26px / 30px tactile) */
+        padding: 0;
+        text-decoration: none;
+        color: #000;
+      }
+      .tam-basemap-control .tam-basemap-toggle:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 1px;
+      }
+      .tam-basemap-control .tam-basemap-toggle__thumb {
+        display: block;
+        flex: 0 0 auto;
+        width: 23px;
+        height: 23px;
+        box-sizing: border-box;
+        border-radius: 0;
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+        background-repeat: no-repeat;
+        background-position: 50% 50%;
+        background-size: 100% 100%;
+      }
+      /* Miniature « carte plan » : rues courbes + îlots (sans croix centrale). */
+      .tam-basemap-toggle--preview-osm .tam-basemap-toggle__thumb {
+        background-color: #e8f0f8;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' fill='%23e8f0f8'/%3E%3Cpath stroke='%231d7ed8' stroke-width='1.35' fill='none' stroke-linecap='round' d='M2 14 Q10 4 18 8'/%3E%3Cpath stroke='%2394a3b8' stroke-width='0.85' fill='none' opacity='.65' d='M3 6 L14 3 M5 17 L17 12'/%3E%3Crect x='2' y='2' width='5' height='4' fill='%23cbd5e1' opacity='.8'/%3E%3Crect x='12' y='11' width='6' height='5' fill='%23b8c5d4' opacity='.85'/%3E%3C/svg%3E");
+      }
+      .tam-basemap-toggle--preview-satellite .tam-basemap-toggle__thumb {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%235d6e42'/%3E%3Cstop offset='45%25' stop-color='%238b7355'/%3E%3Cstop offset='100%25' stop-color='%234a5d78'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='20' height='20' fill='url(%23b)'/%3E%3Cellipse cx='6' cy='5' rx='5' ry='3' fill='%233d4f2a' opacity='.55'/%3E%3Cellipse cx='14' cy='14' rx='4' ry='6' fill='%232a3038' opacity='.4'/%3E%3Cpath fill='%2365756a' opacity='.5' d='M0 14 L20 12 L20 20 L0 20 Z'/%3E%3C/svg%3E");
+      }
+      .leaflet-touch .tam-basemap-control .tam-basemap-toggle__thumb {
+        width: 26px;
+        height: 26px;
+      }
       .stats {
         font-size: 14px;
         line-height: 1.5;

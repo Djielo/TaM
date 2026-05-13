@@ -516,10 +516,70 @@ const map = L.map("map", {
   bearing: 0,
   rotateControl: false,
 }).setView([43.61, 3.88], 12);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+
+/** Fond plan (OSM) ; commutation avec vue satellite (Esri World Imagery, gratuit). */
+const basemapLayerOsm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
-  attribution: "&copy; OpenStreetMap",
-}).addTo(map);
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+});
+const basemapLayerSatellite = L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  {
+    maxZoom: 19,
+    attribution:
+      "Tuiles &copy; Esri — sources : Esri, Maxar, Earthstar Geographics et contributeurs du programme GIS",
+  },
+);
+let basemapActiveKey = "osm";
+let basemapActiveLayer = basemapLayerOsm.addTo(map);
+
+function tamSetBasemapLayer(key) {
+  const next = key === "satellite" ? "satellite" : "osm";
+  if (next === basemapActiveKey) return;
+  map.removeLayer(basemapActiveLayer);
+  basemapActiveKey = next;
+  basemapActiveLayer = next === "satellite" ? basemapLayerSatellite : basemapLayerOsm;
+  basemapActiveLayer.addTo(map);
+}
+
+/** Ajouté après le contrôle « Itinéraire » (coin haut gauche : zoom, itinéraire, ce bouton). */
+let tamBasemapToggleLeafletControl = null;
+function tamInstallBasemapToggleControl() {
+  if (tamBasemapToggleLeafletControl || typeof L === "undefined" || !map) return;
+  const ctrl = L.control({ position: "topleft" });
+  ctrl.onAdd = function onAddBasemapCtrl() {
+    const wrap = L.DomUtil.create("div", "leaflet-bar tam-basemap-control");
+    const a = L.DomUtil.create("a", "tam-basemap-toggle tam-basemap-toggle--preview-satellite", wrap);
+    a.href = "#";
+    a.setAttribute("role", "button");
+    a.title = "Passer à la vue satellite";
+    a.setAttribute("aria-label", "Passer à la vue satellite");
+    L.DomUtil.create("span", "tam-basemap-toggle__thumb", a).setAttribute("aria-hidden", "true");
+    a.style.display = "inline-flex";
+    a.style.alignItems = "center";
+    a.style.justifyContent = "center";
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.on(a, "click", (ev) => {
+      L.DomEvent.preventDefault(ev);
+      const goSat = basemapActiveKey === "osm";
+      tamSetBasemapLayer(goSat ? "satellite" : "osm");
+      if (basemapActiveKey === "satellite") {
+        a.classList.remove("tam-basemap-toggle--preview-satellite");
+        a.classList.add("tam-basemap-toggle--preview-osm");
+        a.title = "Passer à la carte plan (OpenStreetMap)";
+        a.setAttribute("aria-label", "Passer à la carte plan (OpenStreetMap)");
+      } else {
+        a.classList.remove("tam-basemap-toggle--preview-osm");
+        a.classList.add("tam-basemap-toggle--preview-satellite");
+        a.title = "Passer à la vue satellite";
+        a.setAttribute("aria-label", "Passer à la vue satellite");
+      }
+    });
+    return wrap;
+  };
+  ctrl.addTo(map);
+  tamBasemapToggleLeafletControl = ctrl;
+}
 
 const navIcon = L.divIcon({
   className: "nav-vehicle",
