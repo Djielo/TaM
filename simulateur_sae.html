@@ -628,7 +628,8 @@
         box-sizing: border-box;
         resize: vertical;
       }
-      .app-personal-landmark-dialog .app-message-dialog__actions--triple {
+      .app-personal-landmark-dialog .app-message-dialog__actions--triple,
+      .app-personal-landmark-dialog .app-message-dialog__actions--quad {
         justify-content: flex-end;
         flex-wrap: wrap;
         gap: 8px;
@@ -2926,7 +2927,7 @@
           </div>
         </details>
         <div
-          class="app-message-dialog__actions app-message-dialog__actions--split app-message-dialog__actions--triple"
+          class="app-message-dialog__actions app-message-dialog__actions--split app-message-dialog__actions--quad"
         >
           <button
             type="button"
@@ -2942,6 +2943,15 @@
             hidden
           >
             Supprimer
+          </button>
+          <button
+            type="button"
+            id="appPersonalLandmarkDialogDuplicate"
+            class="secondary app-message-dialog__ok"
+            hidden
+            aria-label="Dupliquer ce repère à côté de l’emplacement actuel"
+          >
+            Dupliquer
           </button>
           <button
             type="button"
