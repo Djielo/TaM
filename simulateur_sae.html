@@ -4,6 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Simulateur SAE TAM</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23005ca9'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
     <!-- Repères personnels : pictogrammes Material Icons (ligatures), recolorisés en CSS. Réseau requis au premier chargement si le cache navigateur est vide. -->
     <link
@@ -469,12 +473,155 @@
       .tam-personal-landmark-marker {
         background: transparent;
         border: none;
+        touch-action: none;
       }
       .tam-personal-landmark-dialog.app-prompt-dialog {
+        width: min(94vw, 500px);
         max-width: min(94vw, 500px);
+        min-width: 260px;
+        box-sizing: border-box;
+      }
+      .tam-plm-dialog-inner {
+        position: relative;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .tam-plm-dialog-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 0 0 6px;
+        min-height: 32px;
+      }
+      .tam-plm-topbar-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1b1f24;
+        flex: 1;
+        min-width: 0;
+        line-height: 1.25;
+      }
+      .tam-plm-topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        flex-shrink: 0;
+      }
+      .tam-plm-help-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        margin: 0;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: #005ca9;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 700;
+        font-family: inherit;
+        line-height: 1;
+        box-sizing: border-box;
+      }
+      .tam-plm-help-btn:hover {
+        background: #edf2f7;
+      }
+      .tam-plm-help-btn:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 1px;
+      }
+      .tam-plm-settings-gear {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        margin: 0;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: #005ca9;
+        cursor: pointer;
+        box-sizing: border-box;
+      }
+      .tam-plm-settings-gear svg {
+        width: 20px;
+        height: 20px;
+      }
+      .tam-plm-settings-gear:hover {
+        background: #edf2f7;
+      }
+      .tam-plm-settings-gear:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 1px;
+      }
+      .tam-plm-settings-popover {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        right: auto;
+        transform: translate(-50%, -50%);
+        z-index: 10;
+        width: min(92%, 300px);
+        max-width: 300px;
+        padding: 12px 12px 8px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        background: #fff;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+        font-size: 13px;
+        color: #1b1f24;
+      }
+      .tam-plm-settings-popover label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+      .tam-plm-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .tam-plm-all-icons-details {
+        margin: 0 0 6px;
+      }
+      .tam-plm-all-icons-summary {
+        cursor: pointer;
+        list-style: none;
+        font-size: 13px;
+        font-weight: 600;
+        color: #005ca9;
+        margin: 0 0 6px;
+        padding: 4px 0;
+      }
+      .tam-plm-all-icons-summary::-webkit-details-marker {
+        display: none;
+      }
+      .tam-plm-all-icons-summary::after {
+        content: " ▾";
+        font-size: 11px;
+        color: #64748b;
+      }
+      .tam-plm-all-icons-details[open] .tam-plm-all-icons-summary::after {
+        content: " ▴";
+      }
+      .tam-plm-icon-grid--all {
+        max-height: 240px;
       }
       .tam-plm-pickers__section {
-        margin: 12px 0 6px;
+        margin: 10px 0 6px;
       }
       .tam-plm-icon-grid {
         display: grid;
@@ -564,23 +711,6 @@
         outline: 2px solid #1b1f24;
         outline-offset: 1px;
       }
-      .tam-plm-pickers__settings {
-        margin: 10px 0 4px;
-        font-size: 13px;
-        color: #1b1f24;
-      }
-      .tam-plm-pickers__settings summary {
-        cursor: pointer;
-        font-weight: 600;
-        color: #005ca9;
-      }
-      .tam-plm-pickers__settings-body {
-        margin-top: 8px;
-        padding: 10px 10px 4px;
-        border-radius: 8px;
-        border: 1px solid #e2e8f0;
-        background: #f8fafc;
-      }
       .tam-plm-pickers__fav-cap {
         width: 5rem;
         margin: 6px 0 8px;
@@ -589,7 +719,7 @@
         border: 1px solid #ccd3db;
         font-size: 14px;
       }
-      .tam-plm-pickers__settings .note {
+      .tam-plm-settings-popover .note {
         margin-top: 0;
       }
       .tam-personal-landmark-marker__bubble {
@@ -609,15 +739,9 @@
         font-weight: 600;
         color: #1b1f24;
       }
-      .app-personal-landmark-dialog .app-personal-landmark-dialog__hint {
-        margin: 0 0 4px;
-        font-size: 13px;
-        line-height: 1.45;
-        color: #4a5563;
-      }
       .app-personal-landmark-dialog .app-prompt-dialog__textarea {
         width: 100%;
-        min-height: 72px;
+        min-height: 52px;
         margin: 0 0 4px;
         padding: 10px;
         border-radius: 8px;
@@ -628,11 +752,74 @@
         box-sizing: border-box;
         resize: vertical;
       }
-      .app-personal-landmark-dialog .app-message-dialog__actions--triple,
-      .app-personal-landmark-dialog .app-message-dialog__actions--quad {
-        justify-content: flex-end;
-        flex-wrap: wrap;
+      .app-personal-landmark-dialog .tam-plm-dialog-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 8px;
+        width: 100%;
+        margin-top: 10px;
+        padding: 0;
+        justify-content: stretch;
+      }
+      .app-personal-landmark-dialog .tam-plm-dialog-actions button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        text-align: center;
+        padding: 10px 10px;
+      }
+      @media (max-width: 300px) {
+        .app-personal-landmark-dialog .tam-plm-dialog-actions {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (min-width: 520px) {
+        .app-personal-landmark-dialog .tam-plm-dialog-actions {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+      .app-personal-landmark-help-dialog.app-message-dialog {
+        max-width: min(94vw, 440px);
+      }
+      .app-personal-landmark-help-dialog .app-message-dialog__inner {
+        padding: 10px 14px 8px;
+      }
+      .app-personal-landmark-help-dialog .app-message-dialog__title {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .app-personal-landmark-help-dialog .app-message-dialog__body {
+        margin: 0 0 6px;
+      }
+      .app-personal-landmark-help-dialog .app-message-dialog__body.tam-plm-help-body {
+        white-space: normal;
+      }
+      .app-personal-landmark-help-dialog .tam-plm-help-body {
+        font-size: 13px;
+        line-height: 1.38;
+        color: #1b1f24;
+      }
+      .app-personal-landmark-help-dialog .tam-plm-help-body > p {
+        margin: 0 0 9px;
+      }
+      .app-personal-landmark-help-dialog .tam-plm-help-body > p:last-child {
+        margin-bottom: 0;
+      }
+      .app-personal-landmark-help-dialog .tam-plm-help-body > .tam-plm-help-defs {
+        margin: 0 0 9px;
+      }
+      .app-personal-landmark-help-dialog .tam-plm-help-defs p {
+        margin: 0 0 4px;
+        line-height: 1.35;
+      }
+      .app-personal-landmark-help-dialog .tam-plm-help-defs p:last-child {
+        margin-bottom: 0;
+      }
+      .app-personal-landmark-help-dialog .app-message-dialog__ok {
+        padding: 7px 16px;
       }
       .stats {
         font-size: 14px;
@@ -2836,39 +3023,97 @@
       class="app-prompt-dialog app-personal-landmark-dialog"
       aria-labelledby="appPersonalLandmarkDialogTitle"
     >
-      <div class="app-message-dialog__inner">
-        <h2
-          id="appPersonalLandmarkDialogTitle"
-          class="app-message-dialog__title"
-        ></h2>
-        <p
-          id="appPersonalLandmarkDialogHint"
-          class="app-message-dialog__body app-personal-landmark-dialog__hint"
-        ></p>
-        <p
-          class="app-personal-landmark-dialog__label tam-plm-pickers__section"
-          id="appPersonalLandmarkDialogFavHeading"
+      <div class="app-message-dialog__inner tam-plm-dialog-inner">
+        <div
+          id="appPersonalLandmarkSettingsPopover"
+          class="tam-plm-settings-popover"
+          hidden
+          role="region"
+          aria-label="Réglages : liste des icônes récemment utilisées"
         >
-          Les plus utilisées
-        </p>
+          <label for="appPersonalLandmarkDialogFavCap"
+            >Nombre d’icônes<br />récemment utilisées&nbsp;:</label
+          >
+          <input
+            type="number"
+            id="appPersonalLandmarkDialogFavCap"
+            class="tam-plm-pickers__fav-cap"
+            min="4"
+            max="20"
+            step="1"
+            value="8"
+          />
+          <p class="note tam-plm-pickers__settings-note">
+            Les dernières icônes choisies lors d’un enregistrement apparaissent en tête
+            (jusqu’au nombre indiqué).
+          </p>
+        </div>
+        <h2 id="appPersonalLandmarkDialogTitle" class="tam-plm-sr-only">
+          Repère personnel
+        </h2>
+        <div class="tam-plm-dialog-topbar">
+          <p
+            class="tam-plm-topbar-title"
+            id="appPersonalLandmarkDialogFavHeading"
+          >
+            Icônes récemment utilisées
+          </p>
+          <div class="tam-plm-topbar-actions">
+            <button
+              type="button"
+              id="appPersonalLandmarkDialogSettingsBtn"
+              class="tam-plm-settings-gear"
+              aria-expanded="false"
+              title="Réglages : zone des icônes récentes"
+              aria-label="Réglages : nombre d’icônes affichées dans la zone récemment utilisées"
+            >
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  fill="currentColor"
+                  d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.31-.08.63-.08.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.3.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="appPersonalLandmarkDialogHelpBtn"
+              class="tam-plm-help-btn"
+              title="Aide sur cette fenêtre"
+              aria-label="Aide : repère personnel"
+            >
+              ?
+            </button>
+          </div>
+        </div>
         <div
           class="tam-plm-icon-grid"
           id="appPersonalLandmarkDialogFavIcons"
           role="group"
           aria-labelledby="appPersonalLandmarkDialogFavHeading"
         ></div>
-        <p
-          class="app-personal-landmark-dialog__label tam-plm-pickers__section"
-          id="appPersonalLandmarkDialogAllHeading"
+        <details
+          class="tam-plm-all-icons-details"
+          id="appPersonalLandmarkDialogAllDetails"
         >
-          Toutes les icônes
-        </p>
-        <div
-          class="tam-plm-icon-grid"
-          id="appPersonalLandmarkDialogAllIcons"
-          role="group"
-          aria-labelledby="appPersonalLandmarkDialogAllHeading"
-        ></div>
+          <summary
+            class="tam-plm-all-icons-summary"
+            id="appPersonalLandmarkDialogAllHeading"
+          >
+            Toutes les icônes
+          </summary>
+          <div
+            class="tam-plm-icon-grid tam-plm-icon-grid--all"
+            id="appPersonalLandmarkDialogAllIcons"
+            role="group"
+            aria-labelledby="appPersonalLandmarkDialogAllHeading"
+          ></div>
+        </details>
         <p
           class="app-personal-landmark-dialog__label tam-plm-pickers__section"
           id="appPersonalLandmarkDialogColorHeading"
@@ -2903,39 +3148,9 @@
           id="appPersonalLandmarkDialogDesc"
           class="app-prompt-dialog__textarea"
           maxlength="500"
-          rows="3"
+          rows="2"
         ></textarea>
-        <details class="tam-plm-pickers__settings" id="appPersonalLandmarkDialogSettings">
-          <summary>Réglages de la liste « les plus utilisées »</summary>
-          <div class="tam-plm-pickers__settings-body">
-            <label for="appPersonalLandmarkDialogFavCap"
-              >Nombre d’icônes en tête de liste (4 à 20) :</label
-            >
-            <input
-              type="number"
-              id="appPersonalLandmarkDialogFavCap"
-              class="tam-plm-pickers__fav-cap"
-              min="4"
-              max="20"
-              step="1"
-              value="8"
-            />
-            <p class="note tam-plm-pickers__settings-note">
-              Les icônes enregistrées le plus souvent sur vos repères
-              remontent automatiquement en tête (jusqu’au nombre indiqué).
-            </p>
-          </div>
-        </details>
-        <div
-          class="app-message-dialog__actions app-message-dialog__actions--split app-message-dialog__actions--quad"
-        >
-          <button
-            type="button"
-            id="appPersonalLandmarkDialogCancel"
-            class="secondary app-message-dialog__ok"
-          >
-            Annuler
-          </button>
+        <div class="app-message-dialog__actions tam-plm-dialog-actions">
           <button
             type="button"
             id="appPersonalLandmarkDialogDelete"
@@ -2955,10 +3170,63 @@
           </button>
           <button
             type="button"
+            id="appPersonalLandmarkDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
             id="appPersonalLandmarkDialogSave"
             class="app-message-dialog__ok"
           >
             Enregistrer
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog
+      id="appPersonalLandmarkHelpDialog"
+      class="app-message-dialog app-personal-landmark-help-dialog"
+      aria-labelledby="appPersonalLandmarkHelpDialogTitle"
+    >
+      <div class="app-message-dialog__inner">
+        <h2
+          id="appPersonalLandmarkHelpDialogTitle"
+          class="app-message-dialog__title"
+        >
+          Repère personnel
+        </h2>
+        <div class="app-message-dialog__body tam-plm-help-body">
+          <p>
+            <strong>Icônes récemment utilisées</strong> — pictogrammes choisis en dernier lors de l’enregistrement d’un repère ; la ligne du haut en affiche jusqu’au nombre indiqué via l’icône engrenage.
+          </p>
+          <p>
+            <strong>Toutes les icônes</strong> — ouvrez la section pour parcourir le catalogue complet (les icônes déjà en tête y figurent aussi).
+          </p>
+          <div class="tam-plm-help-defs">
+            <p>
+              <strong>Couleur</strong> — pastille du repère sur la carte.
+            </p>
+            <p>
+              <strong>Nom du repère</strong> — obligatoire.
+            </p>
+            <p>
+              <strong>Description</strong> — facultative.
+            </p>
+          </div>
+          <p>
+            <strong>Sur la carte : saisissez le pictogramme du repère et faites-le glisser pour le déplacer (la carte ne défile pas pendant le glisser).</strong>
+          </p>
+        </div>
+        <div class="app-message-dialog__actions">
+          <button
+            type="button"
+            id="appPersonalLandmarkHelpDialogOk"
+            class="app-message-dialog__ok"
+          >
+            OK
           </button>
         </div>
       </div>
