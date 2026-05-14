@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Simulateur SAE TAM</title>
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+    <!-- Repères personnels : pictogrammes Material Icons (ligatures), recolorisés en CSS. Réseau requis au premier chargement si le cache navigateur est vide. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+    />
     <style>
       *,
       *::before,
@@ -402,13 +407,16 @@
         border-radius: 10px;
         overflow: hidden;
       }
-      /* Bascule fond / satellite : comme Itinéraire — <a> dans .leaflet-bar, pas de surcharges d’arrondi / ombre. */
+      /* Même écart entre zoom+ / itinéraire / fond carte / repères (un peu moins que le défaut Leaflet 10px). */
+      #map.leaflet-container .leaflet-top.leaflet-left > .leaflet-control:not(:first-child) {
+        margin-top: 7px;
+      }
+      /* Bascule fond plan / satellite : un lien dans .leaflet-bar. */
       .tam-basemap-control .tam-basemap-toggle {
-        display: inline-flex;
+        display: flex;
         align-items: center;
         justify-content: center;
         box-sizing: border-box;
-        /* Largeurs héritées de .leaflet-bar a (26px / 30px tactile) */
         padding: 0;
         text-decoration: none;
         color: #000;
@@ -441,6 +449,189 @@
       .leaflet-touch .tam-basemap-control .tam-basemap-toggle__thumb {
         width: 26px;
         height: 26px;
+      }
+      .tam-personal-landmarks-control .tam-personal-landmarks-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        padding: 0;
+        text-decoration: none;
+        color: #005ca9;
+      }
+      .tam-personal-landmarks-control .tam-personal-landmarks-toggle:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 1px;
+      }
+      .tam-personal-landmarks-control .tam-personal-landmarks-toggle--placing {
+        background: #fff8e6 !important;
+      }
+      .tam-personal-landmark-marker {
+        background: transparent;
+        border: none;
+      }
+      .tam-personal-landmark-dialog.app-prompt-dialog {
+        max-width: min(94vw, 500px);
+      }
+      .tam-plm-pickers__section {
+        margin: 12px 0 6px;
+      }
+      .tam-plm-icon-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+        gap: 6px;
+        max-height: 132px;
+        overflow-y: auto;
+        margin: 0 0 4px;
+        padding: 2px;
+      }
+      .tam-plm-icon-btn {
+        width: 40px;
+        height: 40px;
+        margin: 0;
+        padding: 4px;
+        box-sizing: border-box;
+        border: 1px solid #ccd3db;
+        border-radius: 6px;
+        background: #f8fafc;
+        cursor: pointer;
+        color: #1b1f24;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tam-plm-icon-btn:hover {
+        background: #edf2f7;
+      }
+      .tam-plm-icon-btn.selected {
+        box-shadow: inset 0 0 0 2px #005ca9;
+        border-color: #005ca9;
+      }
+      .tam-plm-mi {
+        font-family: "Material Icons";
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: "liga";
+        font-feature-settings: "liga";
+        -webkit-font-smoothing: antialiased;
+      }
+      .tam-plm-icon-btn .tam-plm-mi {
+        font-size: 20px;
+      }
+      /* Marqueurs repères sur la carte : puce bord blanc + fond couleur + glyphe contrasté */
+      .tam-plm-marker-chip {
+        box-sizing: border-box;
+        width: 30px;
+        height: 30px;
+        border: 2px solid #fff;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.14);
+      }
+      .tam-plm-mi--map-marker {
+        font-size: 19px;
+        line-height: 1;
+      }
+      .tam-plm-color-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin: 0 0 8px;
+      }
+      .tam-plm-color-btn {
+        width: 28px;
+        height: 28px;
+        margin: 0;
+        padding: 0;
+        border-radius: 50%;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 1px #bcc4cf;
+        cursor: pointer;
+        box-sizing: border-box;
+      }
+      .tam-plm-color-btn.selected {
+        outline: 2px solid #1b1f24;
+        outline-offset: 1px;
+      }
+      .tam-plm-pickers__settings {
+        margin: 10px 0 4px;
+        font-size: 13px;
+        color: #1b1f24;
+      }
+      .tam-plm-pickers__settings summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: #005ca9;
+      }
+      .tam-plm-pickers__settings-body {
+        margin-top: 8px;
+        padding: 10px 10px 4px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+      }
+      .tam-plm-pickers__fav-cap {
+        width: 5rem;
+        margin: 6px 0 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        font-size: 14px;
+      }
+      .tam-plm-pickers__settings .note {
+        margin-top: 0;
+      }
+      .tam-personal-landmark-marker__bubble {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform-origin: 50% 100%;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+      }
+      .tam-personal-landmark-marker__bubble .tam-plm-mi--map-marker {
+        display: block;
+      }
+      .app-personal-landmark-dialog .app-personal-landmark-dialog__label {
+        display: block;
+        margin: 10px 0 4px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1b1f24;
+      }
+      .app-personal-landmark-dialog .app-personal-landmark-dialog__hint {
+        margin: 0 0 4px;
+        font-size: 13px;
+        line-height: 1.45;
+        color: #4a5563;
+      }
+      .app-personal-landmark-dialog .app-prompt-dialog__textarea {
+        width: 100%;
+        min-height: 72px;
+        margin: 0 0 4px;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        font-size: 14px;
+        font-family: inherit;
+        line-height: 1.4;
+        box-sizing: border-box;
+        resize: vertical;
+      }
+      .app-personal-landmark-dialog .app-message-dialog__actions--triple {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 8px;
       }
       .stats {
         font-size: 14px;
@@ -2639,6 +2830,130 @@
       </div>
     </dialog>
 
+    <dialog
+      id="appPersonalLandmarkDialog"
+      class="app-prompt-dialog app-personal-landmark-dialog"
+      aria-labelledby="appPersonalLandmarkDialogTitle"
+    >
+      <div class="app-message-dialog__inner">
+        <h2
+          id="appPersonalLandmarkDialogTitle"
+          class="app-message-dialog__title"
+        ></h2>
+        <p
+          id="appPersonalLandmarkDialogHint"
+          class="app-message-dialog__body app-personal-landmark-dialog__hint"
+        ></p>
+        <p
+          class="app-personal-landmark-dialog__label tam-plm-pickers__section"
+          id="appPersonalLandmarkDialogFavHeading"
+        >
+          Les plus utilisées
+        </p>
+        <div
+          class="tam-plm-icon-grid"
+          id="appPersonalLandmarkDialogFavIcons"
+          role="group"
+          aria-labelledby="appPersonalLandmarkDialogFavHeading"
+        ></div>
+        <p
+          class="app-personal-landmark-dialog__label tam-plm-pickers__section"
+          id="appPersonalLandmarkDialogAllHeading"
+        >
+          Toutes les icônes
+        </p>
+        <div
+          class="tam-plm-icon-grid"
+          id="appPersonalLandmarkDialogAllIcons"
+          role="group"
+          aria-labelledby="appPersonalLandmarkDialogAllHeading"
+        ></div>
+        <p
+          class="app-personal-landmark-dialog__label tam-plm-pickers__section"
+          id="appPersonalLandmarkDialogColorHeading"
+        >
+          Couleur
+        </p>
+        <div
+          class="tam-plm-color-row"
+          id="appPersonalLandmarkDialogColors"
+          role="group"
+          aria-labelledby="appPersonalLandmarkDialogColorHeading"
+        ></div>
+        <label
+          for="appPersonalLandmarkDialogName"
+          class="app-personal-landmark-dialog__label"
+          >Nom du repère</label
+        >
+        <input
+          type="text"
+          id="appPersonalLandmarkDialogName"
+          class="app-prompt-dialog__input"
+          maxlength="120"
+          autocomplete="off"
+          spellcheck="true"
+        />
+        <label
+          for="appPersonalLandmarkDialogDesc"
+          class="app-personal-landmark-dialog__label"
+          >Description (optionnelle)</label
+        >
+        <textarea
+          id="appPersonalLandmarkDialogDesc"
+          class="app-prompt-dialog__textarea"
+          maxlength="500"
+          rows="3"
+        ></textarea>
+        <details class="tam-plm-pickers__settings" id="appPersonalLandmarkDialogSettings">
+          <summary>Réglages de la liste « les plus utilisées »</summary>
+          <div class="tam-plm-pickers__settings-body">
+            <label for="appPersonalLandmarkDialogFavCap"
+              >Nombre d’icônes en tête de liste (4 à 20) :</label
+            >
+            <input
+              type="number"
+              id="appPersonalLandmarkDialogFavCap"
+              class="tam-plm-pickers__fav-cap"
+              min="4"
+              max="20"
+              step="1"
+              value="8"
+            />
+            <p class="note tam-plm-pickers__settings-note">
+              Les icônes enregistrées le plus souvent sur vos repères
+              remontent automatiquement en tête (jusqu’au nombre indiqué).
+            </p>
+          </div>
+        </details>
+        <div
+          class="app-message-dialog__actions app-message-dialog__actions--split app-message-dialog__actions--triple"
+        >
+          <button
+            type="button"
+            id="appPersonalLandmarkDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            id="appPersonalLandmarkDialogDelete"
+            class="secondary app-message-dialog__ok"
+            hidden
+          >
+            Supprimer
+          </button>
+          <button
+            type="button"
+            id="appPersonalLandmarkDialogSave"
+            class="app-message-dialog__ok"
+          >
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </dialog>
+
     <script src="vendor/leaflet/leaflet.js"></script>
     <script src="vendor/leaflet/leaflet-rotate.js"></script>
     <script src="guidage_troncons_arrets.js"></script>
@@ -2760,6 +3075,7 @@
         });
       })();
     </script>
+    <script src="simulateur_sae/simulateur_sae_0_personal_landmarks_catalog.js"></script>
     <script src="simulateur_sae/simulateur_sae_1_state_mission.js"></script>
     <script src="simulateur_sae/simulateur_sae_2_deviations.js"></script>
     <script src="simulateur_sae/simulateur_sae_3_ui_simulation.js"></script>

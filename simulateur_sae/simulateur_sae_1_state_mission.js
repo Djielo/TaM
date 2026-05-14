@@ -1,5 +1,5 @@
 /* simulateur SAE — fichier 1/3 : état mission, lignes / variantes, ops et carte jusqu’à `ensureOpsTargetPattern`.
- * Ordre des `<script src>` dans `simulateur_sae.html` obligatoire (1 → 2 → 3). */
+ * Ordre des `<script src>` dans `simulateur_sae.html` obligatoire : `simulateur_sae_0_personal_landmarks_catalog.js` (optionnel mais recommandé) puis 1 → 2 → 3. */
 
 let data = null;
 let filteredByLine = [];
@@ -35,6 +35,178 @@ const LS_KEY_OPS_LOG = "tam_sim_ops_log";
 const LS_KEY_RECAP = "tam_sim_recap_on";
 const LS_KEY_DRIVE_MODE = "tam_sim_drive_mode";
 const LS_KEY_DEVIATIONS = "tam_sim_saved_deviations_v1";
+const LS_KEY_PERSONAL_LANDMARKS = "tam_personal_map_landmarks_v1";
+const LS_KEY_PERSONAL_LANDMARK_ICON_USAGE = "tam_personal_landmark_icon_usage_v1";
+const LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP = "tam_personal_landmark_favorites_cap_v1";
+const PLM_DEFAULT_ICON_ID = "pin";
+const PLM_DEFAULT_COLOR_NEW = "#005ca9";
+const PLM_DEFAULT_COLOR_LEGACY = "#c62828";
+
+function getPlmIconCatalog() {
+  if (
+    typeof window !== "undefined" &&
+    Array.isArray(window.TAM_PLM_ICONS) &&
+    window.TAM_PLM_ICONS.length
+  ) {
+    return window.TAM_PLM_ICONS;
+  }
+  return [{ id: "pin", label: "Repère épingle", material: "place" }];
+}
+
+function plmMaterialLigature(def) {
+  const m = def?.material;
+  if (typeof m === "string" && /^[a-z0-9_]+$/.test(m)) return m;
+  return "place";
+}
+
+function getPlmColorCatalog() {
+  if (
+    typeof window !== "undefined" &&
+    Array.isArray(window.TAM_PLM_COLORS) &&
+    window.TAM_PLM_COLORS.length
+  ) {
+    return window.TAM_PLM_COLORS;
+  }
+  return [
+    { hex: "#005ca9", label: "Bleu TAM" },
+    { hex: "#c62828", label: "Rouge" },
+  ];
+}
+
+function normalizePlmColorHex(raw) {
+  const t = String(raw ?? "").trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(t)) return t;
+  return PLM_DEFAULT_COLOR_NEW;
+}
+
+function normalizePlmIconId(raw) {
+  const id = String(raw ?? "").trim();
+  if (getPlmIconCatalog().some((x) => x.id === id)) return id;
+  return PLM_DEFAULT_ICON_ID;
+}
+
+function loadPlmIconUsageCounts() {
+  try {
+    const o = JSON.parse(
+      localStorage.getItem(LS_KEY_PERSONAL_LANDMARK_ICON_USAGE) || "{}",
+    );
+    return o && typeof o === "object" ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function savePlmIconUsageCounts(obj) {
+  try {
+    localStorage.setItem(
+      LS_KEY_PERSONAL_LANDMARK_ICON_USAGE,
+      JSON.stringify(obj),
+    );
+  } catch (e) {
+    // ignore
+  }
+}
+
+function bumpPlmIconUsage(iconId) {
+  const id = normalizePlmIconId(iconId);
+  const c = loadPlmIconUsageCounts();
+  c[id] = (Number(c[id]) || 0) + 1;
+  savePlmIconUsageCounts(c);
+}
+
+function getPlmFavoritesCap() {
+  const n = parseInt(
+    String(localStorage.getItem(LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP) || ""),
+    10,
+  );
+  if (Number.isFinite(n) && n >= 4 && n <= 20) return n;
+  return 8;
+}
+
+function savePlmFavoritesCap(n) {
+  const v = Math.max(4, Math.min(20, Math.round(Number(n)) || 8));
+  try {
+    localStorage.setItem(LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP, String(v));
+  } catch (e) {
+    // ignore
+  }
+  return v;
+}
+
+function getPlmOrderedFavoriteIconIds(cap) {
+  const icons = getPlmIconCatalog();
+  const allowed = new Set(icons.map((x) => x.id));
+  const usage = loadPlmIconUsageCounts();
+  const ranked = Object.entries(usage)
+    .filter(([id]) => allowed.has(id))
+    .sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0))
+    .map(([id]) => id);
+  const out = [];
+  for (const id of ranked) {
+    if (out.length >= cap) break;
+    out.push(id);
+  }
+  const pad = [
+    "pin",
+    "dir-right",
+    "dir-left",
+    "tram",
+    "bus",
+    "parking",
+    "shop",
+    "home",
+    "hotel",
+    "dir-ahead",
+  ];
+  for (const id of pad) {
+    if (out.length >= cap) break;
+    if (!out.includes(id) && allowed.has(id)) out.push(id);
+  }
+  return out.slice(0, cap);
+}
+
+function plmEscapeAttr(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Noir ou blanc pour le glyphe Material sur un fond `bgHex` (luminance relative sRGB). */
+function plmContrastIconOnBackground(bgHex) {
+  const raw = normalizePlmColorHex(bgHex);
+  const hex = raw.slice(1);
+  const r255 = parseInt(hex.slice(0, 2), 16);
+  const g255 = parseInt(hex.slice(2, 4), 16);
+  const b255 = parseInt(hex.slice(4, 6), 16);
+  if (
+    !Number.isFinite(r255) ||
+    !Number.isFinite(g255) ||
+    !Number.isFinite(b255)
+  ) {
+    return "#000000";
+  }
+  const lin = (c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * lin(r255) + 0.7152 * lin(g255) + 0.0722 * lin(b255);
+  return L > 0.52 ? "#000000" : "#ffffff";
+}
+
+function buildPlmMarkerBubbleHtml(item) {
+  const iconId = normalizePlmIconId(item?.iconId);
+  const bg = normalizePlmColorHex(item?.colorHex);
+  const def =
+    getPlmIconCatalog().find((x) => x.id === iconId) || getPlmIconCatalog()[0];
+  const lig = plmMaterialLigature(def);
+  const fg = plmContrastIconOnBackground(bg);
+  const bgA = plmEscapeAttr(bg);
+  const fgA = plmEscapeAttr(fg);
+  return `<div class="tam-personal-landmark-marker__bubble"><div class="tam-plm-marker-chip" style="background-color:${bgA};color:${fgA};"><i class="material-icons tam-plm-mi tam-plm-mi--map-marker" aria-hidden="true">${lig}</i></div></div>`;
+}
+
 /** Titre des boîtes de dialogue HTML du simulateur (remplace l’origine « localhost » du navigateur). */
 const TAM_APP_DIALOG_TITLE = "Simulateur SAE TAM";
 /** Préfixe dans le champ de saisie ; le nom stocké et annoncé est le suffixe (ou tout le texte si le préfixe est retiré). */
@@ -542,12 +714,13 @@ function tamSetBasemapLayer(key) {
   basemapActiveLayer.addTo(map);
 }
 
-/** Ajouté après le contrôle « Itinéraire » (coin haut gauche : zoom, itinéraire, ce bouton). */
-let tamBasemapToggleLeafletControl = null;
+/** Contrôles carte : fond plan/satellite puis repères (deux blocs = même écart qu’itinéraire). */
+let tamBasemapExtrasControlsInstalled = false;
 function tamInstallBasemapToggleControl() {
-  if (tamBasemapToggleLeafletControl || typeof L === "undefined" || !map) return;
-  const ctrl = L.control({ position: "topleft" });
-  ctrl.onAdd = function onAddBasemapCtrl() {
+  if (tamBasemapExtrasControlsInstalled || typeof L === "undefined" || !map) return;
+
+  const ctrlBasemap = L.control({ position: "topleft" });
+  ctrlBasemap.onAdd = function onAddBasemapCtrl() {
     const wrap = L.DomUtil.create("div", "leaflet-bar tam-basemap-control");
     const a = L.DomUtil.create("a", "tam-basemap-toggle tam-basemap-toggle--preview-satellite", wrap);
     a.href = "#";
@@ -555,9 +728,6 @@ function tamInstallBasemapToggleControl() {
     a.title = "Passer à la vue satellite";
     a.setAttribute("aria-label", "Passer à la vue satellite");
     L.DomUtil.create("span", "tam-basemap-toggle__thumb", a).setAttribute("aria-hidden", "true");
-    a.style.display = "inline-flex";
-    a.style.alignItems = "center";
-    a.style.justifyContent = "center";
     L.DomEvent.disableClickPropagation(wrap);
     L.DomEvent.on(a, "click", (ev) => {
       L.DomEvent.preventDefault(ev);
@@ -577,8 +747,37 @@ function tamInstallBasemapToggleControl() {
     });
     return wrap;
   };
-  ctrl.addTo(map);
-  tamBasemapToggleLeafletControl = ctrl;
+  ctrlBasemap.addTo(map);
+
+  const ctrlPlm = L.control({ position: "topleft" });
+  ctrlPlm.onAdd = function onAddPersonalLandmarksCtrl() {
+    const wrap = L.DomUtil.create("div", "leaflet-bar tam-personal-landmarks-control");
+    const aPlm = L.DomUtil.create("a", "tam-personal-landmarks-toggle", wrap);
+    aPlm.href = "#";
+    aPlm.setAttribute("role", "button");
+    aPlm.title = "Repères personnels sur la carte";
+    aPlm.setAttribute(
+      "aria-label",
+      "Repères personnels : activer le placement sur la carte ou toucher un repère existant pour le modifier.",
+    );
+    aPlm.innerHTML =
+      '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path fill="currentColor" d="M12 2C8.7 2 6 4.5 6 7.6c0 3.1 4.2 10.9 5.5 13 .3.6 1.2.6 1.5 0C14.3 18.5 18 10.7 18 7.6 18 4.5 15.3 2 12 2zm0 9.2A2.4 2.4 0 0 1 9.6 9 2.4 2.4 0 0 1 12 6.6 2.4 2.4 0 0 1 14.4 9 2.4 2.4 0 0 1 12 11.2z"/>' +
+      '<circle cx="18" cy="6" r="3.2" fill="#fff" stroke="currentColor" stroke-width="1.2"/>' +
+      '<path stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M18 4.6v2.8M16.6 6h2.8"/>' +
+      "</svg>";
+    personalLandmarkPlacementToggleEl = aPlm;
+    syncPersonalLandmarkPlacementToggleUi();
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.on(aPlm, "click", (ev) => {
+      L.DomEvent.preventDefault(ev);
+      setPersonalLandmarkPlacementActive(!personalLandmarkPlacementActive);
+    });
+    return wrap;
+  };
+  ctrlPlm.addTo(map);
+
+  tamBasemapExtrasControlsInstalled = true;
 }
 
 const navIcon = L.divIcon({
@@ -610,6 +809,402 @@ const stopToStopLayer = L.layerGroup().addTo(map);
 const allStopsLayer = L.layerGroup().addTo(map);
 const skippedStopsLayer = L.layerGroup().addTo(map);
 const provisionalStopsLayer = L.layerGroup().addTo(map);
+/** Repères personnels (carrefours, points d’intérêt) — persistance locale. */
+const personalLandmarksLayer = L.layerGroup().addTo(map);
+let personalLandmarksList = [];
+let personalLandmarkPlacementActive = false;
+let personalLandmarkPlacementToggleEl = null;
+
+function loadPersonalLandmarksFromStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_PERSONAL_LANDMARKS);
+    if (!raw) {
+      personalLandmarksList = [];
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      personalLandmarksList = [];
+      return;
+    }
+    personalLandmarksList = parsed
+      .map((x) => {
+        const hadLegacyVisual =
+          !Object.prototype.hasOwnProperty.call(x || {}, "colorHex") &&
+          !Object.prototype.hasOwnProperty.call(x || {}, "iconId");
+        const iconId = normalizePlmIconId(x?.iconId);
+        let colorHex = normalizePlmColorHex(x?.colorHex);
+        if (hadLegacyVisual) {
+          colorHex = PLM_DEFAULT_COLOR_LEGACY;
+        }
+        return {
+          id: String(x?.id || "").trim(),
+          lat: Number(x?.lat),
+          lng: Number(x?.lng),
+          name: String(x?.name || "").trim(),
+          description: String(x?.description ?? "").trim(),
+          iconId,
+          colorHex,
+        };
+      })
+      .filter(
+        (x) =>
+          x.id &&
+          Number.isFinite(x.lat) &&
+          Number.isFinite(x.lng) &&
+          x.name.length > 0,
+      );
+  } catch (e) {
+    personalLandmarksList = [];
+  }
+}
+
+function savePersonalLandmarksToStorage() {
+  try {
+    localStorage.setItem(
+      LS_KEY_PERSONAL_LANDMARKS,
+      JSON.stringify(personalLandmarksList),
+    );
+  } catch (e) {
+    // ignore
+  }
+}
+
+function makePersonalLandmarkDivIcon(item) {
+  return L.divIcon({
+    className: "tam-personal-landmark-marker",
+    html: buildPlmMarkerBubbleHtml(item),
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+  });
+}
+
+function redrawPersonalLandmarksLayer() {
+  personalLandmarksLayer.clearLayers();
+  for (const item of personalLandmarksList) {
+    const m = L.marker([item.lat, item.lng], {
+      icon: makePersonalLandmarkDivIcon(item),
+      zIndexOffset: 450,
+    });
+    m.on("click", (e) => {
+      if (e?.originalEvent && typeof L.DomEvent.stopPropagation === "function") {
+        L.DomEvent.stopPropagation(e.originalEvent);
+      }
+      void openPersonalLandmarkMarkerEditor(item.id);
+    });
+    m.bindTooltip(item.name, {
+      sticky: true,
+      direction: "top",
+      offset: [0, -34],
+    });
+    m.addTo(personalLandmarksLayer);
+  }
+}
+
+function syncPersonalLandmarkPlacementToggleUi() {
+  const el = personalLandmarkPlacementToggleEl;
+  if (!el) return;
+  if (personalLandmarkPlacementActive) {
+    el.classList.add("tam-personal-landmarks-toggle--placing");
+    el.title =
+      "Cliquez sur la carte pour placer un repère (nouveau clic ici pour quitter le mode placement).";
+    el.setAttribute(
+      "aria-label",
+      "Mode placement : cliquez sur la carte pour placer un repère. Nouveau clic sur le bouton pour quitter le mode.",
+    );
+  } else {
+    el.classList.remove("tam-personal-landmarks-toggle--placing");
+    el.title = "Repères personnels sur la carte";
+    el.setAttribute(
+      "aria-label",
+      "Repères personnels : activer le placement sur la carte ou toucher un repère existant pour le modifier.",
+    );
+  }
+}
+
+function setPersonalLandmarkPlacementActive(on) {
+  personalLandmarkPlacementActive = !!on;
+  const c = map?.getContainer?.();
+  if (c && c.style) {
+    c.style.cursor = personalLandmarkPlacementActive ? "crosshair" : "";
+  }
+  syncPersonalLandmarkPlacementToggleUi();
+}
+
+/**
+ * Modale création / édition d’un repère personnel (icône, couleur, textes).
+ * @param {{ mode: 'create'|'edit', id?: string, lat: number, lng: number, name?: string, description?: string, iconId?: string, colorHex?: string }} spec
+ * @returns {Promise<{ action: 'save'|'delete'|'cancel', id?: string, lat?: number, lng?: number, name?: string, description?: string, iconId?: string, colorHex?: string }>}
+ */
+function openPersonalLandmarkDialog(spec) {
+  return new Promise((resolve) => {
+    const dlg = document.getElementById("appPersonalLandmarkDialog");
+    if (!dlg || typeof dlg.showModal !== "function") {
+      resolve({ action: "cancel" });
+      return;
+    }
+    const mode = spec.mode === "edit" ? "edit" : "create";
+    const tEl = document.getElementById("appPersonalLandmarkDialogTitle");
+    const hintEl = document.getElementById("appPersonalLandmarkDialogHint");
+    const favIconsEl = document.getElementById("appPersonalLandmarkDialogFavIcons");
+    const allIconsEl = document.getElementById("appPersonalLandmarkDialogAllIcons");
+    const colorsEl = document.getElementById("appPersonalLandmarkDialogColors");
+    const favCapEl = document.getElementById("appPersonalLandmarkDialogFavCap");
+    const nameIn = document.getElementById("appPersonalLandmarkDialogName");
+    const descIn = document.getElementById("appPersonalLandmarkDialogDesc");
+    const saveBtn = document.getElementById("appPersonalLandmarkDialogSave");
+    const cancelBtn = document.getElementById("appPersonalLandmarkDialogCancel");
+    const delBtn = document.getElementById("appPersonalLandmarkDialogDelete");
+    if (
+      !nameIn ||
+      !descIn ||
+      !saveBtn ||
+      !cancelBtn ||
+      !delBtn ||
+      !favIconsEl ||
+      !allIconsEl ||
+      !colorsEl
+    ) {
+      resolve({ action: "cancel" });
+      return;
+    }
+    const plmPick = {
+      iconId: normalizePlmIconId(
+        spec.iconId != null ? spec.iconId : PLM_DEFAULT_ICON_ID,
+      ),
+      colorHex: normalizePlmColorHex(
+        spec.colorHex != null ? spec.colorHex : PLM_DEFAULT_COLOR_NEW,
+      ),
+    };
+
+    function syncPlmPickerSelectionUi() {
+      dlg.querySelectorAll(".tam-plm-icon-btn[data-plm-icon]").forEach((btn) => {
+        const id = btn.getAttribute("data-plm-icon");
+        btn.classList.toggle("selected", id === plmPick.iconId);
+      });
+      dlg.querySelectorAll(".tam-plm-color-btn[data-plm-color]").forEach((btn) => {
+        const hx = btn.getAttribute("data-plm-color");
+        btn.classList.toggle("selected", hx === plmPick.colorHex);
+      });
+    }
+
+    function renderIconButtons(container, ids) {
+      container.innerHTML = "";
+      for (const id of ids) {
+        const meta = getPlmIconCatalog().find((x) => x.id === id);
+        if (!meta) continue;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tam-plm-icon-btn";
+        btn.dataset.plmIcon = id;
+        btn.title = meta.label;
+        btn.setAttribute("aria-label", meta.label);
+        btn.innerHTML = `<i class="material-icons tam-plm-mi" aria-hidden="true">${plmMaterialLigature(meta)}</i>`;
+        container.appendChild(btn);
+      }
+    }
+
+    function renderColorButtons() {
+      colorsEl.innerHTML = "";
+      for (const c of getPlmColorCatalog()) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tam-plm-color-btn";
+        btn.dataset.plmColor = c.hex;
+        btn.title = c.label;
+        btn.setAttribute("aria-label", c.label);
+        btn.style.backgroundColor = c.hex;
+        colorsEl.appendChild(btn);
+      }
+    }
+
+    function rebuildPlmIconGrids() {
+      const cap = getPlmFavoritesCap();
+      const favIds = getPlmOrderedFavoriteIconIds(cap);
+      const favSet = new Set(favIds);
+      const allIds = getPlmIconCatalog()
+        .map((x) => x.id)
+        .filter((id) => !favSet.has(id))
+        .sort((a, b) => {
+          const la = getPlmIconCatalog().find((x) => x.id === a)?.label || "";
+          const lb = getPlmIconCatalog().find((x) => x.id === b)?.label || "";
+          return la.localeCompare(lb, "fr");
+        });
+      renderIconButtons(favIconsEl, favIds);
+      renderIconButtons(allIconsEl, allIds);
+      renderColorButtons();
+      syncPlmPickerSelectionUi();
+    }
+
+    function onPlmDlgClick(ev) {
+      const ib = ev.target.closest(".tam-plm-icon-btn[data-plm-icon]");
+      if (ib) {
+        plmPick.iconId = normalizePlmIconId(ib.getAttribute("data-plm-icon"));
+        syncPlmPickerSelectionUi();
+        return;
+      }
+      const cb = ev.target.closest(".tam-plm-color-btn[data-plm-color]");
+      if (cb) {
+        plmPick.colorHex = normalizePlmColorHex(
+          cb.getAttribute("data-plm-color"),
+        );
+        syncPlmPickerSelectionUi();
+      }
+    }
+
+    function onFavCapChange() {
+      if (!favCapEl) return;
+      savePlmFavoritesCap(favCapEl.value);
+      rebuildPlmIconGrids();
+    }
+
+    if (!dlg.dataset.tamBackdropCloseWired) {
+      dlg.dataset.tamBackdropCloseWired = "1";
+      dlg.addEventListener("click", (ev) => {
+        if (ev.target === dlg) dlg.close();
+      });
+    }
+    if (tEl) {
+      tEl.textContent =
+        mode === "edit" ? "Modifier le repère" : "Nouveau repère personnel";
+    }
+    if (hintEl) {
+      hintEl.textContent =
+        mode === "edit"
+          ? "Modifiez l’icône, la couleur, le nom ou la description, ou supprimez le repère."
+          : "Choisissez une icône et une couleur, puis un nom (obligatoire), par ex. carrefour, direction, point de repère.";
+    }
+    if (favCapEl) {
+      favCapEl.value = String(getPlmFavoritesCap());
+    }
+    rebuildPlmIconGrids();
+    dlg.addEventListener("click", onPlmDlgClick);
+    if (favCapEl) {
+      favCapEl.addEventListener("change", onFavCapChange);
+    }
+
+    nameIn.value = spec.name != null ? String(spec.name) : "";
+    descIn.value =
+      spec.description != null ? String(spec.description) : "";
+    delBtn.hidden = mode !== "edit";
+    let settled = false;
+    function cleanupListeners() {
+      saveBtn.removeEventListener("click", onSave);
+      cancelBtn.removeEventListener("click", onCancel);
+      delBtn.removeEventListener("click", onDeleteClick);
+      nameIn.removeEventListener("keydown", onNameKeydown);
+      dlg.removeEventListener("close", onClose);
+      dlg.removeEventListener("click", onPlmDlgClick);
+      if (favCapEl) {
+        favCapEl.removeEventListener("change", onFavCapChange);
+      }
+    }
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      cleanupListeners();
+      if (dlg.open) dlg.close();
+      resolve(payload);
+    };
+    function onClose() {
+      if (settled) return;
+      finish({ action: "cancel" });
+    }
+    async function onDelete() {
+      if (mode !== "edit" || !spec.id) return;
+      const ok = await showAppConfirmDialog(
+        TAM_APP_DIALOG_TITLE,
+        "Supprimer ce repère personnel ?",
+      );
+      if (!ok) return;
+      finish({ action: "delete", id: spec.id });
+    }
+    function onSave() {
+      const name = String(nameIn.value || "").trim();
+      if (!name) {
+        tamAppAlert("Indiquez un nom pour le repère.");
+        return;
+      }
+      bumpPlmIconUsage(plmPick.iconId);
+      finish({
+        action: "save",
+        id: mode === "edit" ? spec.id : undefined,
+        lat: spec.lat,
+        lng: spec.lng,
+        name,
+        description: String(descIn.value || "").trim(),
+        iconId: plmPick.iconId,
+        colorHex: plmPick.colorHex,
+      });
+    }
+    function onCancel() {
+      finish({ action: "cancel" });
+    }
+    function onNameKeydown(ev) {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        onSave();
+      }
+    }
+    function onDeleteClick() {
+      void onDelete();
+    }
+    dlg.addEventListener("close", onClose, { once: true });
+    saveBtn.addEventListener("click", onSave);
+    cancelBtn.addEventListener("click", onCancel);
+    delBtn.addEventListener("click", onDeleteClick);
+    nameIn.addEventListener("keydown", onNameKeydown);
+    dlg.showModal();
+    requestAnimationFrame(() => {
+      nameIn.focus();
+      nameIn.select();
+    });
+  });
+}
+
+async function openPersonalLandmarkMarkerEditor(id) {
+  setPersonalLandmarkPlacementActive(false);
+  const item = personalLandmarksList.find((x) => x.id === id);
+  if (!item) return;
+  const r = await openPersonalLandmarkDialog({
+    mode: "edit",
+    id: item.id,
+    lat: item.lat,
+    lng: item.lng,
+    name: item.name,
+    description: item.description,
+    iconId: item.iconId,
+    colorHex: item.colorHex,
+  });
+  if (r.action === "cancel") return;
+  if (r.action === "delete" && r.id) {
+    personalLandmarksList = personalLandmarksList.filter((x) => x.id !== r.id);
+    savePersonalLandmarksToStorage();
+    redrawPersonalLandmarksLayer();
+    setGpsStatus("Repère personnel supprimé.");
+    return;
+  }
+  if (r.action === "save" && r.id && r.name) {
+    const idx = personalLandmarksList.findIndex((x) => x.id === r.id);
+    if (idx >= 0) {
+      personalLandmarksList[idx] = {
+        id: r.id,
+        lat: r.lat,
+        lng: r.lng,
+        name: r.name,
+        description: r.description || "",
+        iconId: normalizePlmIconId(r.iconId),
+        colorHex: normalizePlmColorHex(r.colorHex),
+      };
+      savePersonalLandmarksToStorage();
+      redrawPersonalLandmarksLayer();
+      setGpsStatus(`Repère mis à jour : ${r.name}`);
+    }
+  }
+}
+loadPersonalLandmarksFromStorage();
+redrawPersonalLandmarksLayer();
+
 let marker = L.marker([43.61, 3.88], {
   icon: navIcon,
   zIndexOffset: 800,
@@ -644,6 +1239,34 @@ function openProvisionalStopNameDialog() {
 }
 
 map.on("click", async (ev) => {
+  if (personalLandmarkPlacementActive && ev?.latlng) {
+    setPersonalLandmarkPlacementActive(false);
+    const r = await openPersonalLandmarkDialog({
+      mode: "create",
+      lat: ev.latlng.lat,
+      lng: ev.latlng.lng,
+      name: "",
+      description: "",
+    });
+    if (r.action === "save" && r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng)) {
+      const id = `plm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      personalLandmarksList.push({
+        id,
+        lat: r.lat,
+        lng: r.lng,
+        name: r.name,
+        description: r.description || "",
+        iconId: normalizePlmIconId(r.iconId),
+        colorHex: normalizePlmColorHex(r.colorHex),
+      });
+      savePersonalLandmarksToStorage();
+      redrawPersonalLandmarksLayer();
+      setGpsStatus(`Repère ajouté : ${r.name}`);
+    } else if (r.action === "cancel") {
+      setGpsStatus("Placement de repère annulé.");
+    }
+    return;
+  }
   if (
     opsState.provisionalEditActive &&
     !manualDrawActive &&
