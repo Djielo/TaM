@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-05-14T20:19:09Z",
-    "dataset_digest": "041b7e50240da5c276cd0ad3990a8c5353a56f68ac572526710287c8dc0b5ff2",
+    "generated_at": "2026-05-15T01:39:12Z",
+    "dataset_digest": "6ccc678ecadf9c94b3a50ed0a806d308cb571c7ba3f904143800d69f8aa1065e",
     "route_count": 55,
     "pattern_count": 146,
     "bus_network_feature_count": 91,
@@ -8059,7 +8059,7 @@
       "start_stop": "Sabines",
       "end_stop": "Lattes Centre",
       "stop_count": 13,
-      "trip_count": 592,
+      "trip_count": 606,
       "coordinates": [
         [
           43.5838385,
@@ -8235,7 +8235,7 @@
       "start_stop": "Lattes Centre",
       "end_stop": "Sabines",
       "stop_count": 12,
-      "trip_count": 592,
+      "trip_count": 606,
       "coordinates": [
         [
           43.5707883,
@@ -11439,7 +11439,7 @@
       "start_stop": "Saint-Jean le Sec",
       "end_stop": "Parc Font-Colombe",
       "stop_count": 12,
-      "trip_count": 163,
+      "trip_count": 170,
       "coordinates": [
         [
           43.5709924,
@@ -11779,7 +11779,7 @@
       "start_stop": "Saint-Jean le Sec",
       "end_stop": "Parc Font-Colombe",
       "stop_count": 14,
-      "trip_count": 220,
+      "trip_count": 227,
       "coordinates": [
         [
           43.5709924,
@@ -12167,7 +12167,7 @@
       "start_stop": "Parc Font-Colombe",
       "end_stop": "Saint-Jean le Sec",
       "stop_count": 12,
-      "trip_count": 144,
+      "trip_count": 151,
       "coordinates": [
         [
           43.5963481,
@@ -12507,7 +12507,7 @@
       "start_stop": "Parc Font-Colombe",
       "end_stop": "Saint-Jean le Sec",
       "stop_count": 14,
-      "trip_count": 239,
+      "trip_count": 246,
       "coordinates": [
         [
           43.5963481,
@@ -12895,7 +12895,7 @@
       "start_stop": "Versant",
       "end_stop": "ND de Sablassou",
       "stop_count": 32,
-      "trip_count": 276,
+      "trip_count": 280,
       "coordinates": [
         [
           43.6652109,
@@ -13032,256 +13032,256 @@
           "stop_name": "Versant",
           "lat": 43.6652109,
           "lon": 4.0374492,
-          "arrival_time": "17:10:00",
-          "departure_time": "17:10:00"
+          "arrival_time": "12:10:00",
+          "departure_time": "12:10:00"
         },
         {
           "stop_id": "0:29225",
           "stop_name": "Paris",
           "lat": 43.6683655,
           "lon": 4.0408848,
-          "arrival_time": "17:10:46",
-          "departure_time": "17:10:46"
+          "arrival_time": "12:10:46",
+          "departure_time": "12:10:46"
         },
         {
           "stop_id": "0:29226",
           "stop_name": "Piscine Héraclès",
           "lat": 43.6697212,
           "lon": 4.0372331,
-          "arrival_time": "17:11:31",
-          "departure_time": "17:11:31"
+          "arrival_time": "12:11:31",
+          "departure_time": "12:11:31"
         },
         {
           "stop_id": "0:29228",
           "stop_name": "Sainte-Colombe",
           "lat": 43.6681469,
           "lon": 4.0341952,
-          "arrival_time": "17:12:00",
-          "departure_time": "17:12:00"
+          "arrival_time": "12:12:00",
+          "departure_time": "12:12:00"
         },
         {
           "stop_id": "0:29222",
           "stop_name": "Micocoulier",
           "lat": 43.6668761,
           "lon": 4.030437,
-          "arrival_time": "17:13:00",
-          "departure_time": "17:13:00"
+          "arrival_time": "12:13:00",
+          "departure_time": "12:13:00"
         },
         {
           "stop_id": "0:29223",
           "stop_name": "Sophoras",
           "lat": 43.6684721,
           "lon": 4.0265681,
-          "arrival_time": "17:13:55",
-          "departure_time": "17:13:55"
+          "arrival_time": "12:13:55",
+          "departure_time": "12:13:55"
         },
         {
           "stop_id": "0:29111",
           "stop_name": "Collège Le Bérange",
           "lat": 43.667278,
           "lon": 4.023408,
-          "arrival_time": "17:15:00",
-          "departure_time": "17:15:00"
+          "arrival_time": "12:15:00",
+          "departure_time": "12:15:00"
         },
         {
           "stop_id": "0:29202",
           "stop_name": "Fenouillet",
           "lat": 43.664597,
           "lon": 4.0213906,
-          "arrival_time": "17:16:36",
-          "departure_time": "17:16:36"
+          "arrival_time": "12:16:36",
+          "departure_time": "12:16:36"
         },
         {
           "stop_id": "0:29203",
           "stop_name": "Gaston Baissette",
           "lat": 43.6645123,
           "lon": 4.017123,
-          "arrival_time": "17:17:37",
-          "departure_time": "17:17:37"
+          "arrival_time": "12:17:37",
+          "departure_time": "12:17:37"
         },
         {
           "stop_id": "0:29204",
           "stop_name": "Paradis",
           "lat": 43.6639413,
           "lon": 4.0141141,
-          "arrival_time": "17:18:27",
-          "departure_time": "17:18:27"
+          "arrival_time": "12:18:27",
+          "departure_time": "12:18:27"
         },
         {
           "stop_id": "0:29205",
           "stop_name": "Mairie de Baill.",
           "lat": 43.6618906,
           "lon": 4.013244,
-          "arrival_time": "17:19:00",
-          "departure_time": "17:19:00"
+          "arrival_time": "12:19:00",
+          "departure_time": "12:19:00"
         },
         {
           "stop_id": "0:29206",
           "stop_name": "Le Grès",
           "lat": 43.6627262,
           "lon": 4.0082159,
-          "arrival_time": "17:20:18",
-          "departure_time": "17:20:18"
+          "arrival_time": "12:20:18",
+          "departure_time": "12:20:18"
         },
         {
           "stop_id": "0:29207",
           "stop_name": "Paul Cézanne",
           "lat": 43.6590887,
           "lon": 4.0057677,
-          "arrival_time": "17:22:16",
-          "departure_time": "17:22:16"
+          "arrival_time": "12:22:16",
+          "departure_time": "12:22:16"
         },
         {
           "stop_id": "0:29208",
           "stop_name": "Treille",
           "lat": 43.6567227,
           "lon": 4.0023651,
-          "arrival_time": "17:23:24",
-          "departure_time": "17:23:24"
+          "arrival_time": "12:23:24",
+          "departure_time": "12:23:24"
         },
         {
           "stop_id": "0:29209",
           "stop_name": "Biste",
           "lat": 43.6559867,
           "lon": 4.0001284,
-          "arrival_time": "17:24:00",
-          "departure_time": "17:24:00"
+          "arrival_time": "12:24:00",
+          "departure_time": "12:24:00"
         },
         {
           "stop_id": "0:21230",
           "stop_name": "Gare de Baillargues",
           "lat": 43.6533781,
           "lon": 4.007926,
-          "arrival_time": "17:27:00",
-          "departure_time": "17:27:00"
+          "arrival_time": "12:27:00",
+          "departure_time": "12:27:00"
         },
         {
           "stop_id": "0:21119",
           "stop_name": "Paul Gauguin",
           "lat": 43.6553285,
           "lon": 3.9755491,
-          "arrival_time": "17:32:00",
-          "departure_time": "17:32:00"
+          "arrival_time": "12:32:00",
+          "departure_time": "12:32:00"
         },
         {
           "stop_id": "0:21202",
           "stop_name": "Gustave Courbet",
           "lat": 43.6581982,
           "lon": 3.9760847,
-          "arrival_time": "17:33:04",
-          "departure_time": "17:33:04"
+          "arrival_time": "12:33:04",
+          "departure_time": "12:33:04"
         },
         {
           "stop_id": "0:21205",
           "stop_name": "Parc Vendargues",
           "lat": 43.6606364,
           "lon": 3.9754848,
-          "arrival_time": "17:33:59",
-          "departure_time": "17:33:59"
+          "arrival_time": "12:33:59",
+          "departure_time": "12:33:59"
         },
         {
           "stop_id": "0:21223",
           "stop_name": "Albert Dubout",
           "lat": 43.6622619,
           "lon": 3.9748912,
-          "arrival_time": "17:34:35",
-          "departure_time": "17:34:35"
+          "arrival_time": "12:34:35",
+          "departure_time": "12:34:35"
         },
         {
           "stop_id": "0:21206",
           "stop_name": "Frédéric Mistral",
           "lat": 43.6640211,
           "lon": 3.9742445,
-          "arrival_time": "17:35:14",
-          "departure_time": "17:35:14"
+          "arrival_time": "12:35:14",
+          "departure_time": "12:35:14"
         },
         {
           "stop_id": "0:21207",
           "stop_name": "Devèzes",
           "lat": 43.6627689,
           "lon": 3.9702507,
-          "arrival_time": "17:36:30",
-          "departure_time": "17:36:30"
+          "arrival_time": "12:36:30",
+          "departure_time": "12:36:30"
         },
         {
           "stop_id": "0:21208",
           "stop_name": "Monnaie",
           "lat": 43.6612999,
           "lon": 3.9699523,
-          "arrival_time": "17:37:06",
-          "departure_time": "17:37:06"
+          "arrival_time": "12:37:06",
+          "departure_time": "12:37:06"
         },
         {
           "stop_id": "0:21210",
           "stop_name": "Balances",
           "lat": 43.6576307,
           "lon": 3.9684208,
-          "arrival_time": "17:39:00",
-          "departure_time": "17:39:00"
+          "arrival_time": "12:39:00",
+          "departure_time": "12:39:00"
         },
         {
           "stop_id": "0:21211",
           "stop_name": "Arènes Roger Itier",
           "lat": 43.6552988,
           "lon": 3.9675146,
-          "arrival_time": "17:39:28",
-          "departure_time": "17:39:28"
+          "arrival_time": "12:39:28",
+          "departure_time": "12:39:28"
         },
         {
           "stop_id": "0:21212",
           "stop_name": "Parc Gouneaud",
           "lat": 43.6541828,
           "lon": 3.9640084,
-          "arrival_time": "17:40:00",
-          "departure_time": "17:40:00"
+          "arrival_time": "12:40:00",
+          "departure_time": "12:40:00"
         },
         {
           "stop_id": "0:21222",
           "stop_name": "Jean-Marcel Castet",
           "lat": 43.6525452,
           "lon": 3.9614074,
-          "arrival_time": "17:40:44",
-          "departure_time": "17:40:44"
+          "arrival_time": "12:40:44",
+          "departure_time": "12:40:44"
         },
         {
           "stop_id": "0:21214",
           "stop_name": "Châtaigniers",
           "lat": 43.6489845,
           "lon": 3.9561123,
-          "arrival_time": "17:42:00",
-          "departure_time": "17:42:00"
+          "arrival_time": "12:42:00",
+          "departure_time": "12:42:00"
         },
         {
           "stop_id": "0:21216",
           "stop_name": "Route de Nîmes",
           "lat": 43.641788,
           "lon": 3.9425263,
-          "arrival_time": "17:44:23",
-          "departure_time": "17:44:23"
+          "arrival_time": "12:44:23",
+          "departure_time": "12:44:23"
         },
         {
           "stop_id": "0:20218",
           "stop_name": "Pointes",
           "lat": 43.6388596,
           "lon": 3.9333754,
-          "arrival_time": "17:45:46",
-          "departure_time": "17:45:46"
+          "arrival_time": "12:45:46",
+          "departure_time": "12:45:46"
         },
         {
           "stop_id": "0:20219",
           "stop_name": "Castelnau ZA",
           "lat": 43.6365454,
           "lon": 3.9271613,
-          "arrival_time": "17:46:48",
-          "departure_time": "17:46:48"
+          "arrival_time": "12:46:48",
+          "departure_time": "12:46:48"
         },
         {
           "stop_id": "0:21218",
           "stop_name": "ND de Sablassou",
           "lat": 43.6343643,
           "lon": 3.9223934,
-          "arrival_time": "17:48:00",
-          "departure_time": "17:48:00"
+          "arrival_time": "12:48:00",
+          "departure_time": "12:48:00"
         }
       ],
       "variant_name": "Variante 1"
@@ -13299,7 +13299,7 @@
       "start_stop": "Versant",
       "end_stop": "ND de Sablassou",
       "stop_count": 35,
-      "trip_count": 240,
+      "trip_count": 250,
       "coordinates": [
         [
           43.6652109,
@@ -13739,7 +13739,7 @@
       "start_stop": "ND de Sablassou",
       "end_stop": "Versant",
       "stop_count": 31,
-      "trip_count": 314,
+      "trip_count": 318,
       "coordinates": [
         [
           43.634797,
@@ -14131,7 +14131,7 @@
       "start_stop": "ND de Sablassou",
       "end_stop": "Versant",
       "stop_count": 34,
-      "trip_count": 240,
+      "trip_count": 250,
       "coordinates": [
         [
           43.634797,
@@ -14559,7 +14559,7 @@
       "start_stop": "Collège P. M. France",
       "end_stop": "Cirad de Baillarguet",
       "stop_count": 30,
-      "trip_count": 744,
+      "trip_count": 758,
       "coordinates": [
         [
           43.6675901,
@@ -14939,7 +14939,7 @@
       "start_stop": "Cirad de Baillarguet",
       "end_stop": "Collège P. M. France",
       "stop_count": 30,
-      "trip_count": 744,
+      "trip_count": 758,
       "coordinates": [
         [
           43.6842816,
@@ -15319,7 +15319,7 @@
       "start_stop": "Clapiers",
       "end_stop": "Clapiers",
       "stop_count": 21,
-      "trip_count": 535,
+      "trip_count": 549,
       "coordinates": [
         [
           43.6535033,
@@ -15591,7 +15591,7 @@
       "start_stop": "Clapiers",
       "end_stop": "Clapiers",
       "stop_count": 21,
-      "trip_count": 535,
+      "trip_count": 549,
       "coordinates": [
         [
           43.6535033,
@@ -15863,7 +15863,7 @@
       "start_stop": "Le Pradas",
       "end_stop": "La Valsière",
       "stop_count": 19,
-      "trip_count": 877,
+      "trip_count": 891,
       "coordinates": [
         [
           43.6606732,
@@ -16111,7 +16111,7 @@
       "start_stop": "La Valsière",
       "end_stop": "Le Pradas",
       "stop_count": 19,
-      "trip_count": 877,
+      "trip_count": 891,
       "coordinates": [
         [
           43.6500095,
@@ -16359,7 +16359,7 @@
       "start_stop": "Le Martinet",
       "end_stop": "Courpouyran",
       "stop_count": 23,
-      "trip_count": 535,
+      "trip_count": 549,
       "coordinates": [
         [
           43.6342158,
@@ -16655,7 +16655,7 @@
       "start_stop": "Courpouyran",
       "end_stop": "Le Martinet",
       "stop_count": 23,
-      "trip_count": 516,
+      "trip_count": 530,
       "coordinates": [
         [
           43.6207486,
@@ -17187,7 +17187,7 @@
       "start_stop": "Olympe",
       "end_stop": "Montferrier-sur-Lez",
       "stop_count": 15,
-      "trip_count": 478,
+      "trip_count": 492,
       "coordinates": [
         [
           43.6767235,
@@ -17623,7 +17623,7 @@
       "start_stop": "Montferrier-sur-Lez",
       "end_stop": "Olympe",
       "stop_count": 15,
-      "trip_count": 478,
+      "trip_count": 492,
       "coordinates": [
         [
           43.6512872,
@@ -22455,7 +22455,7 @@
       "start_stop": "Via Domitia",
       "end_stop": "Jean Jaurès",
       "stop_count": 12,
-      "trip_count": 630,
+      "trip_count": 644,
       "coordinates": [
         [
           43.6465107,
@@ -22619,7 +22619,7 @@
       "start_stop": "Via Domitia",
       "end_stop": "Maumarin",
       "stop_count": 8,
-      "trip_count": 630,
+      "trip_count": 644,
       "coordinates": [
         [
           43.6465107,
@@ -22735,7 +22735,7 @@
       "start_stop": "Maumarin",
       "end_stop": "Via Domitia",
       "stop_count": 8,
-      "trip_count": 630,
+      "trip_count": 644,
       "coordinates": [
         [
           43.6615592,
@@ -22851,7 +22851,7 @@
       "start_stop": "Jean Jaurès",
       "end_stop": "Via Domitia",
       "stop_count": 12,
-      "trip_count": 630,
+      "trip_count": 644,
       "coordinates": [
         [
           43.6565824,
@@ -23895,7 +23895,7 @@
       "start_stop": "Saint-Jean le Sec",
       "end_stop": "Garcia Lorca",
       "stop_count": 23,
-      "trip_count": 353,
+      "trip_count": 360,
       "coordinates": [
         [
           43.5709924,
@@ -24191,7 +24191,7 @@
       "start_stop": "Saint-Jean le Sec",
       "end_stop": "Garcia Lorca",
       "stop_count": 24,
-      "trip_count": 334,
+      "trip_count": 341,
       "coordinates": [
         [
           43.5709924,
@@ -24499,7 +24499,7 @@
       "start_stop": "Garcia Lorca",
       "end_stop": "Saint-Jean le Sec",
       "stop_count": 20,
-      "trip_count": 334,
+      "trip_count": 341,
       "coordinates": [
         [
           43.5909133,
@@ -24759,7 +24759,7 @@
       "start_stop": "Garcia Lorca",
       "end_stop": "Saint-Jean le Sec",
       "stop_count": 21,
-      "trip_count": 315,
+      "trip_count": 322,
       "coordinates": [
         [
           43.5909133,
@@ -25031,7 +25031,7 @@
       "start_stop": "St Jean Centre",
       "end_stop": "Lou Paillas",
       "stop_count": 14,
-      "trip_count": 349,
+      "trip_count": 360,
       "coordinates": [
         [
           43.5749531,
@@ -25879,7 +25879,7 @@
       "start_stop": "Lou Paillas",
       "end_stop": "St Jean Centre",
       "stop_count": 15,
-      "trip_count": 368,
+      "trip_count": 379,
       "coordinates": [
         [
           43.5455425,
@@ -26255,7 +26255,7 @@
       "start_stop": "Mosson",
       "end_stop": "Les Clavoux",
       "stop_count": 27,
-      "trip_count": 516,
+      "trip_count": 530,
       "coordinates": [
         [
           43.6161516,
@@ -26599,7 +26599,7 @@
       "start_stop": "Les Clavoux",
       "end_stop": "Mosson",
       "stop_count": 27,
-      "trip_count": 516,
+      "trip_count": 530,
       "coordinates": [
         [
           43.5439745,
@@ -27887,7 +27887,7 @@
       "start_stop": "Stade de Montaud",
       "end_stop": "Charles de Gaulle",
       "stop_count": 23,
-      "trip_count": 487,
+      "trip_count": 499,
       "coordinates": [
         [
           43.7518212,
@@ -28183,7 +28183,7 @@
       "start_stop": "Charles de Gaulle",
       "end_stop": "Stade de Montaud",
       "stop_count": 20,
-      "trip_count": 468,
+      "trip_count": 480,
       "coordinates": [
         [
           43.6283879,
@@ -28855,7 +28855,7 @@
       "start_stop": "Les Clavoux",
       "end_stop": "Grés de Montpellier",
       "stop_count": 30,
-      "trip_count": 497,
+      "trip_count": 511,
       "coordinates": [
         [
           43.5439745,
@@ -29647,7 +29647,7 @@
       "start_stop": "Grés de Montpellier",
       "end_stop": "Les Clavoux",
       "stop_count": 30,
-      "trip_count": 497,
+      "trip_count": 511,
       "coordinates": [
         [
           43.5926979,
@@ -31119,7 +31119,7 @@
       "start_stop": "Mosson",
       "end_stop": "Mijoulan",
       "stop_count": 14,
-      "trip_count": 516,
+      "trip_count": 530,
       "coordinates": [
         [
           43.6161516,
@@ -31307,7 +31307,7 @@
       "start_stop": "Mijoulan",
       "end_stop": "Mosson",
       "stop_count": 14,
-      "trip_count": 516,
+      "trip_count": 530,
       "coordinates": [
         [
           43.6292948,
@@ -31495,7 +31495,7 @@
       "start_stop": "Mosson",
       "end_stop": "La Rouvière Longue",
       "stop_count": 17,
-      "trip_count": 248,
+      "trip_count": 258,
       "coordinates": [
         [
           43.6161516,
@@ -31719,7 +31719,7 @@
       "start_stop": "La Rouvière Longue",
       "end_stop": "Mosson",
       "stop_count": 17,
-      "trip_count": 264,
+      "trip_count": 275,
       "coordinates": [
         [
           43.6007938,
@@ -32391,7 +32391,7 @@
       "start_stop": "St Jean Centre",
       "end_stop": "La Bornière",
       "stop_count": 16,
-      "trip_count": 444,
+      "trip_count": 455,
       "coordinates": [
         [
           43.5749531,
@@ -32603,7 +32603,7 @@
       "start_stop": "La Bornière",
       "end_stop": "St Jean Centre",
       "stop_count": 16,
-      "trip_count": 463,
+      "trip_count": 474,
       "coordinates": [
         [
           43.5790882,
@@ -33167,7 +33167,7 @@
       "start_stop": "ND de Sablassou",
       "end_stop": "Collège Les Pins",
       "stop_count": 10,
-      "trip_count": 516,
+      "trip_count": 530,
       "coordinates": [
         [
           43.634797,
@@ -33307,7 +33307,7 @@
       "start_stop": "Collège Les Pins",
       "end_stop": "ND de Sablassou",
       "stop_count": 10,
-      "trip_count": 516,
+      "trip_count": 530,
       "coordinates": [
         [
           43.6841669,
@@ -33447,7 +33447,7 @@
       "start_stop": "Univ. Sc. et Lettres",
       "end_stop": "Univ. Sc. et Lettres",
       "stop_count": 13,
-      "trip_count": 1076,
+      "trip_count": 1090,
       "coordinates": [
         [
           43.6291754,
