@@ -86,12 +86,20 @@ function normalizeStopName(s) {
 }
 
 /**
+ * Orthographe phonétique pour le TTS (Web Speech API : pas d’APIA/SSML).
+ * « Aiguelongue » en un mot → souvent « aig log » ; « Aïgue » → « hey hey » sur Paul (voix fr Windows).
+ */
+const TTS_PHONETIQUE_AIGUELONGUE = "Aig longue";
+
+/**
  * Corrections de prononciation locales pour le TTS navigateur.
  * Clé = nom d'arrêt normalisé (`normalizeStopName`), valeur = texte à prononcer.
  */
 const STOP_TTS_OVERRIDES = Object.freeze({
   [normalizeStopName("Le Grand M")]: "Le Grand t'aime",
   [normalizeStopName("CNRS - Zoo de Lunaret")]: "C N R S - Zoo de Lunaret",
+  [normalizeStopName("Aiguelongue")]: TTS_PHONETIQUE_AIGUELONGUE,
+  [normalizeStopName("Aigues Longues")]: TTS_PHONETIQUE_AIGUELONGUE,
 });
 
 /**
@@ -103,6 +111,19 @@ const STOP_TTS_REGEX_OVERRIDES = Object.freeze([
   [/\bSt\b/gi, "Saint"],
   [/\bSte\b/gi, "Sainte"],
   [/\b1er\b/gi, "premier"],
+  [/\blez\b/gi, "lèze"],
+  [/\bSaint-Éloi\b/gi, "Saintéloi"],
+  [/\bSaint-Paul\b/gi, "Saint Paul"],
+  [/\bCléophas\b/gi, "Cléophasse"],
+  [/\bEcoPôle\b/gi, "Écopole"],
+  [/\bTonnelles\b/gi, "Tonel"],
+  [/\bPilory\b/gi, "Pilori"],
+  [/\bCelleneuve\b/gi, "Selneuve"],
+  [/\bPeyrou\b/gi, "Pérou"],
+  [/\bFont-Colombes\b/gi, "Foncolombes"],
+  [/\bMontcalm\b/gi, "Mon calme"],
+  [/\b1945\b/gi, "mille neuf cent quarante-cinq"],
+  [/\bAiguelongue\b/gi, TTS_PHONETIQUE_AIGUELONGUE],
 ]);
 
 function getStopSpeechName(stopName) {
@@ -691,10 +712,15 @@ function displayLineLabel(item) {
  * @param {string|null|undefined} branchLetter « A » ou « B » (boucle T4 / même base de headsign), sinon omis. */
 function routePlannerTakeLinePhrase(routeCode, branchLetter) {
   const code = String(routeCode || "").trim();
-  const br = branchLetter == null ? "" : String(branchLetter).trim().toUpperCase().slice(0, 1);
+  const br =
+    branchLetter == null
+      ? ""
+      : String(branchLetter).trim().toUpperCase().slice(0, 1);
   const suffix = br === "A" || br === "B" ? br : "";
   const items = Array.isArray(lineOptions) ? lineOptions : [];
-  const item = items.find((x) => String(x?.route_short_name || "").trim() === code);
+  const item = items.find(
+    (x) => String(x?.route_short_name || "").trim() === code,
+  );
   const lab = item ? displayLineLabel(item) : code;
   if (item && isTramDisplayLine(item)) {
     return suffix ? `le ${lab}${suffix}` : `le ${lab}`;
@@ -781,7 +807,9 @@ function sortLineItemsForDisplay(items) {
 function isRoutePlannerTramNavetteFirstRowItem(item) {
   return (
     isTramDisplayLine(item) ||
-    String(item.route_short_name || "").trim().toUpperCase() === "A"
+    String(item.route_short_name || "")
+      .trim()
+      .toUpperCase() === "A"
   );
 }
 
@@ -928,7 +956,8 @@ async function getOneShotGeolocationLatLngOrNull() {
         (pos) => {
           const lat = Number(pos?.coords?.latitude);
           const lon = Number(pos?.coords?.longitude);
-          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return resolve(null);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon))
+            return resolve(null);
           resolve([lat, lon]);
         },
         () => resolve(null),
@@ -1125,7 +1154,9 @@ function populateRoutePlannerSelects() {
       [...countByName.entries()].filter(([, ct]) => ct > 1).map(([n]) => n),
     );
 
-    const stopsIdSet = new Set(stops.map((s) => String(s.stop_id || "").trim()));
+    const stopsIdSet = new Set(
+      stops.map((s) => String(s.stop_id || "").trim()),
+    );
     const headsignByStopId = new Map();
     for (const sid of stopsIdSet) headsignByStopId.set(sid, new Set());
     const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
@@ -1164,7 +1195,9 @@ function populateRoutePlannerSelects() {
   };
   const syncActiveLinePill = () => {
     const active = String(els.line.value || "").trim();
-    for (const btn of els.linePills.querySelectorAll(".tam-route-ui__linePillBtn")) {
+    for (const btn of els.linePills.querySelectorAll(
+      ".tam-route-ui__linePillBtn",
+    )) {
       if (!(btn instanceof HTMLElement)) continue;
       const code = String(btn.dataset.routeCode || "");
       btn.classList.toggle("is-active", code === active);
@@ -1218,8 +1251,7 @@ function describeRouteResult(destStopId, dRes, opts) {
     const b = idx.stopsById.get(toStopId);
     const hsRaw = String(rideHeadsign || "").trim();
     const isFinalRide = toStopId === destStopId;
-    const hsRawEffective =
-      omitFinalRideDirection && isFinalRide ? "" : hsRaw;
+    const hsRawEffective = omitFinalRideDirection && isFinalRide ? "" : hsRaw;
     const branchPair = routePlannerHeadsignBranchPairMeta(
       currentRide,
       hsRawEffective,
@@ -1241,9 +1273,7 @@ function describeRouteResult(destStopId, dRes, opts) {
     const arrivedByWalk =
       lastWalkArrivalStopId && rideFrom === lastWalkArrivalStopId;
     const sameHubAsLastAlight =
-      !!lastAlightNameKey &&
-      !!alightNameK &&
-      alightNameK === lastAlightNameKey;
+      !!lastAlightNameKey && !!alightNameK && alightNameK === lastAlightNameKey;
     const omitMontez = arrivedByWalk || sameHubAsLastAlight;
     lastWalkArrivalStopId = null;
     if (hsRawEffective) {
@@ -1416,12 +1446,15 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
           fromLon = fromStop.lon;
         }
       }
-      const latlngs =
-        (await fetchOsrmFootRouteGeojson(fromLat, fromLon, toStop.lat, toStop.lon)) ||
-        [
-          [fromLat, fromLon],
-          [toStop.lat, toStop.lon],
-        ];
+      const latlngs = (await fetchOsrmFootRouteGeojson(
+        fromLat,
+        fromLon,
+        toStop.lat,
+        toStop.lon,
+      )) || [
+        [fromLat, fromLon],
+        [toStop.lat, toStop.lon],
+      ];
       addRoutePolyline(latlngs, {
         // Tous les déplacements à pied (marche + changement de quai) : pointillé bleu.
         color: "#0ea5e9",
@@ -1456,13 +1489,19 @@ async function drawRouteOnMapFromResult(gpsLat, gpsLon, dRes) {
           ? e.patternEndpoints
           : null;
       const geom = endpoints
-        ? getNetworkGeometryForRide(e.route, { lat: endpoints[0][0], lon: endpoints[0][1] }, { lat: endpoints[1][0], lon: endpoints[1][1] })
+        ? getNetworkGeometryForRide(
+            e.route,
+            { lat: endpoints[0][0], lon: endpoints[0][1] },
+            { lat: endpoints[1][0], lon: endpoints[1][1] },
+          )
         : getNetworkGeometryForRide(e.route, fromStop, toStop);
       const rideCoords = geom
         ? sliceCoordsBetweenStops(geom.coords, fromStop, toStop)
         : null;
       const safeRideCoords =
-        rideCoords && !polylineHasSuspiciousJumps(rideCoords) ? rideCoords : null;
+        rideCoords && !polylineHasSuspiciousJumps(rideCoords)
+          ? rideCoords
+          : null;
       addRoutePolyline(
         safeRideCoords || [
           [fromStop.lat, fromStop.lon],
@@ -1827,7 +1866,11 @@ function ensureStopComboboxSelectionFromInput() {
   const q = String(els.stopInput.value || "").trim();
   if (!q) return;
   const idx = buildRoutePlannerIndexes();
-  const scored = getStopComboboxScoredEntries(q, idx, tamRouteUiCachedGpsLatLng);
+  const scored = getStopComboboxScoredEntries(
+    q,
+    idx,
+    tamRouteUiCachedGpsLatLng,
+  );
   if (!scored || !scored.length) return;
   const first = scored[0].opt;
   els.stop.value = first.value;
@@ -1887,14 +1930,20 @@ function setupStopCombobox() {
 
   // mousedown plutôt que click : évite que le blur de l'input ne ferme la listbox avant le clic.
   els.stopListbox.addEventListener("mousedown", (ev) => {
-    const li = ev.target instanceof Element ? ev.target.closest('[role="option"]') : null;
+    const li =
+      ev.target instanceof Element
+        ? ev.target.closest('[role="option"]')
+        : null;
     if (!li) return;
     ev.preventDefault();
     commitStopComboboxOption(li);
   });
   // Touche : iOS/Android, certains navigateurs ne bouchent pas le click via mousedown.
   els.stopListbox.addEventListener("click", (ev) => {
-    const li = ev.target instanceof Element ? ev.target.closest('[role="option"]') : null;
+    const li =
+      ev.target instanceof Element
+        ? ev.target.closest('[role="option"]')
+        : null;
     if (!li) return;
     commitStopComboboxOption(li);
   });
@@ -1916,9 +1965,18 @@ function setupStopCombobox() {
     capture: true,
     passive: true,
   });
-  if (window.visualViewport && typeof window.visualViewport.addEventListener === "function") {
-    window.visualViewport.addEventListener("resize", positionStopComboboxListbox);
-    window.visualViewport.addEventListener("scroll", positionStopComboboxListbox);
+  if (
+    window.visualViewport &&
+    typeof window.visualViewport.addEventListener === "function"
+  ) {
+    window.visualViewport.addEventListener(
+      "resize",
+      positionStopComboboxListbox,
+    );
+    window.visualViewport.addEventListener(
+      "scroll",
+      positionStopComboboxListbox,
+    );
   }
 }
 
@@ -2034,7 +2092,9 @@ function setupTamRoutePlannerUi() {
     }
     const lineStopId = String(els.lineStop.value || "").trim();
     const set = idx.stopsByRoute.get(lineCode) || new Set();
-    const candidates = [...set].map((sid) => idx.stopsById.get(sid)).filter(Boolean);
+    const candidates = [...set]
+      .map((sid) => idx.stopsById.get(sid))
+      .filter(Boolean);
     if (!candidates.length) {
       els.result.textContent = "Ligne indisponible dans les données.";
       return;
@@ -2047,7 +2107,9 @@ function setupTamRoutePlannerUi() {
     } else {
       // Objectif : atteindre la ligne (n’importe quel quai de la ligne), au plus vite,
       // sans “voyager” sur la ligne cible (la personne choisit ensuite sa direction).
-      const goalSet = new Set([...set].map((sid) => String(sid || "").trim()).filter(Boolean));
+      const goalSet = new Set(
+        [...set].map((sid) => String(sid || "").trim()).filter(Boolean),
+      );
       res = dijkstraRoutePlanner("__gps__", goalSet, walkEdges, {
         forbiddenRideRoutes: [lineCode],
       });
@@ -2057,12 +2119,16 @@ function setupTamRoutePlannerUi() {
     const head = lineStopId
       ? `Rejoindre la ligne ${lineCode} vers ${target?.stop_name || "l’arrêt"}`
       : `Rejoindre la ligne ${lineCode} (au plus rapide)`;
-    els.result.textContent = `${head}\n\n${describeRouteResult(targetId || lineStopId, res, {
-      // En mode « Peu importe l’arrêt », on doit quand même indiquer le sens
-      // des lignes empruntées (ex. ligne 11). La ligne cible est déjà interdite
-      // dans le graphe, donc on n’a pas besoin de masquer la direction du “dernier trajet”.
-      omitFinalRideDirection: false,
-    })}`;
+    els.result.textContent = `${head}\n\n${describeRouteResult(
+      targetId || lineStopId,
+      res,
+      {
+        // En mode « Peu importe l’arrêt », on doit quand même indiquer le sens
+        // des lignes empruntées (ex. ligne 11). La ligne cible est déjà interdite
+        // dans le graphe, donc on n’a pas besoin de masquer la direction du “dernier trajet”.
+        omitFinalRideDirection: false,
+      },
+    )}`;
     await drawRouteOnMapFromResult(lat, lon, res);
     const destName = target?.stop_name || "";
     setContextBarPayload({
@@ -2170,7 +2236,8 @@ function buildRoutePlannerIndexes() {
       const nm = String(st?.stop_name || st?.name || "").trim();
       const lat = Number(st?.lat);
       const lon = Number(st?.lon);
-      if (!sid || !nm || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      if (!sid || !nm || !Number.isFinite(lat) || !Number.isFinite(lon))
+        continue;
       if (!stopsById.has(sid)) {
         stopsById.set(sid, { stop_id: sid, stop_name: nm, lat, lon });
       }
@@ -2191,16 +2258,21 @@ function buildRoutePlannerIndexes() {
     return /^T\d+/i.test(String(code || "").trim());
   }
   function tramSortKey(code) {
-    const c = String(code || "").trim().toUpperCase();
+    const c = String(code || "")
+      .trim()
+      .toUpperCase();
     const m = /^T(\d+)/.exec(c);
     if (!m) return 999;
     const n = Number(m[1]);
     return Number.isFinite(n) ? n : 999;
   }
   function routeSortKey(code) {
-    const c = String(code || "").trim().toUpperCase();
+    const c = String(code || "")
+      .trim()
+      .toUpperCase();
     if (isTramCode(c)) return { group: 0, n: tramSortKey(c), s: c };
-    if (c.includes("NAV") || c.includes("NAVETTE")) return { group: 1, n: 0, s: c };
+    if (c.includes("NAV") || c.includes("NAVETTE"))
+      return { group: 1, n: 0, s: c };
     const n = Number.parseInt(c, 10);
     if (Number.isFinite(n)) return { group: 2, n, s: c };
     return { group: 3, n: 0, s: c };
@@ -2251,7 +2323,14 @@ function buildRoutePlannerIndexes() {
       return ka.s.localeCompare(kb.s, "fr");
     });
     return arr
-      .map((c) => routeMetaByCode.get(c) || { route_short_name: c, route_color: "", route_type: "" })
+      .map(
+        (c) =>
+          routeMetaByCode.get(c) || {
+            route_short_name: c,
+            route_color: "",
+            route_type: "",
+          },
+      )
       .filter(Boolean);
   }
 
@@ -2458,11 +2537,15 @@ function buildRoutePlannerGraph() {
       kind === "ride" ? String(headsign == null ? "" : headsign).trim() : "";
     const brRaw =
       kind === "ride"
-        ? String(branchLetter == null ? "" : branchLetter).trim().toUpperCase()
+        ? String(branchLetter == null ? "" : branchLetter)
+            .trim()
+            .toUpperCase()
         : "";
     const brOk = brRaw === "A" || brRaw === "B" ? brRaw : "";
     const pe =
-      kind === "ride" && Array.isArray(patternEndpoints) && patternEndpoints.length === 2
+      kind === "ride" &&
+      Array.isArray(patternEndpoints) &&
+      patternEndpoints.length === 2
         ? patternEndpoints
         : null;
     adj.get(from).push({
@@ -2523,7 +2606,12 @@ function buildRoutePlannerGraph() {
   return routePlannerGraphCache;
 }
 
-function dijkstraRoutePlanner(startKey, goalStopIdOrSet, extraStartEdges, opts) {
+function dijkstraRoutePlanner(
+  startKey,
+  goalStopIdOrSet,
+  extraStartEdges,
+  opts,
+) {
   const o = opts || {};
   const { adj } = buildRoutePlannerGraph();
   // L’attente n’est pas modélisée : on approxime via une pénalité à chaque (ré)embarquement.
@@ -2612,7 +2700,11 @@ function dijkstraRoutePlanner(startKey, goalStopIdOrSet, extraStartEdges, opts) 
 
     const baseD = dist.get(u) ?? Infinity;
     const edges = [];
-    if (pu.stopId === startKey && Array.isArray(extraStartEdges) && !pu.routeCode) {
+    if (
+      pu.stopId === startKey &&
+      Array.isArray(extraStartEdges) &&
+      !pu.routeCode
+    ) {
       for (const e of extraStartEdges) edges.push(e);
     }
     const a = adj.get(pu.stopId) || [];
@@ -2774,7 +2866,11 @@ function showCorrespondenceDirectionPopup(stopObj, routeItem) {
   showAppMessageDialog(CORRESPONDENCE_DIALOG_TITLE, lines.join("\n").trim());
 }
 
-async function refreshCorrespondencePopupArrivals(stopObj, routeItem, targetEl) {
+async function refreshCorrespondencePopupArrivals(
+  stopObj,
+  routeItem,
+  targetEl,
+) {
   if (!(targetEl instanceof HTMLElement)) return;
   const stopId = resolveRealtimeStopIdForRoute(stopObj, routeItem);
   const routeCode = String(routeItem?.route_short_name || "").trim();
@@ -2977,7 +3073,9 @@ function showCorrespondenceListPopup(stopObj, routeItems, title) {
       })),
     };
   });
-  if (showTabbedCorrespondenceDialog(CORRESPONDENCE_DIALOG_TITLE, "", entries)) {
+  if (
+    showTabbedCorrespondenceDialog(CORRESPONDENCE_DIALOG_TITLE, "", entries)
+  ) {
     return;
   }
   const lines = [title, `Arrêt : ${stopName}`, ""];
@@ -3549,7 +3647,9 @@ function lineItemByRouteCodeOrNull(routeCode) {
   }
   const pats = data?.patterns;
   if (Array.isArray(pats) && pats.length) {
-    const p = pats.find((it) => String(it?.route_short_name || "").trim() === code);
+    const p = pats.find(
+      (it) => String(it?.route_short_name || "").trim() === code,
+    );
     if (p) {
       return {
         route_short_name: String(p.route_short_name || "").trim(),
@@ -4040,6 +4140,13 @@ function speakProchainArret(nom, forTest) {
     // ignore
   }
   const spokenName = getStopSpeechName(nom);
+  if (forTest && typeof console !== "undefined" && console.info) {
+    console.info("[TTS] prochain arrêt", {
+      affiche: nom,
+      prononce: spokenName,
+      voix: voice ? voice.name : "(auto)",
+    });
+  }
   const u = new SpeechSynthesisUtterance(`Prochain arrêt, ${spokenName}.`);
   if (voice) {
     u.voice = voice;
@@ -4191,7 +4298,10 @@ function resetMapForNewContext(kind) {
     ) {
       manualDetourOverlays.clearLayers();
     }
-    if (typeof manualDraftLayer !== "undefined" && manualDraftLayer?.clearLayers) {
+    if (
+      typeof manualDraftLayer !== "undefined" &&
+      manualDraftLayer?.clearLayers
+    ) {
       manualDraftLayer.clearLayers();
     }
   } catch (e) {
@@ -4213,7 +4323,10 @@ function resetMapForNewContext(kind) {
     ) {
       provisionalStopsLayer.clearLayers();
     }
-    if (typeof stopToStopLayer !== "undefined" && stopToStopLayer?.clearLayers) {
+    if (
+      typeof stopToStopLayer !== "undefined" &&
+      stopToStopLayer?.clearLayers
+    ) {
       stopToStopLayer.clearLayers();
       stopToStopLayer.__tamSegIdx = -1;
     }
@@ -4960,7 +5073,10 @@ function maybePeriodicTamStopRailCurrentLineRealtime() {
     return;
   }
   const now = Date.now();
-  if (now - tamStopRailCurrentLineRtPeriodicAt < TAM_STOP_RAIL_LINE_RT_PERIODIC_MS)
+  if (
+    now - tamStopRailCurrentLineRtPeriodicAt <
+    TAM_STOP_RAIL_LINE_RT_PERIODIC_MS
+  )
     return;
   tamStopRailCurrentLineRtPeriodicAt = now;
   scheduleTamStopRailCurrentLineRealtime();
@@ -4972,7 +5088,10 @@ function collectTamStopRailCurrentLineRtJobs() {
   const route = String(currentPattern?.route_short_name || "").trim();
   if (!route) return [];
   const k = currentStopIndexForDistance(distanceAlongPathMeters);
-  const hi = Math.min(stops.length - 1, k + TAM_STOP_RAIL_LINE_RT_MAX_STOPS_AHEAD);
+  const hi = Math.min(
+    stops.length - 1,
+    k + TAM_STOP_RAIL_LINE_RT_MAX_STOPS_AHEAD,
+  );
   /** @type {{ stopIdx: number, stopId: string, route: string }[]} */
   const jobs = [];
   for (let idx = k + 1; idx <= hi; idx++) {
@@ -5971,7 +6090,11 @@ function setupMapMissionHud() {
 function refreshMapRouteHudVoiceBtn() {
   const btn = document.getElementById("mapRouteHudVoiceBtn");
   const root = document.getElementById("mapRouteHud");
-  if (!btn || !voiceEnabledEl || root?.classList.contains("map-mission-hud--inactive")) {
+  if (
+    !btn ||
+    !voiceEnabledEl ||
+    root?.classList.contains("map-mission-hud--inactive")
+  ) {
     return;
   }
   const on = !!voiceEnabledEl.checked;
@@ -5998,7 +6121,11 @@ function syncMapRouteHudHeadingCheckboxFromMain() {
 function refreshMapRouteHudState() {
   const root = document.getElementById("mapRouteHud");
   const pauseB = document.getElementById("mapRouteHudPauseBtn");
-  if (!root || !pauseB || root.classList.contains("map-mission-hud--inactive")) {
+  if (
+    !root ||
+    !pauseB ||
+    root.classList.contains("map-mission-hud--inactive")
+  ) {
     return;
   }
   const showPause = !!routeGuidanceRunning;
@@ -6035,7 +6162,9 @@ function refreshMapHudToggleIconForRoot(rootSel, toggleId) {
   if (!root || !toggleB) return;
   const collapsed = root.classList.contains("map-mission-hud--collapsed");
   toggleB.innerHTML = collapsed ? HUD_CHEVRON_L : HUD_CHEVRON_R;
-  toggleB.title = collapsed ? "Afficher les commandes" : "Masquer les commandes";
+  toggleB.title = collapsed
+    ? "Afficher les commandes"
+    : "Masquer les commandes";
 }
 
 function refreshMapRouteHudNextStepLabel() {
@@ -6230,7 +6359,10 @@ function maybeAdvanceRouteGuidance() {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
   const d = L.latLng(lat, lon).distanceTo(L.latLng(cur.lat, cur.lon));
   if (d > 45) return;
-  const nextIdx = Math.min(routeGuidanceSteps.length - 1, routeGuidanceStepIdx + 1);
+  const nextIdx = Math.min(
+    routeGuidanceSteps.length - 1,
+    routeGuidanceStepIdx + 1,
+  );
   if (nextIdx === routeGuidanceStepIdx) return;
   routeGuidanceStepIdx = nextIdx;
   refreshMapRouteHudNextStepLabel();
@@ -6985,7 +7117,7 @@ voiceTestBtn.addEventListener("click", () => {
     }
     return;
   }
-  speakProchainArret("Test, Place de l'Europe", true);
+  speakProchainArret("Aiguelongue", true);
 });
 
 initVocalUI();
