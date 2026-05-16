@@ -1075,15 +1075,28 @@
         background: #2f3a47;
         border-radius: 8px;
       }
-      .recap-toggle-btn {
+      .header-formation-btn {
         width: auto;
         padding: 8px 10px;
         font-size: 13px;
-        background: #4a5563;
-        border-radius: 8px;
-      }
-      .recap-toggle-btn.active {
         background: #005ca9;
+        border-radius: 8px;
+        color: #fff;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+      .header-formation-btn:hover {
+        filter: brightness(1.06);
+        color: #fff;
+      }
+      .header-formation-btn:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: 2px;
       }
       .control-panel {
         display: none;
@@ -1968,9 +1981,16 @@
         <div class="burger-row">
           <h2 class="title-inline">SAE TAM</h2>
           <div class="header-actions">
-            <button id="recapToggleBtn" type="button" class="recap-toggle-btn">
-              Récap
-            </button>
+            <a
+              id="formationLinkBtn"
+              class="header-formation-btn"
+              href="https://djielo.github.io/TAM_FORMATION_TRAM/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Consignes d'exploitation tram (formation TaM)"
+            >
+              Formation
+            </a>
             <button id="burgerMenuBtn" type="button" class="burger-btn">
               ☰ Menu
             </button>
