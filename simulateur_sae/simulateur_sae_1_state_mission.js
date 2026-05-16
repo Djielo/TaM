@@ -312,7 +312,6 @@ const lineSelectListbox = document.getElementById("lineSelectListbox");
 let lineListboxOpen = false;
 const controlPanelEl = document.getElementById("controlPanel");
 const mapRecapEl = document.getElementById("mapRecap");
-const recapToggleBtn = document.getElementById("recapToggleBtn");
 const burgerMenuBtn = document.getElementById("burgerMenuBtn");
 const closeMenuBtn = document.getElementById("closeMenuBtn");
 const missionTabBtn = document.getElementById("missionTabBtn");
@@ -1569,9 +1568,8 @@ function uniqueValues(arr, getter) {
 }
 
 function setRecapVisible(on) {
-  if (!mapRecapEl || !recapToggleBtn) return;
+  if (!mapRecapEl) return;
   mapRecapEl.classList.toggle("show", !!on);
-  recapToggleBtn.classList.toggle("active", !!on);
   try {
     localStorage.setItem(LS_KEY_RECAP, on ? "1" : "0");
   } catch (e) {

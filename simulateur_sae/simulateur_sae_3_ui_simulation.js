@@ -7160,10 +7160,6 @@ if (typeof tamInstallBasemapToggleControl === "function") {
   tamInstallBasemapToggleControl();
 }
 burgerMenuBtn?.addEventListener("click", () => openControlPanel());
-recapToggleBtn?.addEventListener("click", () => {
-  const isOn = !!mapRecapEl?.classList.contains("show");
-  setRecapVisible(!isOn);
-});
 closeMenuBtn?.addEventListener("click", closeControlPanel);
 missionTabBtn?.addEventListener("click", () => setPanelTab("mission"));
 opsTabBtn?.addEventListener("click", () => setPanelTab("ops"));
@@ -7184,12 +7180,7 @@ controlPanelEl?.addEventListener("click", (e) => {
 });
 window.addEventListener("resize", refreshMapLayout);
 window.addEventListener("orientationchange", refreshMapLayout);
-try {
-  const recapOn = localStorage.getItem(LS_KEY_RECAP);
-  setRecapVisible(recapOn === "1" || recapOn === "true");
-} catch (e) {
-  setRecapVisible(false);
-}
+setRecapVisible(false);
 refreshMapLayout();
 applyMapVisualProfile();
 
