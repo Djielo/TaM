@@ -2,7 +2,7 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-05-17T11:09:49Z",
+    "generated_at": "2026-05-17T12:48:58Z",
     "dataset_digest": "8c68689c58501256eeb81066028cb7aaf746d84edace1ef077b2bfb2aedc32b8",
     "route_count": 55,
     "pattern_count": 143,
