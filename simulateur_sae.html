@@ -467,6 +467,49 @@
       .tam-personal-landmarks-control .tam-personal-landmarks-toggle--placing {
         background: #fff8e6 !important;
       }
+      .tam-personal-landmarks-control .tam-plm-labels-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        padding: 0;
+        text-decoration: none;
+        color: #1b1f24;
+        font-size: 14px;
+        font-weight: 700;
+        font-family: inherit;
+        border-top: 1px solid #ccc;
+      }
+      .tam-personal-landmarks-control .tam-plm-labels-toggle.is-on {
+        background: #e8f2fa;
+        color: #005ca9;
+      }
+      .tam-plm-map-label {
+        background: transparent;
+        border: none;
+        pointer-events: none;
+      }
+      .tam-plm-map-label__card {
+        display: inline-block;
+        max-width: 220px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: #fff;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+        font-size: 12px;
+        line-height: 1.35;
+        color: #1b1f24;
+        text-align: left;
+      }
+      .tam-plm-map-label__card strong {
+        display: block;
+        font-weight: 700;
+      }
+      .tam-plm-map-label__card p {
+        margin: 2px 0 0;
+        font-size: 11px;
+        white-space: pre-wrap;
+      }
       .tam-personal-landmark-marker {
         background: transparent;
         border: none;
@@ -3265,7 +3308,7 @@
             </p>
           </div>
           <p>
-            <strong>Sur la carte :</strong> aux zooms les plus proches, les voisins d’un même groupe restent alignés (grille aimantée). Glisser un repère du groupe déplace tout le groupe. Glisser un repère seul le détache du groupe.
+            <strong>Sur la carte :</strong> aux zooms les plus proches, les voisins d’un même groupe restent alignés (grille aimantée). Glisser un repère du groupe déplace tout le groupe. Glisser un repère seul le détache du groupe. Le bouton <strong>Aa</strong> (sous le bouton repères) affiche ou masque les noms et descriptions sur la carte.
           </p>
         </div>
         <div class="app-message-dialog__actions">
