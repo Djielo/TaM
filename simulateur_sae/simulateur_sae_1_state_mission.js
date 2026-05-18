@@ -106,6 +106,7 @@ const PLM_GRID_OFFSET_TO_SLOT = {
 let plmGroupsById = {};
 let plmMarkerById = new Map();
 let plmGroupDragSnapshot = null;
+let plmZoomLayoutRaf = 0;
 
 function plmNewLandmarkId() {
   return `plm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -196,7 +197,18 @@ function plmLandmarkDescriptionText(item) {
 
 function plmMapUsesMagneticLayout() {
   if (!map || typeof map.getZoom !== "function") return false;
-  return map.getZoom() >= PLM_MAP_MAX_ZOOM - PLM_MAGNETIC_ZOOM_FROM_MAX;
+  const z = Math.floor(map.getZoom() + 1e-6);
+  return z >= PLM_MAP_MAX_ZOOM - PLM_MAGNETIC_ZOOM_FROM_MAX;
+}
+
+function plmSlotFromPositions(originLat, originLng, memLat, memLng) {
+  if (!map) return null;
+  const p0 = map.latLngToContainerPoint(L.latLng(originLat, originLng));
+  const p1 = map.latLngToContainerPoint(L.latLng(memLat, memLng));
+  return (
+    plmNeighborSlotFromPixelDelta(p1.x - p0.x, p1.y - p0.y) ||
+    plmFindSlotKeyForDelta(memLat - originLat, memLng - originLng)
+  );
 }
 
 function plmLatLngFromSlot(pivotLat, pivotLng, slot) {
@@ -217,7 +229,10 @@ function plmLatLngFromSlotDegrees(pivotLat, pivotLng, slot) {
   return [pivotLat + pair[0], pivotLng + pair[1]];
 }
 
-/** Position affichée : une case depuis le parent (chaîne locale, pas de pivot global). */
+/**
+ * Position affichée : grille 30 px locale — chaque repère est à une case
+ * du parent dont il a été ajouté (parentId + direction), chaîne récursive.
+ */
 function plmDisplayLatLngForLandmark(item, visiting) {
   if (!item || !plmIsValidPlmLatLng(item.lat, item.lng)) {
     return { lat: item?.lat, lng: item?.lng };
@@ -242,6 +257,37 @@ function plmDisplayLatLngForLandmark(item, visiting) {
     return { lat: item.lat, lng: item.lng };
   }
   return { lat: pos[0], lng: pos[1] };
+}
+
+function plmApplyMagneticLayoutForGroup(groupId) {
+  if (!plmMapUsesMagneticLayout()) return false;
+  let changed = false;
+  for (const mem of plmMembersOfGroup(groupId)) {
+    const disp = plmDisplayLatLngForLandmark(mem);
+    const idx = personalLandmarksList.findIndex((x) => x.id === mem.id);
+    if (idx < 0) continue;
+    const cur = personalLandmarksList[idx];
+    if (
+      Math.abs(cur.lat - disp.lat) > 1e-9 ||
+      Math.abs(cur.lng - disp.lng) > 1e-9
+    ) {
+      personalLandmarksList[idx] = { ...cur, lat: disp.lat, lng: disp.lng };
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function plmApplyMagneticLayoutForAllGroups() {
+  if (!plmMapUsesMagneticLayout()) return false;
+  const seen = new Set();
+  let changed = false;
+  for (const item of personalLandmarksList) {
+    if (!item.groupId || seen.has(item.groupId)) continue;
+    seen.add(item.groupId);
+    if (plmApplyMagneticLayoutForGroup(item.groupId)) changed = true;
+  }
+  return changed;
 }
 
 /** Case voisine immédiate (grille ~30 px) par rapport au centre affiché. */
@@ -463,6 +509,9 @@ function plmCommitDialogSave(r) {
       r.iconId,
       r.colorHex,
     );
+    if (finalGroupId && plmMapUsesMagneticLayout()) {
+      plmApplyMagneticLayoutForGroup(finalGroupId);
+    }
     if (!finalGroupId && !slots.length) {
       plmRemoveGroupIfEmpty(prev.groupId);
     }
@@ -496,6 +545,9 @@ function plmCommitDialogSave(r) {
     r.iconId,
     r.colorHex,
   );
+  if (groupId && plmMapUsesMagneticLayout()) {
+    plmApplyMagneticLayoutForGroup(groupId);
+  }
   return { ok: true, added };
 }
 
@@ -1419,6 +1471,26 @@ function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
  * (L’ancien « maintien avant drag » + désactivation du drag du marqueur créait des courses
  * souris / tactile / carte et un comportement alterné.)
  */
+function plmSyncGroupsLayoutToZoom(persist) {
+  if (plmMapUsesMagneticLayout()) {
+    plmApplyMagneticLayoutForAllGroups();
+    if (persist !== false) {
+      savePersonalLandmarksToStorage();
+    }
+  }
+  redrawPersonalLandmarksLayer();
+}
+
+function plmScheduleMagneticRedraw() {
+  if (plmZoomLayoutRaf) cancelAnimationFrame(plmZoomLayoutRaf);
+  plmZoomLayoutRaf = requestAnimationFrame(() => {
+    plmZoomLayoutRaf = 0;
+    if (plmMapUsesMagneticLayout()) {
+      redrawPersonalLandmarksLayer();
+    }
+  });
+}
+
 function redrawPersonalLandmarksLayer() {
   personalLandmarksLayer.clearLayers();
   plmMarkerById = new Map();
@@ -1969,20 +2041,18 @@ loadPersonalLandmarksFromStorage();
 if (plmSanitizeParentLinks()) {
   savePersonalLandmarksToStorage();
 }
-redrawPersonalLandmarksLayer();
+plmSyncGroupsLayoutToZoom(true);
 
 let marker = L.marker([43.61, 3.88], {
   icon: navIcon,
   zIndexOffset: 800,
 }).addTo(map);
 map.on("zoom", () => {
-  if (plmMapUsesMagneticLayout()) {
-    redrawPersonalLandmarksLayer();
-  }
+  plmScheduleMagneticRedraw();
 });
 map.on("zoomend", () => {
   applyMapVisualProfile();
-  redrawPersonalLandmarksLayer();
+  plmSyncGroupsLayoutToZoom(true);
 });
 
 function normalizeProvisionalStopNameInput(raw) {
