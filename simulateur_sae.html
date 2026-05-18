@@ -749,6 +749,55 @@
         box-sizing: border-box;
         resize: vertical;
       }
+      .tam-plm-slot-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        max-width: 168px;
+        margin: 0 auto 8px;
+      }
+      .tam-plm-slot-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+      }
+      .tam-plm-slot-cell--center {
+        font-size: 10px;
+        font-weight: 600;
+        color: #4a5568;
+        text-align: center;
+        line-height: 1.15;
+        padding: 2px;
+      }
+      .tam-plm-slot-btn {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 1px solid #ccd3db;
+        border-radius: 8px;
+        background: #f4f6f8;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        color: #005ca9;
+      }
+      .tam-plm-slot-btn:hover:not(:disabled) {
+        background: #e8f0fa;
+        border-color: #005ca9;
+      }
+      .tam-plm-slot-btn.is-active {
+        background: #005ca9;
+        border-color: #005ca9;
+        color: #fff;
+      }
+      .tam-plm-slot-btn:disabled {
+        cursor: default;
+        color: #9aa3ad;
+        background: #eceff3;
+        border-color: #dde3ea;
+      }
       .app-personal-landmark-dialog .tam-plm-dialog-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -3110,6 +3159,18 @@
           role="group"
           aria-labelledby="appPersonalLandmarkDialogColorHeading"
         ></div>
+        <p
+          class="app-personal-landmark-dialog__label"
+          id="appPersonalLandmarkDialogGridHeading"
+        >
+          Voisins sur la carte (8 directions)
+        </p>
+        <div
+          id="appPersonalLandmarkDialogSlotGrid"
+          class="tam-plm-slot-grid"
+          role="group"
+          aria-labelledby="appPersonalLandmarkDialogGridHeading"
+        ></div>
         <label
           for="appPersonalLandmarkDialogName"
           class="app-personal-landmark-dialog__label"
@@ -3197,11 +3258,14 @@
               <strong>Nom du repère</strong> — obligatoire.
             </p>
             <p>
-              <strong>Description</strong> — facultative.
+              <strong>Description</strong> — facultative ; partagée par tout le groupe si vous ajoutez des voisins.
+            </p>
+            <p>
+              <strong>Voisins (grille + / −)</strong> — un « + » ajoute un repère dans cette direction (même nom de groupe). Un « − » indique qu’un voisin existe déjà de ce côté.
             </p>
           </div>
           <p>
-            <strong>Sur la carte : saisissez le pictogramme du repère et faites-le glisser pour le déplacer (la carte ne défile pas pendant le glisser).</strong>
+            <strong>Sur la carte :</strong> aux zooms les plus proches, les voisins d’un même groupe restent alignés (grille aimantée). Glisser un repère du groupe déplace tout le groupe. Glisser un repère seul le détache du groupe.
           </p>
         </div>
         <div class="app-message-dialog__actions">

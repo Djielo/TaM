@@ -44,6 +44,460 @@ const PLM_DEFAULT_COLOR_LEGACY = "#c62828";
 /** Décalage lat/lng (degrés) pour placer une copie visible à côté du repère d’origine. */
 const PLM_DUPLICATE_OFFSET_LAT = -0.00022;
 const PLM_DUPLICATE_OFFSET_LNG = 0.00032;
+const LS_KEY_PLM_GROUPS = "tam_personal_landmark_groups_v1";
+const PLM_SLOT_SPACING_LAT = 0.00022;
+const PLM_SLOT_SPACING_LNG = 0.00032;
+const PLM_SLOT_MATCH_THRESHOLD = 8e-11;
+const PLM_MAP_MAX_ZOOM = 19;
+const PLM_MAGNETIC_ZOOM_FROM_MAX = 2;
+const PLM_MAGNETIC_SPACING_PX = 30;
+const PLM_SLOT_DELTA = {
+  n: [PLM_SLOT_SPACING_LAT, 0],
+  ne: [PLM_SLOT_SPACING_LAT, PLM_SLOT_SPACING_LNG],
+  e: [0, PLM_SLOT_SPACING_LNG],
+  se: [-PLM_SLOT_SPACING_LAT, PLM_SLOT_SPACING_LNG],
+  s: [-PLM_SLOT_SPACING_LAT, 0],
+  sw: [-PLM_SLOT_SPACING_LAT, -PLM_SLOT_SPACING_LNG],
+  w: [0, -PLM_SLOT_SPACING_LNG],
+  nw: [PLM_SLOT_SPACING_LAT, -PLM_SLOT_SPACING_LNG],
+};
+const PLM_SLOT_LABEL = {
+  n: "Nord",
+  ne: "Nord-est",
+  e: "Est",
+  se: "Sud-est",
+  s: "Sud",
+  sw: "Sud-ouest",
+  w: "Ouest",
+  nw: "Nord-ouest",
+};
+const PLM_SLOT_GRID_ORDER = [
+  "nw",
+  "n",
+  "ne",
+  "w",
+  "c",
+  "e",
+  "sw",
+  "s",
+  "se",
+];
+const PLM_SLOT_PIXEL_DIR = {
+  n: [0, -1],
+  ne: [1, -1],
+  e: [1, 0],
+  se: [1, 1],
+  s: [0, 1],
+  sw: [-1, 1],
+  w: [-1, 0],
+  nw: [-1, -1],
+};
+const PLM_GRID_OFFSET_TO_SLOT = {
+  "-1,-1": "nw",
+  "0,-1": "n",
+  "1,-1": "ne",
+  "-1,0": "w",
+  "1,0": "e",
+  "-1,1": "sw",
+  "0,1": "s",
+  "1,1": "se",
+};
+
+let plmGroupsById = {};
+let plmMarkerById = new Map();
+let plmGroupDragSnapshot = null;
+
+function plmNewLandmarkId() {
+  return `plm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function plmGenerateGroupId() {
+  return `plmg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function loadPlmGroupsFromStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_PLM_GROUPS);
+    plmGroupsById = raw ? JSON.parse(raw) : {};
+    if (!plmGroupsById || typeof plmGroupsById !== "object") {
+      plmGroupsById = {};
+    }
+  } catch (e) {
+    plmGroupsById = {};
+  }
+}
+
+function savePlmGroupsToStorage() {
+  try {
+    localStorage.setItem(LS_KEY_PLM_GROUPS, JSON.stringify(plmGroupsById));
+  } catch (e) {
+    // ignore
+  }
+}
+
+function plmGetGroupDescription(groupId) {
+  if (!groupId) return "";
+  return String(plmGroupsById[groupId]?.description ?? "").trim();
+}
+
+function plmSetGroupDescription(groupId, text) {
+  if (!groupId) return;
+  const t = String(text ?? "").trim();
+  if (!t) {
+    if (plmGroupsById[groupId]) {
+      const next = { ...plmGroupsById[groupId] };
+      delete next.description;
+      if (Object.keys(next).length === 0) delete plmGroupsById[groupId];
+      else plmGroupsById[groupId] = next;
+    }
+  } else {
+    plmGroupsById[groupId] = {
+      ...(plmGroupsById[groupId] || {}),
+      description: t,
+    };
+  }
+  savePlmGroupsToStorage();
+}
+
+function plmRemoveGroupIfEmpty(groupId) {
+  if (!groupId) return;
+  if (plmMembersOfGroup(groupId).length === 0) {
+    delete plmGroupsById[groupId];
+    savePlmGroupsToStorage();
+  }
+}
+
+function plmMembersOfGroup(groupId) {
+  if (!groupId) return [];
+  return personalLandmarksList.filter((x) => x.groupId === groupId);
+}
+
+function plmSyncGroupMemberNames(groupId, name) {
+  const n = String(name ?? "").trim();
+  if (!groupId || !n) return;
+  for (let i = 0; i < personalLandmarksList.length; i++) {
+    if (personalLandmarksList[i].groupId === groupId) {
+      personalLandmarksList[i] = {
+        ...personalLandmarksList[i],
+        name: n,
+        description: "",
+      };
+    }
+  }
+}
+
+function plmLandmarkDescriptionText(item) {
+  if (!item) return "";
+  if (item.groupId) {
+    return plmGetGroupDescription(item.groupId);
+  }
+  return String(item.description ?? "").trim();
+}
+
+function plmMapUsesMagneticLayout() {
+  if (!map || typeof map.getZoom !== "function") return false;
+  return map.getZoom() >= PLM_MAP_MAX_ZOOM - PLM_MAGNETIC_ZOOM_FROM_MAX;
+}
+
+function plmLatLngFromSlot(pivotLat, pivotLng, slot) {
+  const dir = PLM_SLOT_PIXEL_DIR[slot];
+  if (!dir || !map) return null;
+  const p0 = map.latLngToContainerPoint(L.latLng(pivotLat, pivotLng));
+  const p1 = L.point(
+    p0.x + dir[0] * PLM_MAGNETIC_SPACING_PX,
+    p0.y + dir[1] * PLM_MAGNETIC_SPACING_PX,
+  );
+  const ll = map.containerPointToLatLng(p1);
+  return [ll.lat, ll.lng];
+}
+
+function plmLatLngFromSlotDegrees(pivotLat, pivotLng, slot) {
+  const pair = PLM_SLOT_DELTA[slot];
+  if (!pair) return null;
+  return [pivotLat + pair[0], pivotLng + pair[1]];
+}
+
+/** Position affichée : une case depuis le parent (chaîne locale, pas de pivot global). */
+function plmDisplayLatLngForLandmark(item, visiting) {
+  if (!item || !plmIsValidPlmLatLng(item.lat, item.lng)) {
+    return { lat: item?.lat, lng: item?.lng };
+  }
+  const parentId = String(item.parentId ?? "").trim();
+  const slot = String(item.slot ?? "").trim();
+  if (!plmMapUsesMagneticLayout() || !parentId || !slot) {
+    return { lat: item.lat, lng: item.lng };
+  }
+  const seen = visiting || new Set();
+  if (seen.has(item.id)) {
+    return { lat: item.lat, lng: item.lng };
+  }
+  seen.add(item.id);
+  const parent = personalLandmarksList.find((x) => x.id === parentId);
+  if (!parent) {
+    return { lat: item.lat, lng: item.lng };
+  }
+  const pp = plmDisplayLatLngForLandmark(parent, seen);
+  const pos = plmLatLngFromSlot(pp.lat, pp.lng, slot);
+  if (!pos || !plmIsValidPlmLatLng(pos[0], pos[1])) {
+    return { lat: item.lat, lng: item.lng };
+  }
+  return { lat: pos[0], lng: pos[1] };
+}
+
+/** Case voisine immédiate (grille ~30 px) par rapport au centre affiché. */
+function plmNeighborSlotFromPixelDelta(dx, dy) {
+  const spacing = PLM_MAGNETIC_SPACING_PX;
+  const dist = Math.hypot(dx, dy);
+  if (dist < spacing * 0.35) return null;
+  const qx = Math.round(dx / spacing);
+  const qy = Math.round(dy / spacing);
+  if (qx === 0 && qy === 0) return null;
+  if (Math.abs(qx) > 1 || Math.abs(qy) > 1) return null;
+  const slot = PLM_GRID_OFFSET_TO_SLOT[`${qx},${qy}`];
+  if (!slot) return null;
+  const err = Math.hypot(dx - qx * spacing, dy - qy * spacing);
+  if (err > spacing * 0.42) return null;
+  return slot;
+}
+
+function plmFindSlotKeyForDelta(dLat, dLng) {
+  let best = null;
+  let bestDist = Infinity;
+  for (const [key, pair] of Object.entries(PLM_SLOT_DELTA)) {
+    const dist = (dLat - pair[0]) ** 2 + (dLng - pair[1]) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = key;
+    }
+  }
+  if (bestDist > PLM_SLOT_MATCH_THRESHOLD) return null;
+  return best;
+}
+
+/** Cases occupées autour du repère ouvert (positions réelles sur la carte, pas seulement parentId). */
+function plmOccupiedSlotsAroundCenter(centerLat, centerLng, excludeId, groupId) {
+  const occupied = new Set();
+  const candidates = groupId
+    ? plmMembersOfGroup(groupId)
+    : personalLandmarksList;
+  const p0 =
+    map && plmIsValidPlmLatLng(centerLat, centerLng)
+      ? map.latLngToContainerPoint(L.latLng(centerLat, centerLng))
+      : null;
+  for (const m of candidates) {
+    if (excludeId && m.id === excludeId) continue;
+    const pos = plmDisplayLatLngForLandmark(m);
+    if (!plmIsValidPlmLatLng(pos.lat, pos.lng)) continue;
+    let slot = null;
+    if (p0) {
+      const p1 = map.latLngToContainerPoint(L.latLng(pos.lat, pos.lng));
+      slot = plmNeighborSlotFromPixelDelta(p1.x - p0.x, p1.y - p0.y);
+    }
+    if (!slot) {
+      slot = plmFindSlotKeyForDelta(
+        pos.lat - centerLat,
+        pos.lng - centerLng,
+      );
+    }
+    if (slot) occupied.add(slot);
+  }
+  return occupied;
+}
+
+function plmRenderSlotGrid(container, centerLat, centerLng, groupId, landmarkId) {
+  if (!container) return;
+  container.innerHTML = "";
+  const slotActive = {};
+  const occupied = plmOccupiedSlotsAroundCenter(
+    centerLat,
+    centerLng,
+    landmarkId,
+    groupId,
+  );
+  for (const key of PLM_SLOT_GRID_ORDER) {
+    const cell = document.createElement("div");
+    cell.className = "tam-plm-slot-cell";
+    if (key === "c") {
+      cell.classList.add("tam-plm-slot-cell--center");
+      cell.textContent = "Repère actuel";
+      container.appendChild(cell);
+      continue;
+    }
+    const isOccupied = occupied.has(key);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tam-plm-slot-btn";
+    btn.dataset.plmSlot = key;
+    btn.textContent = isOccupied ? "—" : "+";
+    btn.title = PLM_SLOT_LABEL[key] || key;
+    btn.setAttribute("aria-label", PLM_SLOT_LABEL[key] || key);
+    btn.disabled = isOccupied;
+    btn.addEventListener("click", () => {
+      if (isOccupied) return;
+      slotActive[key] = !slotActive[key];
+      btn.classList.toggle("is-active", !!slotActive[key]);
+    });
+    cell.appendChild(btn);
+    container.appendChild(cell);
+  }
+  container._plmSlotActive = slotActive;
+  container._plmGetSlots = () =>
+    Object.keys(slotActive).filter((k) => slotActive[k]);
+}
+
+function plmAddChildrenFromSlots(
+  parentId,
+  centerLat,
+  centerLng,
+  groupId,
+  slots,
+  baseName,
+  iconId,
+  colorHex,
+) {
+  if (!parentId || !groupId || !slots?.length) return 0;
+  let added = 0;
+  for (const slot of slots) {
+    if (!PLM_SLOT_DELTA[slot]) continue;
+    const taken = plmOccupiedSlotsAroundCenter(
+      centerLat,
+      centerLng,
+      parentId,
+      groupId,
+    ).has(slot);
+    if (taken) continue;
+    let lat;
+    let lng;
+    if (plmMapUsesMagneticLayout()) {
+      const pos = plmLatLngFromSlot(centerLat, centerLng, slot);
+      if (!pos) continue;
+      lat = pos[0];
+      lng = pos[1];
+    } else {
+      const pos = plmLatLngFromSlotDegrees(centerLat, centerLng, slot);
+      if (!pos) continue;
+      lat = pos[0];
+      lng = pos[1];
+    }
+    if (!plmIsValidPlmLatLng(lat, lng)) continue;
+    personalLandmarksList.push({
+      id: plmNewLandmarkId(),
+      lat,
+      lng,
+      name: baseName,
+      description: "",
+      iconId: normalizePlmIconId(iconId),
+      colorHex: normalizePlmColorHex(colorHex),
+      groupId,
+      parentId,
+      slot,
+    });
+    added += 1;
+  }
+  return added;
+}
+
+function plmSanitizeParentLinks() {
+  let changed = false;
+  for (let i = 0; i < personalLandmarksList.length; i++) {
+    const row = personalLandmarksList[i];
+    const pid = String(row.parentId ?? "").trim();
+    if (!pid) continue;
+    if (!personalLandmarksList.some((x) => x.id === pid)) {
+      const next = { ...row };
+      delete next.parentId;
+      delete next.slot;
+      personalLandmarksList[i] = next;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function plmCommitDialogSave(r) {
+  if (r.action !== "save" || !r.name) return { ok: false, added: 0 };
+  const slots = Array.isArray(r.slots) ? r.slots : [];
+  let groupId = r.groupId || null;
+  if (slots.length && !groupId) {
+    groupId = plmGenerateGroupId();
+  }
+
+  if (r.id) {
+    const idx = personalLandmarksList.findIndex((x) => x.id === r.id);
+    if (idx < 0) return { ok: false, added: 0 };
+    const prev = personalLandmarksList[idx];
+    const adding = slots.length > 0;
+    const finalGroupId = groupId || prev.groupId || null;
+    const row = {
+      id: r.id,
+      lat: prev.lat,
+      lng: prev.lng,
+      name: r.name,
+      description: finalGroupId ? "" : String(r.description ?? "").trim(),
+      iconId: adding
+        ? normalizePlmIconId(prev.iconId)
+        : normalizePlmIconId(r.iconId),
+      colorHex: adding
+        ? normalizePlmColorHex(prev.colorHex)
+        : normalizePlmColorHex(r.colorHex),
+    };
+    if (finalGroupId) row.groupId = finalGroupId;
+    if (prev.parentId) {
+      row.parentId = prev.parentId;
+      row.slot = prev.slot;
+    }
+    personalLandmarksList[idx] = row;
+    if (finalGroupId) {
+      plmSetGroupDescription(finalGroupId, r.description);
+      plmSyncGroupMemberNames(finalGroupId, r.name);
+    }
+    const center = personalLandmarksList[idx];
+    const cpos = plmDisplayLatLngForLandmark(center);
+    const added = plmAddChildrenFromSlots(
+      r.id,
+      cpos.lat,
+      cpos.lng,
+      finalGroupId,
+      slots,
+      r.name,
+      r.iconId,
+      r.colorHex,
+    );
+    if (!finalGroupId && !slots.length) {
+      plmRemoveGroupIfEmpty(prev.groupId);
+    }
+    return { ok: true, added };
+  }
+
+  const newId = plmNewLandmarkId();
+  const row = {
+    id: newId,
+    lat: Number(r.lat),
+    lng: Number(r.lng),
+    name: r.name,
+    description: groupId ? "" : String(r.description ?? "").trim(),
+    iconId: normalizePlmIconId(r.iconId),
+    colorHex: normalizePlmColorHex(r.colorHex),
+  };
+  if (groupId) row.groupId = groupId;
+  personalLandmarksList.push(row);
+  if (groupId) {
+    plmSetGroupDescription(groupId, r.description);
+    plmSyncGroupMemberNames(groupId, r.name);
+  }
+  const cpos = plmDisplayLatLngForLandmark(row);
+  const added = plmAddChildrenFromSlots(
+    newId,
+    cpos.lat,
+    cpos.lng,
+    groupId,
+    slots,
+    r.name,
+    r.iconId,
+    r.colorHex,
+  );
+  return { ok: true, added };
+}
 
 function getPlmIconCatalog() {
   if (
@@ -866,7 +1320,10 @@ function loadPersonalLandmarksFromStorage() {
             if (hadLegacyVisual) {
               colorHex = PLM_DEFAULT_COLOR_LEGACY;
             }
-            return {
+            const groupIdRaw = String(x?.groupId ?? "").trim();
+            const parentIdRaw = String(x?.parentId ?? "").trim();
+            const slotRaw = String(x?.slot ?? "").trim();
+            const row = {
               id: String(x?.id || "").trim(),
               lat: Number(x?.lat),
               lng: Number(x?.lng),
@@ -875,6 +1332,10 @@ function loadPersonalLandmarksFromStorage() {
               iconId,
               colorHex,
             };
+            if (groupIdRaw) row.groupId = groupIdRaw;
+            if (parentIdRaw) row.parentId = parentIdRaw;
+            if (slotRaw) row.slot = slotRaw;
+            return row;
           })
           .filter(
             (x) =>
@@ -922,7 +1383,13 @@ function plmIsValidPlmLatLng(lat, lng) {
   );
 }
 
-function plmOnMarkerDragEnd(m, landmarkId) {
+function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
+  if (wasGroupDrag) {
+    savePersonalLandmarksToStorage();
+    redrawPersonalLandmarksLayer();
+    setGpsStatus("Groupe de repères déplacé.");
+    return;
+  }
   const ll = m.getLatLng();
   if (!plmIsValidPlmLatLng(ll.lat, ll.lng)) {
     redrawPersonalLandmarksLayer();
@@ -931,11 +1398,12 @@ function plmOnMarkerDragEnd(m, landmarkId) {
   const idx = personalLandmarksList.findIndex((x) => x.id === landmarkId);
   if (idx < 0) return;
   const row = personalLandmarksList[idx];
-  personalLandmarksList[idx] = {
-    ...row,
-    lat: ll.lat,
-    lng: ll.lng,
-  };
+  const next = { ...row, lat: ll.lat, lng: ll.lng };
+  if (row.parentId) {
+    delete next.parentId;
+    delete next.slot;
+  }
+  personalLandmarksList[idx] = next;
   savePersonalLandmarksToStorage();
   m.unbindTooltip();
   m.bindTooltip(personalLandmarksList[idx].name, {
@@ -953,15 +1421,19 @@ function plmOnMarkerDragEnd(m, landmarkId) {
  */
 function redrawPersonalLandmarksLayer() {
   personalLandmarksLayer.clearLayers();
+  plmMarkerById = new Map();
+  plmGroupDragSnapshot = null;
   for (const item of personalLandmarksList) {
     if (!plmIsValidPlmLatLng(item.lat, item.lng)) {
       continue;
     }
-    const m = L.marker([item.lat, item.lng], {
+    const disp = plmDisplayLatLngForLandmark(item);
+    const m = L.marker([disp.lat, disp.lng], {
       icon: makePersonalLandmarkDivIcon(item),
       zIndexOffset: 450,
       draggable: true,
     });
+    plmMarkerById.set(item.id, m);
     let plmIgnoreEditorClickUntil = 0;
     let plmPausedMapDrag = false;
     m.on("dragstart", () => {
@@ -976,12 +1448,68 @@ function redrawPersonalLandmarksLayer() {
       if (plmPausedMapDrag && map.dragging) {
         map.dragging.disable();
       }
+      const row = personalLandmarksList.find((x) => x.id === item.id);
+      if (row?.groupId) {
+        const ll0 = m.getLatLng();
+        const positions = new Map();
+        for (const mem of plmMembersOfGroup(row.groupId)) {
+          const md = plmDisplayLatLngForLandmark(mem);
+          positions.set(mem.id, { lat: md.lat, lng: md.lng });
+        }
+        plmGroupDragSnapshot = {
+          groupId: row.groupId,
+          draggedId: item.id,
+          startLat: ll0.lat,
+          startLng: ll0.lng,
+          positions,
+        };
+      } else {
+        plmGroupDragSnapshot = null;
+      }
+    });
+    m.on("drag", () => {
+      const snap = plmGroupDragSnapshot;
+      if (!snap || snap.draggedId !== item.id) return;
+      const ll = m.getLatLng();
+      const dLat = ll.lat - snap.startLat;
+      const dLng = ll.lng - snap.startLng;
+      for (const [mid, pos] of snap.positions) {
+        if (mid === item.id) continue;
+        const other = plmMarkerById.get(mid);
+        if (other) {
+          other.setLatLng([pos.lat + dLat, pos.lng + dLng]);
+        }
+      }
     });
     m.on("dragend", () => {
       plmIgnoreEditorClickUntil = Date.now() + 450;
+      const snap = plmGroupDragSnapshot;
       try {
-        plmOnMarkerDragEnd(m, item.id);
+        if (snap && snap.draggedId === item.id) {
+          const ll = m.getLatLng();
+          if (!plmIsValidPlmLatLng(ll.lat, ll.lng)) {
+            redrawPersonalLandmarksLayer();
+            return;
+          }
+          const dLat = ll.lat - snap.startLat;
+          const dLng = ll.lng - snap.startLng;
+          for (const mem of plmMembersOfGroup(snap.groupId)) {
+            const orig = snap.positions.get(mem.id);
+            if (!orig) continue;
+            const idx = personalLandmarksList.findIndex((x) => x.id === mem.id);
+            if (idx < 0) continue;
+            personalLandmarksList[idx] = {
+              ...personalLandmarksList[idx],
+              lat: orig.lat + dLat,
+              lng: orig.lng + dLng,
+            };
+          }
+          plmOnMarkerDragEnd(m, item.id, true);
+        } else {
+          plmOnMarkerDragEnd(m, item.id, false);
+        }
       } finally {
+        plmGroupDragSnapshot = null;
         if (plmPausedMapDrag && map?.dragging && !map.dragging.enabled()) {
           map.dragging.enable();
         }
@@ -1044,8 +1572,8 @@ function setPersonalLandmarkPlacementActive(on) {
 
 /**
  * Modale création / édition d’un repère personnel (icône, couleur, textes).
- * @param {{ mode: 'create'|'edit', id?: string, lat: number, lng: number, name?: string, description?: string, iconId?: string, colorHex?: string }} spec
- * @returns {Promise<{ action: 'save'|'delete'|'cancel'|'duplicate', id?: string, sourceId?: string, lat?: number, lng?: number, name?: string, description?: string, iconId?: string, colorHex?: string }>}
+ * @param {{ mode: 'create'|'edit', id?: string, groupId?: string, lat: number, lng: number, name?: string, description?: string, iconId?: string, colorHex?: string }} spec
+ * @returns {Promise<{ action: 'save'|'delete'|'cancel'|'duplicate', id?: string, groupId?: string, sourceId?: string, lat?: number, lng?: number, name?: string, description?: string, iconId?: string, colorHex?: string, slots?: string[] }>}
  */
 function openPersonalLandmarkDialog(spec) {
   return new Promise((resolve) => {
@@ -1067,6 +1595,7 @@ function openPersonalLandmarkDialog(spec) {
     const cancelBtn = document.getElementById("appPersonalLandmarkDialogCancel");
     const delBtn = document.getElementById("appPersonalLandmarkDialogDelete");
     const dupBtn = document.getElementById("appPersonalLandmarkDialogDuplicate");
+    const slotGridEl = document.getElementById("appPersonalLandmarkDialogSlotGrid");
     if (
       !nameIn ||
       !descIn ||
@@ -1080,7 +1609,8 @@ function openPersonalLandmarkDialog(spec) {
       !favIconsEl ||
       !allIconsEl ||
       !colorsEl ||
-      !favCapEl
+      !favCapEl ||
+      !slotGridEl
     ) {
       resolve({ action: "cancel" });
       return;
@@ -1234,9 +1764,32 @@ function openPersonalLandmarkDialog(spec) {
       favCapEl.addEventListener("change", onFavCapChange);
     }
 
+    const editGroupId = spec.groupId || null;
     nameIn.value = spec.name != null ? String(spec.name) : "";
-    descIn.value =
-      spec.description != null ? String(spec.description) : "";
+    descIn.value = editGroupId
+      ? plmGetGroupDescription(editGroupId)
+      : spec.description != null
+        ? String(spec.description)
+        : "";
+    let gridLat = Number(spec.lat);
+    let gridLng = Number(spec.lng);
+    if (mode === "edit" && spec.id) {
+      const pivotItem = personalLandmarksList.find((x) => x.id === spec.id);
+      if (pivotItem) {
+        const gp = plmDisplayLatLngForLandmark(pivotItem);
+        gridLat = gp.lat;
+        gridLng = gp.lng;
+      }
+    }
+    if (plmIsValidPlmLatLng(gridLat, gridLng)) {
+      plmRenderSlotGrid(
+        slotGridEl,
+        gridLat,
+        gridLng,
+        editGroupId,
+        mode === "edit" ? spec.id : null,
+      );
+    }
     delBtn.hidden = mode !== "edit";
     dupBtn.hidden = mode !== "edit";
     let settled = false;
@@ -1282,15 +1835,25 @@ function openPersonalLandmarkDialog(spec) {
         return;
       }
       touchPlmIconRecent(plmPick.iconId);
+      const slots =
+        typeof slotGridEl._plmGetSlots === "function"
+          ? slotGridEl._plmGetSlots()
+          : [];
+      let outGroupId = editGroupId;
+      if (slots.length > 0 && !outGroupId) {
+        outGroupId = plmGenerateGroupId();
+      }
       finish({
         action: "save",
         id: mode === "edit" ? spec.id : undefined,
+        groupId: outGroupId || undefined,
         lat: spec.lat,
         lng: spec.lng,
         name,
         description: String(descIn.value || "").trim(),
         iconId: plmPick.iconId,
         colorHex: plmPick.colorHex,
+        slots,
       });
     }
     function onDuplicate() {
@@ -1348,16 +1911,19 @@ async function openPersonalLandmarkMarkerEditor(id) {
   const r = await openPersonalLandmarkDialog({
     mode: "edit",
     id: item.id,
+    groupId: item.groupId,
     lat: item.lat,
     lng: item.lng,
     name: item.name,
-    description: item.description,
+    description: plmLandmarkDescriptionText(item),
     iconId: item.iconId,
     colorHex: item.colorHex,
   });
   if (r.action === "cancel") return;
   if (r.action === "delete" && r.id) {
+    const removed = personalLandmarksList.find((x) => x.id === r.id);
     personalLandmarksList = personalLandmarksList.filter((x) => x.id !== r.id);
+    plmRemoveGroupIfEmpty(removed?.groupId);
     savePersonalLandmarksToStorage();
     redrawPersonalLandmarksLayer();
     setGpsStatus("Repère personnel supprimé.");
@@ -1369,9 +1935,8 @@ async function openPersonalLandmarkMarkerEditor(id) {
     const lat = Number(r.lat);
     const lng = Number(r.lng);
     if (!plmIsValidPlmLatLng(lat, lng)) return;
-    const newId = `plm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     personalLandmarksList.push({
-      id: newId,
+      id: plmNewLandmarkId(),
       lat,
       lng,
       name: r.name,
@@ -1387,36 +1952,37 @@ async function openPersonalLandmarkMarkerEditor(id) {
     return;
   }
   if (r.action === "save" && r.id && r.name) {
-    const idx = personalLandmarksList.findIndex((x) => x.id === r.id);
-    if (idx >= 0) {
-      const prev = personalLandmarksList[idx];
-      const lat = Number(r.lat);
-      const lng = Number(r.lng);
-      const latOk = plmIsValidPlmLatLng(lat, lng);
-      personalLandmarksList[idx] = {
-        id: r.id,
-        lat: latOk ? lat : prev.lat,
-        lng: latOk ? lng : prev.lng,
-        name: r.name,
-        description: r.description || "",
-        iconId: normalizePlmIconId(r.iconId),
-        colorHex: normalizePlmColorHex(r.colorHex),
-      };
+    const result = plmCommitDialogSave({ ...r, action: "save" });
+    if (result.ok) {
       savePersonalLandmarksToStorage();
       redrawPersonalLandmarksLayer();
-      setGpsStatus(`Repère mis à jour : ${r.name}`);
+      setGpsStatus(
+        result.added > 0
+          ? `Repère mis à jour : ${r.name} (${result.added} repère(s) ajouté(s)).`
+          : `Repère mis à jour : ${r.name}`,
+      );
     }
   }
 }
+loadPlmGroupsFromStorage();
 loadPersonalLandmarksFromStorage();
+if (plmSanitizeParentLinks()) {
+  savePersonalLandmarksToStorage();
+}
 redrawPersonalLandmarksLayer();
 
 let marker = L.marker([43.61, 3.88], {
   icon: navIcon,
   zIndexOffset: 800,
 }).addTo(map);
+map.on("zoom", () => {
+  if (plmMapUsesMagneticLayout()) {
+    redrawPersonalLandmarksLayer();
+  }
+});
 map.on("zoomend", () => {
   applyMapVisualProfile();
+  redrawPersonalLandmarksLayer();
 });
 
 function normalizeProvisionalStopNameInput(raw) {
@@ -1455,19 +2021,26 @@ map.on("click", async (ev) => {
       description: "",
     });
     if (r.action === "save" && r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng)) {
-      const id = `plm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      personalLandmarksList.push({
-        id,
+      const result = plmCommitDialogSave({
+        action: "save",
         lat: r.lat,
         lng: r.lng,
         name: r.name,
-        description: r.description || "",
-        iconId: normalizePlmIconId(r.iconId),
-        colorHex: normalizePlmColorHex(r.colorHex),
+        description: r.description,
+        iconId: r.iconId,
+        colorHex: r.colorHex,
+        groupId: r.groupId,
+        slots: r.slots || [],
       });
-      savePersonalLandmarksToStorage();
-      redrawPersonalLandmarksLayer();
-      setGpsStatus(`Repère ajouté : ${r.name}`);
+      if (result.ok) {
+        savePersonalLandmarksToStorage();
+        redrawPersonalLandmarksLayer();
+        setGpsStatus(
+          result.added > 0
+            ? `Repère ajouté : ${r.name} (${result.added} voisin(s)).`
+            : `Repère ajouté : ${r.name}`,
+        );
+      }
     } else if (r.action === "cancel") {
       setGpsStatus("Placement de repère annulé.");
     }
