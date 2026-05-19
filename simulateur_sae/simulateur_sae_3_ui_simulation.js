@@ -3966,7 +3966,14 @@ function updateMapNavigation(opt) {
     return;
   }
   const o = opt || {};
-  const centerCamera = o.centerCamera !== false;
+  let centerCamera = o.centerCamera !== false;
+  if (
+    centerCamera &&
+    typeof plmIsEditorDialogOpen === "function" &&
+    plmIsEditorDialogOpen()
+  ) {
+    centerCamera = false;
+  }
   const d = distanceAlongPathMeters;
   const useRealGpsPosition =
     driveMode === DRIVE_MODE.REAL && Array.isArray(lastGpsLatLng);

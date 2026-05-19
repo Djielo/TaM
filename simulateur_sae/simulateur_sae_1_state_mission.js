@@ -1436,6 +1436,41 @@ let personalLandmarkPlacementActive = false;
 let personalLandmarkPlacementToggleEl = null;
 let personalLandmarkLabelsToggleEl = null;
 let plmLabelsVisible = false;
+/** Modale repère ouverte : pas de recentrage caméra mission ni invalidateSize carte. */
+let plmEditorDialogDepth = 0;
+/** Après un glisser-déposer, ignorer le clic parasite qui ouvrirait l’éditeur. */
+let plmSuppressLandmarkClickUntil = 0;
+
+function plmIsEditorDialogOpen() {
+  return plmEditorDialogDepth > 0;
+}
+
+function plmOnLandmarkOpenClick(e, landmarkId) {
+  if (Date.now() < plmSuppressLandmarkClickUntil) {
+    return;
+  }
+  if (e && typeof L.DomEvent.stop === "function") {
+    L.DomEvent.stop(e);
+  }
+  void openPersonalLandmarkMarkerEditor(landmarkId);
+}
+
+function plmAddMapLabelMarker(anchor, html, landmarkId) {
+  const icon = plmCreateMapLabelIcon(html);
+  const lm = L.marker([anchor.lat, anchor.lng], {
+    icon,
+    interactive: true,
+    bubblingMouseEvents: false,
+    zIndexOffset: 420,
+  });
+  lm.on("mousedown touchstart", (e) => {
+    L.DomEvent.stopPropagation(e);
+  });
+  lm.on("click", (e) => {
+    plmOnLandmarkOpenClick(e, landmarkId);
+  });
+  lm.addTo(personalLandmarkLabelsLayer);
+}
 
 /** Si aucune MRU enregistrée : initialiser à partir des repères sur la carte (du plus récent au plus ancien). */
 function seedPlmIconRecentFromLandmarksIfEmpty() {
@@ -1610,8 +1645,10 @@ function redrawPersonalLandmarksLayer() {
       draggable: true,
     });
     plmMarkerById.set(item.id, m);
-    let plmIgnoreEditorClickUntil = 0;
     let plmPausedMapDrag = false;
+    m.on("mousedown touchstart", (e) => {
+      L.DomEvent.stopPropagation(e);
+    });
     m.on("dragstart", () => {
       if (typeof m.closeTooltip === "function") {
         m.closeTooltip();
@@ -1658,7 +1695,7 @@ function redrawPersonalLandmarksLayer() {
       }
     });
     m.on("dragend", () => {
-      plmIgnoreEditorClickUntil = Date.now() + 450;
+      plmSuppressLandmarkClickUntil = Date.now() + 450;
       const snap = plmGroupDragSnapshot;
       try {
         if (snap && snap.draggedId === item.id) {
@@ -1693,13 +1730,7 @@ function redrawPersonalLandmarksLayer() {
       }
     });
     m.on("click", (e) => {
-      if (Date.now() < plmIgnoreEditorClickUntil) {
-        return;
-      }
-      if (e?.originalEvent && typeof L.DomEvent.stopPropagation === "function") {
-        L.DomEvent.stopPropagation(e.originalEvent);
-      }
-      void openPersonalLandmarkMarkerEditor(item.id);
+      plmOnLandmarkOpenClick(e, item.id);
     });
     m.once("remove", () => {
       if (plmPausedMapDrag && map?.dragging && !map.dragging.enabled()) {
@@ -1743,12 +1774,7 @@ function plmRefreshLabelsLayer() {
       if (!String(ref.name ?? "").trim() && !descText) continue;
       const anchor = plmGroupLabelTopLeftLatLng(item.groupId);
       if (!anchor) continue;
-      const icon = plmCreateMapLabelIcon(plmBuildMapLabelHtml(ref));
-      L.marker([anchor.lat, anchor.lng], {
-        icon,
-        interactive: false,
-        zIndexOffset: 420,
-      }).addTo(personalLandmarkLabelsLayer);
+      plmAddMapLabelMarker(anchor, plmBuildMapLabelHtml(ref), ref.id);
       continue;
     }
     const descText = plmLandmarkDescriptionText(item);
@@ -1756,12 +1782,7 @@ function plmRefreshLabelsLayer() {
     const disp = plmDisplayLatLngForLandmark(item);
     const anchor = plmLabelTopLeftLatLngBelowMarker(disp.lat, disp.lng);
     if (!anchor) continue;
-    const icon = plmCreateMapLabelIcon(plmBuildMapLabelHtml(item));
-    L.marker([anchor.lat, anchor.lng], {
-      icon,
-      interactive: false,
-      zIndexOffset: 420,
-    }).addTo(personalLandmarkLabelsLayer);
+    plmAddMapLabelMarker(anchor, plmBuildMapLabelHtml(item), item.id);
   }
 }
 
@@ -1842,6 +1863,7 @@ function openPersonalLandmarkDialog(spec) {
       resolve({ action: "cancel" });
       return;
     }
+    plmEditorDialogDepth += 1;
     const favIconsEl = document.getElementById("appPersonalLandmarkDialogFavIcons");
     const allIconsEl = document.getElementById("appPersonalLandmarkDialogAllIcons");
     const colorsEl = document.getElementById("appPersonalLandmarkDialogColors");
@@ -1872,6 +1894,7 @@ function openPersonalLandmarkDialog(spec) {
       !favCapEl ||
       !slotGridEl
     ) {
+      plmEditorDialogDepth = Math.max(0, plmEditorDialogDepth - 1);
       resolve({ action: "cancel" });
       return;
     }
@@ -2073,6 +2096,7 @@ function openPersonalLandmarkDialog(spec) {
       const helpDlgFin = document.getElementById("appPersonalLandmarkHelpDialog");
       if (helpDlgFin && helpDlgFin.open) helpDlgFin.close();
       if (dlg.open) dlg.close();
+      plmEditorDialogDepth = Math.max(0, plmEditorDialogDepth - 1);
       resolve(payload);
     };
     function onClose() {
@@ -2158,7 +2182,11 @@ function openPersonalLandmarkDialog(spec) {
     nameIn.addEventListener("keydown", onNameKeydown);
     dlg.showModal();
     requestAnimationFrame(() => {
-      nameIn.focus();
+      try {
+        nameIn.focus({ preventScroll: true });
+      } catch (err) {
+        nameIn.focus();
+      }
       nameIn.select();
     });
   });
@@ -3359,9 +3387,15 @@ function closeControlPanel() {
 }
 
 function refreshMapLayout() {
+  if (plmEditorDialogDepth > 0) {
+    return;
+  }
   const run = () => {
+    if (plmEditorDialogDepth > 0) {
+      return;
+    }
     if (map && typeof map.invalidateSize === "function") {
-      map.invalidateSize(false);
+      map.invalidateSize({ pan: false, animate: false });
     }
   };
   run();
