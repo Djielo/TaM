@@ -3776,18 +3776,25 @@ function rebuildPathMetrics(coords) {
 }
 
 /**
- * Projete un point sur la polyligne active.
- * @returns {{ alongMeters: number, crossTrackMeters: number }} distance curviligne depuis le départ et écart latéral (m) au segment le plus proche.
+ * Projete un point sur la polyligne active (écart latéral signé : positif = droite du sens de marche).
+ * @returns {{ alongMeters: number, crossTrackMeters: number, signedCrossTrackMeters: number }}
  */
-function projectLatLngOntoActivePath(lat, lng) {
+function projectLatLngOntoActivePathSigned(lat, lng) {
   const coords = activeCoordinates;
   const cum = pathCumMeters;
   if (!coords || coords.length < 2 || !cum.length) {
-    return { alongMeters: 0, crossTrackMeters: Infinity };
+    return {
+      alongMeters: 0,
+      crossTrackMeters: Infinity,
+      signedCrossTrackMeters: 0,
+    };
   }
   const s = L.latLng(lat, lng);
-  let best = 0;
+  let bestAlong = 0;
   let bestD = Infinity;
+  let bestProj = null;
+  let bestP0 = null;
+  let bestP1 = null;
   for (let i = 0; i < coords.length - 1; i++) {
     const p0 = L.latLng(coords[i]);
     const p1 = L.latLng(coords[i + 1]);
@@ -3796,7 +3803,10 @@ function projectLatLngOntoActivePath(lat, lng) {
       const d0 = s.distanceTo(p0);
       if (d0 < bestD) {
         bestD = d0;
-        best = cum[i];
+        bestAlong = cum[i];
+        bestProj = [p0.lat, p0.lng];
+        bestP0 = p0;
+        bestP1 = p1;
       }
       continue;
     }
@@ -3810,10 +3820,53 @@ function projectLatLngOntoActivePath(lat, lng) {
     const d = s.distanceTo(L.latLng(proj));
     if (d < bestD) {
       bestD = d;
-      best = cum[i] + t * segLenM;
+      bestAlong = cum[i] + t * segLenM;
+      bestProj = proj;
+      bestP0 = p0;
+      bestP1 = p1;
     }
   }
-  return { alongMeters: best, crossTrackMeters: bestD };
+  if (!bestProj || !bestP0 || !bestP1) {
+    return {
+      alongMeters: bestAlong,
+      crossTrackMeters: bestD,
+      signedCrossTrackMeters: 0,
+    };
+  }
+  const travelSign =
+    typeof plmPathTravelSign === "number" && plmPathTravelSign < 0 ? -1 : 1;
+  const latRad = (bestProj[0] * Math.PI) / 180;
+  const R = 6371000;
+  let fx = ((bestP1.lng - bestP0.lng) * Math.PI) / 180;
+  fx *= Math.cos(latRad) * R;
+  let fy = (((bestP1.lat - bestP0.lat) * Math.PI) / 180) * R;
+  const fLen = Math.hypot(fx, fy);
+  if (fLen < 1e-4) {
+    return {
+      alongMeters: bestAlong,
+      crossTrackMeters: bestD,
+      signedCrossTrackMeters: 0,
+    };
+  }
+  if (travelSign < 0) {
+    fx = -fx;
+    fy = -fy;
+  }
+  const tx = (((lng - bestProj[1]) * Math.PI) / 180) * Math.cos(latRad) * R;
+  const ty = (((lat - bestProj[0]) * Math.PI) / 180) * R;
+  /* ENU : fy·tx − fx·ty > 0 = à droite du sens de marche (fx*ty−fy*tx = gauche). */
+  const signedCross = (fy * tx - fx * ty) / fLen;
+  return {
+    alongMeters: bestAlong,
+    crossTrackMeters: bestD,
+    signedCrossTrackMeters: signedCross,
+  };
+}
+
+/** Projete un point sur la polyligne active. */
+function projectLatLngOntoActivePath(lat, lng) {
+  const r = projectLatLngOntoActivePathSigned(lat, lng);
+  return { alongMeters: r.alongMeters, crossTrackMeters: r.crossTrackMeters };
 }
 
 /** Projete un point sur la polyligne : distance (m) depuis le départ du tracé. */
@@ -4019,6 +4072,9 @@ function updateMapNavigation(opt) {
     } else {
       map.setView(pos, map.getZoom(), { animate: false });
     }
+  }
+  if (typeof plmNotifyAlongPathMeters === "function") {
+    plmNotifyAlongPathMeters(d);
   }
 }
 
@@ -4767,6 +4823,9 @@ async function setMission(pattern, opts) {
   stopManualDrawMode();
   currentPattern = pattern;
   distanceAlongPathMeters = 0;
+  if (typeof plmResetPathTravelSign === "function") {
+    plmResetPathTravelSign();
+  }
   lastRafTime = 0;
   lastVoiceDistance = 0;
   voixAnnounced = new Set();
@@ -4849,6 +4908,9 @@ async function setMission(pattern, opts) {
   refreshRecapDeviationMeta();
   if (!o.skipPlannedBaselineSync) {
     syncPlannedSaveBaselineFromLive();
+  }
+  if (typeof redrawPersonalLandmarksLayer === "function") {
+    redrawPersonalLandmarksLayer();
   }
 }
 
@@ -7102,6 +7164,9 @@ headingUpEl.addEventListener("change", () => {
     if (typeof map.setBearing === "function") {
       map.setBearing(0);
     }
+  }
+  if (typeof redrawPersonalLandmarksLayer === "function") {
+    redrawPersonalLandmarksLayer();
   }
 });
 
