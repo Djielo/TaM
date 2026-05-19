@@ -1440,6 +1440,95 @@ let plmLabelsVisible = false;
 let plmEditorDialogDepth = 0;
 /** Après un glisser-déposer, ignorer le clic parasite qui ouvrirait l’éditeur. */
 let plmSuppressLandmarkClickUntil = 0;
+/** Bande latérale max (m) : repères au-delà sont masqués en mode Cap. */
+const PLM_CAP_FILTER_MAX_CROSS_M = 100;
+/** Déplacement le long du tracé (m) avant d’inverser le sens gauche/droite. */
+const PLM_TRAVEL_SIGN_HYSTERESIS_M = 12;
+/** +1 = sens départ→fin du tracé actif, -1 = retour. */
+let plmPathTravelSign = 1;
+let plmLastAlongForTravelSign = null;
+let plmGroupCapFilterCache = new Map();
+let plmCapFilterRefreshRaf = 0;
+
+function plmResetPathTravelSign() {
+  plmPathTravelSign = 1;
+  plmLastAlongForTravelSign = null;
+  plmGroupCapFilterCache.clear();
+}
+
+function plmNotifyAlongPathMeters(along) {
+  if (!Number.isFinite(along)) return;
+  if (plmLastAlongForTravelSign == null) {
+    plmLastAlongForTravelSign = along;
+    return;
+  }
+  const delta = along - plmLastAlongForTravelSign;
+  if (Math.abs(delta) >= PLM_TRAVEL_SIGN_HYSTERESIS_M) {
+    plmPathTravelSign = delta > 0 ? 1 : -1;
+    plmLastAlongForTravelSign = along;
+    plmScheduleLandmarkCapFilterRefresh();
+  }
+}
+
+function plmScheduleLandmarkCapFilterRefresh() {
+  if (!plmIsCapSideFilterActive()) return;
+  if (plmCapFilterRefreshRaf) cancelAnimationFrame(plmCapFilterRefreshRaf);
+  plmCapFilterRefreshRaf = requestAnimationFrame(() => {
+    plmCapFilterRefreshRaf = 0;
+    redrawPersonalLandmarksLayer();
+  });
+}
+
+function plmIsCapSideFilterActive() {
+  return (
+    !!headingUpEl?.checked &&
+    !!currentPattern &&
+    pathTotalMeters > 0 &&
+    Array.isArray(activeCoordinates) &&
+    activeCoordinates.length >= 2
+  );
+}
+
+function plmProjectLandmarkForCapFilter(item) {
+  const disp = plmDisplayLatLngForLandmark(item);
+  if (
+    typeof projectLatLngOntoActivePathSigned !== "function" ||
+    !plmIsValidPlmLatLng(disp.lat, disp.lng)
+  ) {
+    return { crossTrackMeters: Infinity, signedCrossTrackMeters: 0 };
+  }
+  return projectLatLngOntoActivePathSigned(disp.lat, disp.lng);
+}
+
+function plmIsGroupVisibleCapFilter(groupId) {
+  if (plmGroupCapFilterCache.has(groupId)) {
+    return plmGroupCapFilterCache.get(groupId);
+  }
+  let bestCross = Infinity;
+  let bestSigned = 0;
+  for (const mem of plmMembersOfGroup(groupId)) {
+    const pr = plmProjectLandmarkForCapFilter(mem);
+    if (pr.crossTrackMeters < bestCross) {
+      bestCross = pr.crossTrackMeters;
+      bestSigned = pr.signedCrossTrackMeters;
+    }
+  }
+  const vis =
+    bestCross <= PLM_CAP_FILTER_MAX_CROSS_M && bestSigned > 0;
+  plmGroupCapFilterCache.set(groupId, vis);
+  return vis;
+}
+
+/** Masquage affichage (stockage inchangé) : mode Cap + à droite du tracé, proche du tracé. */
+function plmIsLandmarkVisibleOnMap(item) {
+  if (!plmIsCapSideFilterActive()) return true;
+  if (item.groupId) {
+    return plmIsGroupVisibleCapFilter(item.groupId);
+  }
+  const pr = plmProjectLandmarkForCapFilter(item);
+  if (pr.crossTrackMeters > PLM_CAP_FILTER_MAX_CROSS_M) return false;
+  return pr.signedCrossTrackMeters > 0;
+}
 
 function plmIsEditorDialogOpen() {
   return plmEditorDialogDepth > 0;
@@ -1634,8 +1723,12 @@ function redrawPersonalLandmarksLayer() {
   personalLandmarksLayer.clearLayers();
   plmMarkerById = new Map();
   plmGroupDragSnapshot = null;
+  plmGroupCapFilterCache.clear();
   for (const item of personalLandmarksList) {
     if (!plmIsValidPlmLatLng(item.lat, item.lng)) {
+      continue;
+    }
+    if (!plmIsLandmarkVisibleOnMap(item)) {
       continue;
     }
     const disp = plmDisplayLatLngForLandmark(item);
@@ -1762,9 +1855,11 @@ function plmScheduleLabelsRefresh() {
 function plmRefreshLabelsLayer() {
   if (!plmLabelsVisible) return;
   personalLandmarkLabelsLayer.clearLayers();
+  plmGroupCapFilterCache.clear();
   const labeledGroups = new Set();
   for (const item of personalLandmarksList) {
     if (!plmIsValidPlmLatLng(item.lat, item.lng)) continue;
+    if (!plmIsLandmarkVisibleOnMap(item)) continue;
     if (item.groupId) {
       if (labeledGroups.has(item.groupId)) continue;
       labeledGroups.add(item.groupId);
