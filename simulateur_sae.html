@@ -620,10 +620,43 @@
         font-size: 13px;
         color: #1b1f24;
       }
-      .tam-plm-settings-popover label {
-        display: block;
-        margin-bottom: 6px;
+      .tam-plm-settings-popover .tam-plm-settings-row {
+        margin-bottom: 10px;
+      }
+      .tam-plm-settings-popover .tam-plm-settings-row:last-child {
+        margin-bottom: 0;
+      }
+      .tam-plm-settings-row__intro {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.4;
+        color: #1b1f24;
+      }
+      .tam-plm-settings-row__field {
+        display: flex;
+        flex-direction: row;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+      }
+      .tam-plm-settings-row__field-label {
+        margin: 0;
+        font-size: 12px;
         font-weight: 600;
+        line-height: 1.3;
+        color: #1b1f24;
+        white-space: nowrap;
+      }
+      .tam-plm-settings-popover input[type="number"] {
+        width: 3.5rem;
+        min-width: 3.5rem;
+        margin: 0;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        font-size: 14px;
+        box-sizing: border-box;
       }
       .tam-plm-sr-only {
         position: absolute;
@@ -753,16 +786,10 @@
         outline: 2px solid #1b1f24;
         outline-offset: 1px;
       }
-      .tam-plm-pickers__fav-cap {
-        width: 5rem;
-        margin: 6px 0 8px;
-        padding: 8px 10px;
-        border-radius: 8px;
-        border: 1px solid #ccd3db;
-        font-size: 14px;
-      }
-      .tam-plm-settings-popover .note {
-        margin-top: 0;
+      .tam-plm-settings-popover__section {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #e2e8f0;
       }
       .tam-personal-landmark-marker__bubble {
         display: flex;
@@ -3107,24 +3134,60 @@
           class="tam-plm-settings-popover"
           hidden
           role="region"
-          aria-label="Réglages : liste des icônes récemment utilisées"
+          aria-label="Réglages : repères personnels"
         >
-          <label for="appPersonalLandmarkDialogFavCap"
-            >Nombre d’icônes<br />récemment utilisées&nbsp;:</label
+          <div class="tam-plm-settings-row">
+            <p
+              class="tam-plm-settings-row__intro"
+              id="appPersonalLandmarkDialogFavCapIntro"
+            >
+              Veuillez indiquer le nombre d’icônes que vous souhaitez voir
+              apparaître dans la partie «&nbsp;Icônes récemment utilisées&nbsp;».
+            </p>
+            <div class="tam-plm-settings-row__field">
+              <label
+                class="tam-plm-settings-row__field-label"
+                for="appPersonalLandmarkDialogFavCap"
+                >Nombre d’icônes&nbsp;:</label
+              >
+              <input
+                type="number"
+                id="appPersonalLandmarkDialogFavCap"
+                min="4"
+                max="20"
+                step="1"
+                value="8"
+                aria-describedby="appPersonalLandmarkDialogFavCapIntro"
+              />
+            </div>
+          </div>
+          <div
+            class="tam-plm-settings-row tam-plm-settings-popover__section"
           >
-          <input
-            type="number"
-            id="appPersonalLandmarkDialogFavCap"
-            class="tam-plm-pickers__fav-cap"
-            min="4"
-            max="20"
-            step="1"
-            value="8"
-          />
-          <p class="note tam-plm-pickers__settings-note">
-            Les dernières icônes choisies lors d’un enregistrement apparaissent en tête
-            (jusqu’au nombre indiqué).
-          </p>
+            <p
+              class="tam-plm-settings-row__intro"
+              id="appPersonalLandmarkDialogCapBandIntro"
+            >
+              Veuillez sélectionner la distance en mètres des repères à afficher
+              à droite du tracé (mode Cap).
+            </p>
+            <div class="tam-plm-settings-row__field">
+              <label
+                class="tam-plm-settings-row__field-label"
+                for="appPersonalLandmarkDialogCapBand"
+                >Distance (m)&nbsp;:</label
+              >
+              <input
+                type="number"
+                id="appPersonalLandmarkDialogCapBand"
+                min="10"
+                max="300"
+                step="5"
+                value="100"
+                aria-describedby="appPersonalLandmarkDialogCapBandIntro"
+              />
+            </div>
+          </div>
         </div>
         <h2 id="appPersonalLandmarkDialogTitle" class="tam-plm-sr-only">
           Repère personnel
@@ -3142,8 +3205,8 @@
               id="appPersonalLandmarkDialogSettingsBtn"
               class="tam-plm-settings-gear"
               aria-expanded="false"
-              title="Réglages : zone des icônes récentes"
-              aria-label="Réglages : nombre d’icônes affichées dans la zone récemment utilisées"
+              title="Réglages : icônes récentes et filtrage des repères en mode Cap"
+              aria-label="Réglages : icônes récentes et distance des repères au tracé en mode Cap"
             >
               <svg
                 width="22"

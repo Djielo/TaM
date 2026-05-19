@@ -38,6 +38,10 @@ const LS_KEY_DEVIATIONS = "tam_sim_saved_deviations_v1";
 const LS_KEY_PERSONAL_LANDMARKS = "tam_personal_map_landmarks_v1";
 const LS_KEY_PLM_ICON_RECENT = "tam_personal_landmark_icon_recent_v1";
 const LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP = "tam_personal_landmark_favorites_cap_v1";
+const LS_KEY_PLM_CAP_FILTER_BAND_M = "tam_personal_landmark_cap_band_m_v1";
+const PLM_CAP_FILTER_BAND_DEFAULT_M = 100;
+const PLM_CAP_FILTER_BAND_MIN_M = 10;
+const PLM_CAP_FILTER_BAND_MAX_M = 300;
 const PLM_DEFAULT_ICON_ID = "pin";
 const PLM_DEFAULT_COLOR_NEW = "#005ca9";
 const PLM_DEFAULT_COLOR_LEGACY = "#c62828";
@@ -731,6 +735,37 @@ function savePlmFavoritesCap(n) {
   const v = Math.max(4, Math.min(20, Math.round(Number(n)) || 8));
   try {
     localStorage.setItem(LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP, String(v));
+  } catch (e) {
+    // ignore
+  }
+  return v;
+}
+
+function getPlmCapFilterBandM() {
+  const n = parseInt(
+    String(localStorage.getItem(LS_KEY_PLM_CAP_FILTER_BAND_M) || ""),
+    10,
+  );
+  if (
+    Number.isFinite(n) &&
+    n >= PLM_CAP_FILTER_BAND_MIN_M &&
+    n <= PLM_CAP_FILTER_BAND_MAX_M
+  ) {
+    return n;
+  }
+  return PLM_CAP_FILTER_BAND_DEFAULT_M;
+}
+
+function savePlmCapFilterBandM(n) {
+  const v = Math.max(
+    PLM_CAP_FILTER_BAND_MIN_M,
+    Math.min(
+      PLM_CAP_FILTER_BAND_MAX_M,
+      Math.round(Number(n)) || PLM_CAP_FILTER_BAND_DEFAULT_M,
+    ),
+  );
+  try {
+    localStorage.setItem(LS_KEY_PLM_CAP_FILTER_BAND_M, String(v));
   } catch (e) {
     // ignore
   }
@@ -1440,8 +1475,6 @@ let plmLabelsVisible = false;
 let plmEditorDialogDepth = 0;
 /** Après un glisser-déposer, ignorer le clic parasite qui ouvrirait l’éditeur. */
 let plmSuppressLandmarkClickUntil = 0;
-/** Bande latérale max (m) : repères au-delà sont masqués en mode Cap. */
-const PLM_CAP_FILTER_MAX_CROSS_M = 100;
 /** Déplacement le long du tracé (m) avant d’inverser le sens gauche/droite. */
 const PLM_TRAVEL_SIGN_HYSTERESIS_M = 12;
 /** +1 = sens départ→fin du tracé actif, -1 = retour. */
@@ -1514,7 +1547,7 @@ function plmIsGroupVisibleCapFilter(groupId) {
     }
   }
   const vis =
-    bestCross <= PLM_CAP_FILTER_MAX_CROSS_M && bestSigned > 0;
+    bestCross <= getPlmCapFilterBandM() && bestSigned > 0;
   plmGroupCapFilterCache.set(groupId, vis);
   return vis;
 }
@@ -1526,7 +1559,7 @@ function plmIsLandmarkVisibleOnMap(item) {
     return plmIsGroupVisibleCapFilter(item.groupId);
   }
   const pr = plmProjectLandmarkForCapFilter(item);
-  if (pr.crossTrackMeters > PLM_CAP_FILTER_MAX_CROSS_M) return false;
+  if (pr.crossTrackMeters > getPlmCapFilterBandM()) return false;
   return pr.signedCrossTrackMeters > 0;
 }
 
@@ -1963,6 +1996,7 @@ function openPersonalLandmarkDialog(spec) {
     const allIconsEl = document.getElementById("appPersonalLandmarkDialogAllIcons");
     const colorsEl = document.getElementById("appPersonalLandmarkDialogColors");
     const favCapEl = document.getElementById("appPersonalLandmarkDialogFavCap");
+    const capBandEl = document.getElementById("appPersonalLandmarkDialogCapBand");
     const settingsBtn = document.getElementById("appPersonalLandmarkDialogSettingsBtn");
     const settingsPop = document.getElementById("appPersonalLandmarkSettingsPopover");
     const helpBtn = document.getElementById("appPersonalLandmarkDialogHelpBtn");
@@ -1987,6 +2021,7 @@ function openPersonalLandmarkDialog(spec) {
       !allIconsEl ||
       !colorsEl ||
       !favCapEl ||
+      !capBandEl ||
       !slotGridEl
     ) {
       plmEditorDialogDepth = Math.max(0, plmEditorDialogDepth - 1);
@@ -2081,6 +2116,12 @@ function openPersonalLandmarkDialog(spec) {
       rebuildPlmIconGrids();
     }
 
+    function onCapBandChange() {
+      if (!capBandEl) return;
+      capBandEl.value = String(savePlmCapFilterBandM(capBandEl.value));
+      redrawPersonalLandmarksLayer();
+    }
+
     if (!dlg.dataset.tamPlmGearWired) {
       dlg.dataset.tamPlmGearWired = "1";
       const gear = document.getElementById("appPersonalLandmarkDialogSettingsBtn");
@@ -2136,10 +2177,16 @@ function openPersonalLandmarkDialog(spec) {
     if (favCapEl) {
       favCapEl.value = String(getPlmFavoritesCap());
     }
+    if (capBandEl) {
+      capBandEl.value = String(getPlmCapFilterBandM());
+    }
     rebuildPlmIconGrids();
     dlg.addEventListener("click", onPlmDlgClick);
     if (favCapEl) {
       favCapEl.addEventListener("change", onFavCapChange);
+    }
+    if (capBandEl) {
+      capBandEl.addEventListener("change", onCapBandChange);
     }
 
     const editGroupId = spec.groupId || null;
@@ -2181,6 +2228,9 @@ function openPersonalLandmarkDialog(spec) {
       dlg.removeEventListener("click", onPlmDlgClick);
       if (favCapEl) {
         favCapEl.removeEventListener("change", onFavCapChange);
+      }
+      if (capBandEl) {
+        capBandEl.removeEventListener("change", onCapBandChange);
       }
     }
     const finish = (payload) => {
