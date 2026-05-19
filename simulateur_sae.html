@@ -491,7 +491,9 @@
       }
       .tam-plm-map-label__card {
         display: inline-block;
-        max-width: 220px;
+        box-sizing: border-box;
+        width: max-content;
+        max-width: min(92vw, 36rem);
         padding: 4px 8px;
         border-radius: 4px;
         background: #fff;
@@ -504,6 +506,7 @@
       .tam-plm-map-label__card strong {
         display: block;
         font-weight: 700;
+        white-space: pre-wrap;
       }
       .tam-plm-map-label__card p {
         margin: 2px 0 0;
