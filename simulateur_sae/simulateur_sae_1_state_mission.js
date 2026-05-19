@@ -2239,6 +2239,10 @@ map.on("zoom", () => {
   plmScheduleMagneticRedraw();
   plmScheduleLabelsRefresh();
 });
+map.on("rotate", () => {
+  plmScheduleMagneticRedraw();
+  plmScheduleLabelsRefresh();
+});
 map.on("zoomend", () => {
   applyMapVisualProfile();
   plmSyncGroupsLayoutToZoom(true);
