@@ -408,6 +408,45 @@
         border-radius: 10px;
         overflow: hidden;
       }
+      .tam-map-speed-hud {
+        position: absolute;
+        top: max(10px, env(safe-area-inset-top, 0px));
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1210;
+        pointer-events: none;
+      }
+      .tam-map-speed-hud__panel {
+        display: flex;
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: center;
+        gap: 5px;
+        min-width: 0;
+        padding: 4px 16px 5px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(0, 92, 169, 0.28);
+        box-shadow:
+          0 2px 8px rgba(0, 40, 80, 0.1),
+          0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+      }
+      .tam-map-speed-hud__value {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1;
+        color: #005ca9;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+      }
+      .tam-map-speed-hud__unit {
+        margin: 0 0 3px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1;
+        color: #4a5568;
+        text-transform: lowercase;
+      }
       /* Même écart entre zoom+ / itinéraire / fond carte / repères (un peu moins que le défaut Leaflet 10px). */
       #map.leaflet-container .leaflet-top.leaflet-left > .leaflet-control:not(:first-child) {
         margin-top: 7px;
@@ -2830,6 +2869,18 @@
             </div>
           </div>
           <div id="map"></div>
+          <div
+            id="mapSpeedHud"
+            class="tam-map-speed-hud"
+            hidden
+            aria-live="polite"
+            aria-label="Vitesse"
+          >
+            <div class="tam-map-speed-hud__panel">
+              <span id="mapSpeedHudValue" class="tam-map-speed-hud__value">0</span>
+              <span class="tam-map-speed-hud__unit">km/h</span>
+            </div>
+          </div>
           <div class="tam-route-ui" id="tamRouteUi" aria-hidden="true">
             <div class="tam-route-ui__panel" id="tamRoutePanel">
               <h3>Itinéraire</h3>

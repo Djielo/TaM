@@ -5885,6 +5885,34 @@ const HUD_ICON_VOICE_OFF =
 /** Vitesses affichées sur la HUD carte — alignées sur `#speedSelect`. */
 const MAP_HUD_SPEED_SEQUENCE = [1, 2, 4, 10];
 
+/** Compteur vitesse (haut carte) : simulation ou GPS réel. */
+function refreshMapSpeedHud() {
+  const root = document.getElementById("mapSpeedHud");
+  const valueEl = document.getElementById("mapSpeedHudValue");
+  const hud = document.getElementById("mapMissionHud");
+  if (!root || !valueEl) return;
+  const hudLive =
+    hud && !hud.classList.contains("map-mission-hud--inactive");
+  if (!hudLive || !currentPattern || pathTotalMeters <= 0) {
+    root.hidden = true;
+    return;
+  }
+  root.hidden = false;
+  if (driveMode === DRIVE_MODE.REAL) {
+    const ms = Number(lastGpsSpeedMs);
+    if (!Number.isFinite(ms) || ms < 0) {
+      valueEl.textContent = "—";
+      return;
+    }
+    valueEl.textContent = String(Math.round(ms * 3.6));
+    return;
+  }
+  const kmh = running
+    ? Math.round(BASE_METERS_PER_SECOND * speed * 3.6)
+    : 0;
+  valueEl.textContent = String(kmh);
+}
+
 function refreshMapHudSpeedLabel() {
   const btn = document.getElementById("mapHudSpeedBtn");
   if (!btn || !speedSelect) return;
@@ -5989,6 +6017,7 @@ function refreshMapHudVoiceBtn() {
 }
 
 function refreshMapMissionHudState() {
+  refreshMapSpeedHud();
   const root = document.getElementById("mapMissionHud");
   const pauseB = document.getElementById("mapHudPauseBtn");
   if (
@@ -6031,6 +6060,7 @@ function showMapMissionHud() {
   refreshMapHudToggleIcon();
   refreshMapHudSpeedLabel();
   refreshMapHudNextStopPeek();
+  refreshMapSpeedHud();
   refreshStopRail();
   refreshMapLayout();
 }
@@ -6551,6 +6581,7 @@ function tickRaf(now) {
       redrawDoneLineAtDistance(distanceAlongPathMeters);
       updateStopToStopOverlay();
       updateStats();
+      refreshMapSpeedHud();
     }
   }
   requestAnimationFrame(tickRaf);
@@ -7041,6 +7072,7 @@ document.getElementById("prevBtn").addEventListener("click", () => {
 speedSelect.addEventListener("change", () => {
   speed = Number(speedSelect.value) || 1;
   refreshMapHudSpeedLabel();
+  refreshMapSpeedHud();
 });
 speed = Number(speedSelect.value) || 1;
 refreshMapHudSpeedLabel();
