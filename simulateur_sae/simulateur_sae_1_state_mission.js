@@ -1180,6 +1180,8 @@ const DRIVE_MODE = {
 let driveMode = DRIVE_MODE.SIMULATION;
 let gpsWatchId = null;
 let lastGpsLatLng = null;
+/** Dernière vitesse GPS (m/s), si fournie par l’appareil. */
+let lastGpsSpeedMs = null;
 let lastGpsHeadingDeg = null;
 /** Vitesse mini (m/s) pour faire confiance au `heading` GPS : en dessous, cap souvent bruité à l’arrêt (contrairement aux apps type Maps qui le figent ou suivent la route). */
 const GPS_HEADING_MIN_SPEED_MS = 0.5;
@@ -1200,6 +1202,7 @@ function stopGpsTracking() {
   }
   gpsWatchId = null;
   lastGpsLatLng = null;
+  lastGpsSpeedMs = null;
   lastGpsHeadingDeg = null;
   lastGpsCrossTrackM = null;
   if (typeof resetGpsUnsavedDeviationMovementWarn === "function") {
@@ -1219,6 +1222,8 @@ function applyGpsPositionToMission(pos) {
   const rawSpeed = pos?.coords?.speed;
   const speedMs = Number(rawSpeed);
   const speedKnown = rawSpeed != null && Number.isFinite(speedMs);
+  lastGpsSpeedMs =
+    speedKnown && speedMs >= 0 ? speedMs : lastGpsSpeedMs;
   const speedHighEnough =
     speedKnown && speedMs >= GPS_HEADING_MIN_SPEED_MS;
   lastGpsHeadingDeg =
@@ -1261,6 +1266,9 @@ function applyGpsPositionToMission(pos) {
   redrawDoneLineAtDistance(distanceAlongPathMeters);
   updateStopToStopOverlay();
   updateStats();
+  if (typeof refreshMapSpeedHud === "function") {
+    refreshMapSpeedHud();
+  }
   const speedKmh = Number(pos?.coords?.speed);
   const speedInfo =
     Number.isFinite(speedKmh) && speedKmh >= 0
