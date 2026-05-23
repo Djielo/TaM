@@ -1047,6 +1047,48 @@
         content: "—";
         color: #9aa3ad;
       }
+      .tam-plm-context-menu {
+        position: fixed;
+        z-index: 6500;
+        min-width: 11rem;
+        padding: 4px 0;
+        margin: 0;
+        border-radius: 8px;
+        border: 1px solid #ccd3db;
+        background: #fff;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        list-style: none;
+      }
+      .tam-plm-context-menu[hidden] {
+        display: none !important;
+      }
+      .tam-plm-context-menu__item {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 14px;
+        border: none;
+        background: transparent;
+        color: #1b1f24;
+        font-size: 13px;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tam-plm-context-menu__item:hover,
+      .tam-plm-context-menu__item:focus-visible {
+        background: #e8f0fa;
+        color: #005ca9;
+        outline: none;
+      }
+      .tam-plm-context-menu__item--danger {
+        color: #b71c1c;
+      }
+      .tam-plm-context-menu__item--danger:hover,
+      .tam-plm-context-menu__item--danger:focus-visible {
+        background: #fdecea;
+        color: #b71c1c;
+      }
       .app-personal-landmark-dialog .tam-plm-desc-field-hidden {
         position: absolute;
         width: 1px;
@@ -1133,7 +1175,7 @@
       }
       @media (min-width: 520px) {
         .app-personal-landmark-dialog .tam-plm-dialog-actions {
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
       .app-personal-landmark-help-dialog.app-message-dialog {
@@ -3586,23 +3628,6 @@
         <div class="app-message-dialog__actions tam-plm-dialog-actions">
           <button
             type="button"
-            id="appPersonalLandmarkDialogDelete"
-            class="secondary app-message-dialog__ok"
-            hidden
-          >
-            Supprimer
-          </button>
-          <button
-            type="button"
-            id="appPersonalLandmarkDialogDuplicate"
-            class="secondary app-message-dialog__ok"
-            hidden
-            aria-label="Dupliquer ce repère à côté de l’emplacement actuel"
-          >
-            Dupliquer
-          </button>
-          <button
-            type="button"
             id="appPersonalLandmarkDialogCancel"
             class="secondary app-message-dialog__ok"
           >
@@ -3618,6 +3643,57 @@
         </div>
       </div>
     </dialog>
+
+    <div
+      id="tamPlmContextMenu"
+      class="tam-plm-context-menu"
+      role="menu"
+      aria-label="Repère personnel"
+      hidden
+    >
+      <button
+        type="button"
+        class="tam-plm-context-menu__item"
+        data-plm-ctx="edit"
+        role="menuitem"
+      >
+        Modifier
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item"
+        data-plm-ctx="dup-landmark"
+        role="menuitem"
+      >
+        Dupliquer le repère
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item"
+        data-plm-ctx="dup-group"
+        role="menuitem"
+        hidden
+      >
+        Dupliquer le groupe
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item tam-plm-context-menu__item--danger"
+        data-plm-ctx="del-landmark"
+        role="menuitem"
+      >
+        Supprimer le repère
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item tam-plm-context-menu__item--danger"
+        data-plm-ctx="del-group"
+        role="menuitem"
+        hidden
+      >
+        Supprimer le groupe
+      </button>
+    </div>
 
     <dialog
       id="appPersonalLandmarkHelpDialog"
