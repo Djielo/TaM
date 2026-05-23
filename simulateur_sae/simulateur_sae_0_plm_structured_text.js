@@ -6,7 +6,7 @@
   "use strict";
 
   const LS_KEY = "tam_plm_structured_text_config_v1";
-  const LINE_NUMS = ["1", "2", "3", "4", "5"];
+  const DEFAULT_LINE_NUMS = ["1", "2", "3", "4", "5"];
   const DEFAULT_INDEXES = ["MA", "OB", "RO", "PL", "SA", "LB", "H4"];
 
   const DEFAULT_CONFIG = {
@@ -26,7 +26,7 @@
     return {
       speeds: [...DEFAULT_CONFIG.speeds],
       lineIndexes: Object.fromEntries(
-        LINE_NUMS.map((n) => [n, [...DEFAULT_CONFIG.lineIndexes[n]]]),
+        DEFAULT_LINE_NUMS.map((n) => [n, [...DEFAULT_CONFIG.lineIndexes[n]]]),
       ),
       zones: [...DEFAULT_CONFIG.zones],
       namePresets: [],
@@ -61,6 +61,17 @@
   }
 
   /** Noms enregistrés : chiffres d’abord, puis ordre alphabétique (regroupe les « CMU … »). */
+  function normalizeLineNum(raw) {
+    const n = String(raw ?? "").trim();
+    return /^\d+$/.test(n) ? n : "";
+  }
+
+  function getLineNums(lineIndexes) {
+    return Object.keys(lineIndexes || {})
+      .filter((k) => normalizeLineNum(k))
+      .sort((a, b) => Number(a) - Number(b));
+  }
+
   function sortNamePresets(arr) {
     return [...arr].sort((a, b) => {
       const na = String(a).trim();
@@ -86,13 +97,15 @@
         base.speeds = p.speeds.map(normalizeSpeedLabel).filter(Boolean);
       }
       if (p.lineIndexes && typeof p.lineIndexes === "object") {
-        for (const n of LINE_NUMS) {
-          const list = p.lineIndexes[n];
-          if (Array.isArray(list) && list.length) {
-            base.lineIndexes[n] = sortAlpha([
-              ...new Set(list.map(normalizeCode).filter(Boolean)),
-            ]);
-          }
+        for (const key of Object.keys(p.lineIndexes)) {
+          const n = normalizeLineNum(key);
+          if (!n) continue;
+          const list = p.lineIndexes[key];
+          base.lineIndexes[n] = Array.isArray(list)
+            ? sortAlpha([
+                ...new Set(list.map(normalizeCode).filter(Boolean)),
+              ])
+            : [];
         }
       }
       if (Array.isArray(p.zones) && p.zones.length) {
@@ -158,11 +171,11 @@
         const body = line.replace(/^L\s*:/i, "").trim();
         for (const part of body.split(",")) {
           const bit = part.trim();
-          const m = bit.match(/^(\d)\s*-\s*([A-Za-z0-9]+)$/);
+          const m = bit.match(/^(\d+)\s*-\s*([A-Za-z0-9]+)$/);
           if (m) {
-            const num = m[1];
+            const num = normalizeLineNum(m[1]);
             const code = normalizeCode(m[2]);
-            if (LINE_NUMS.includes(num) && code) state.lines[num] = code;
+            if (num && code) state.lines[num] = code;
           }
         }
       }
@@ -173,9 +186,10 @@
   function formatDescription(state) {
     const out = [];
     if (state.v) out.push(`V: ${state.v}`);
-    const lineParts = LINE_NUMS.filter((n) => state.lines[n]).map(
-      (n) => `${n}-${state.lines[n]}`,
-    );
+    const lineParts = Object.keys(state.lines)
+      .filter((n) => normalizeLineNum(n) && state.lines[n])
+      .sort((a, b) => Number(a) - Number(b))
+      .map((n) => `${n}-${state.lines[n]}`);
     if (lineParts.length) out.push(`L: ${lineParts.join(", ")}`);
     if (state.zm) out.push(`ZM: ${state.zm}`);
     return out.join("\n");
@@ -197,6 +211,7 @@
    *   descPreview: HTMLElement,
    *   prompt?: (message: string, defaultValue?: string) => Promise<string|null>,
    *   confirm?: (message: string) => Promise<boolean>,
+   *   alert?: (message: string) => void,
    * }} opts
    */
   function createStructuredTextUi(opts) {
@@ -212,12 +227,60 @@
         return v == null ? null : v;
       });
     const confirmFn = opts.confirm || (async (msg) => window.confirm(msg));
+    const alertFn =
+      opts.alert ||
+      ((msg) => {
+        window.alert(msg);
+      });
+
+    const MSG_COCHER =
+      "Cochez l’élément concerné, puis utilisez S, M ou D.";
+    const MSG_COCHER_INDES =
+      "Cochez la destination sur cette ligne, puis utilisez S ou M.";
+
+    async function confirmEffacer(label) {
+      return confirmFn(`Êtes-vous sûr de vouloir effacer « ${label} » ?`);
+    }
+
+    async function confirmModifier(label) {
+      return confirmFn(`Êtes-vous sûr de vouloir modifier « ${label} » ?`);
+    }
+
+    async function promptPickOne(message, choices, defaultVal) {
+      if (!choices.length) return null;
+      const raw = await promptFn(
+        `${message}\n${choices.join(", ")}`,
+        defaultVal != null ? String(defaultVal) : choices[0],
+      );
+      if (raw == null) return null;
+      const t = String(raw).trim();
+      return choices.includes(t) ? t : null;
+    }
 
     let config = loadConfig();
     let descState = emptyDescState();
     let namePick = { kind: "manual" };
     /** Description libre héritée tant qu’aucune case structurée n’est utilisée. */
     let legacyDescRaw = null;
+
+    function migrateDescLineKey(from, to) {
+      if (!from || !to || from === to) return;
+      if (descState.lines[from]) {
+        descState.lines[to] = descState.lines[from];
+        delete descState.lines[from];
+      }
+    }
+
+    function renameLineInConfig(from, to, overwrite) {
+      if (from === to) return true;
+      const next = { ...config.lineIndexes };
+      if (next[to] && !overwrite) return false;
+      next[to] = [...(next[from] || [])];
+      delete next[from];
+      config.lineIndexes = next;
+      migrateDescLineKey(from, to);
+      return true;
+    }
 
     function clearLegacyDesc() {
       legacyDescRaw = null;
@@ -247,21 +310,50 @@
       renderNamePanel();
     }
 
-    function sectionHead(title, onAdd, onDel, onMod) {
+    function asmTools(handlers, { showDup = true } = {}) {
+      const tools = document.createElement("div");
+      tools.className = "tam-plm-struct-tools tam-plm-struct-tools--asm";
+      const mk = (letter, fn, title) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "tam-plm-asm-btn";
+        b.textContent = letter;
+        b.title = title;
+        b.setAttribute("aria-label", title);
+        b.addEventListener("click", () => void fn());
+        return b;
+      };
+      tools.append(
+        mk("A", handlers.a, "Ajouter"),
+        mk("S", handlers.s, "Supprimer"),
+        mk("M", handlers.m, "Modifier"),
+      );
+      if (showDup && handlers.d) {
+        tools.append(mk("D", handlers.d, "Dupliquer"));
+      }
+      return tools;
+    }
+
+    function sectionHead(title, handlers, opts) {
       const head = document.createElement("div");
       head.className = "tam-plm-struct-section__head";
       const titleEl = document.createElement("span");
       titleEl.className = "tam-plm-struct-section__title";
       titleEl.textContent = title;
       head.appendChild(titleEl);
-      head.appendChild(sectionTools(onAdd, onDel, onMod));
+      head.appendChild(asmTools(handlers, opts));
       return head;
     }
 
     function renderNamePanel() {
       namePanel.innerHTML = "";
       namePanel.appendChild(
-        sectionHead("Nom :", addNamePreset, delNamePreset, modNamePreset),
+        sectionHead("Nom :", {
+          a: addNamePreset,
+          s: delNamePreset,
+          m: modNamePreset,
+          d: dupNamePreset,
+        }),
       );
 
       if (config.namePresets.length) {
@@ -313,67 +405,57 @@
       renderNamePanel();
     }
 
+    async function dupNamePreset() {
+      if (namePick.kind !== "preset" || !namePick.value) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const src = namePick.value;
+      const newV = await promptFn("Libellé du doublon :", src);
+      if (newV == null || !String(newV).trim()) return;
+      const newT = String(newV).trim();
+      config.namePresets = sortNamePresets([
+        ...new Set([...config.namePresets, newT]),
+      ]);
+      namePick = { kind: "preset", value: newT };
+      syncNameFromPick();
+      saveConfig(config);
+      renderNamePanel();
+    }
+
     async function delNamePreset() {
       if (!config.namePresets.length) return;
-      const raw = await promptFn(
-        `Nom à supprimer (texte exact) :\n${config.namePresets.join(", ")}`,
-        "",
-      );
-      if (raw == null || !String(raw).trim()) return;
-      const t = String(raw).trim();
-      if (!(await confirmFn(`Supprimer le nom « ${t} » ?`))) return;
-      config.namePresets = config.namePresets.filter((x) => x !== t);
-      if (namePick.kind === "preset" && namePick.value === t) {
-        namePick = { kind: "manual" };
-        nameEl.value = "G";
+      if (namePick.kind !== "preset" || !namePick.value) {
+        alertFn(MSG_COCHER);
+        return;
       }
+      const t = namePick.value;
+      if (!(await confirmEffacer(t))) return;
+      config.namePresets = config.namePresets.filter((x) => x !== t);
+      namePick = { kind: "manual" };
+      nameEl.value = "G";
       saveConfig(config);
       renderNamePanel();
     }
 
     async function modNamePreset() {
       if (!config.namePresets.length) return;
-      const oldV = await promptFn(
-        `Nom à renommer :\n${config.namePresets.join(", ")}`,
-        "",
-      );
-      if (oldV == null || !String(oldV).trim()) return;
-      const oldT = String(oldV).trim();
-      if (!config.namePresets.includes(oldT)) return;
+      if (namePick.kind !== "preset" || !namePick.value) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const oldT = namePick.value;
+      if (!(await confirmModifier(oldT))) return;
       const newV = await promptFn("Nouveau nom :", oldT);
       if (newV == null || !String(newV).trim()) return;
       const newT = String(newV).trim();
       config.namePresets = sortNamePresets(
         config.namePresets.map((x) => (x === oldT ? newT : x)),
       );
-      if (namePick.kind === "preset" && namePick.value === oldT) {
-        namePick = { kind: "preset", value: newT };
-        syncNameFromPick();
-      }
+      namePick = { kind: "preset", value: newT };
+      syncNameFromPick();
       saveConfig(config);
       renderNamePanel();
-    }
-
-    function sectionTools(onAdd, onDel, onMod) {
-      const tools = document.createElement("div");
-      tools.className = "tam-plm-struct-tools";
-      const addBtn = document.createElement("button");
-      addBtn.type = "button";
-      addBtn.className = "tam-plm-struct-tool-btn";
-      addBtn.textContent = "Ajouter";
-      addBtn.addEventListener("click", () => void onAdd());
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "tam-plm-struct-tool-btn";
-      delBtn.textContent = "Supprimer";
-      delBtn.addEventListener("click", () => void onDel());
-      const modBtn = document.createElement("button");
-      modBtn.type = "button";
-      modBtn.className = "tam-plm-struct-tool-btn";
-      modBtn.textContent = "Modifier";
-      modBtn.addEventListener("click", () => void onMod());
-      tools.append(addBtn, delBtn, modBtn);
-      return tools;
     }
 
     function renderChipCheckbox(
@@ -441,7 +523,14 @@
 
       const secV = document.createElement("section");
       secV.className = "tam-plm-struct-section";
-      secV.appendChild(sectionHead("Vitesse:", addSpeed, delSpeed, modSpeed));
+      secV.appendChild(
+        sectionHead("Vitesse :", {
+          a: addSpeed,
+          s: delSpeed,
+          m: modSpeed,
+          d: dupSpeed,
+        }),
+      );
       const boxV = document.createElement("div");
       boxV.className = "tam-plm-struct-box tam-plm-struct-box--chips";
       renderRadioGroup({
@@ -461,16 +550,15 @@
       const secL = document.createElement("section");
       secL.className = "tam-plm-struct-section";
       secL.appendChild(
-        sectionHead(
-          "Lignes (INDES):",
-          addLineIndex,
-          delLineIndex,
-          modLineIndex,
-        ),
+        sectionHead("Lignes (INDES) :", {
+          a: addLine,
+          s: delLine,
+          m: modLine,
+          d: dupLine,
+        }),
       );
-      for (const num of LINE_NUMS) {
+      for (const num of getLineNums(config.lineIndexes)) {
         const indexes = config.lineIndexes[num] || [];
-        if (!indexes.length) continue;
         const lineRow = document.createElement("div");
         lineRow.className = "tam-plm-line-row";
         const numEl = document.createElement("span");
@@ -497,13 +585,30 @@
           });
         }
         lineRow.appendChild(box);
+        lineRow.appendChild(
+          asmTools(
+            {
+              a: () => addLineDest(num),
+              s: () => delLineDest(num),
+              m: () => modLineDest(num),
+            },
+            { showDup: false },
+          ),
+        );
         secL.appendChild(lineRow);
       }
       descPanel.appendChild(secL);
 
       const secZ = document.createElement("section");
       secZ.className = "tam-plm-struct-section";
-      secZ.appendChild(sectionHead("Zones M.:", addZone, delZone, modZone));
+      secZ.appendChild(
+        sectionHead("Zones M :", {
+          a: addZone,
+          s: delZone,
+          m: modZone,
+          d: dupZone,
+        }),
+      );
       const boxZ = document.createElement("div");
       boxZ.className = "tam-plm-struct-box tam-plm-struct-box--chips";
       renderRadioGroup({
@@ -536,100 +641,185 @@
       renderDescPanel();
     }
 
+    async function dupSpeed() {
+      if (!descState.v) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const src = descState.v;
+      const newV = await promptFn("Libellé du doublon :", src);
+      if (newV == null || !String(newV).trim()) return;
+      const newT = normalizeSpeedLabel(newV);
+      config.speeds = sortAlpha([...new Set([...config.speeds, newT])]);
+      descState.v = newT;
+      saveConfig(config);
+      renderDescPanel();
+    }
+
     async function delSpeed() {
       if (!config.speeds.length) return;
-      const raw = await promptFn(
-        `Vitesse à supprimer :\n${config.speeds.join(", ")}`,
-        "",
-      );
-      if (raw == null || !String(raw).trim()) return;
-      const t = normalizeSpeedLabel(raw);
-      if (!(await confirmFn(`Supprimer « ${t} » ?`))) return;
+      if (!descState.v) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const t = descState.v;
+      if (!(await confirmEffacer(t))) return;
       config.speeds = config.speeds.filter((x) => x !== t);
-      if (descState.v === t) descState.v = null;
+      descState.v = null;
       saveConfig(config);
       renderDescPanel();
     }
 
     async function modSpeed() {
       if (!config.speeds.length) return;
-      const oldV = await promptFn(
-        `Vitesse à renommer :\n${config.speeds.join(", ")}`,
-        "",
-      );
-      if (oldV == null || !String(oldV).trim()) return;
-      const oldT = normalizeSpeedLabel(oldV);
-      if (!config.speeds.includes(oldT)) return;
+      if (!descState.v) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const oldT = descState.v;
+      if (!(await confirmModifier(oldT))) return;
       const newV = await promptFn("Nouveau libellé :", oldT);
       if (newV == null || !String(newV).trim()) return;
       const newT = normalizeSpeedLabel(newV);
       config.speeds = sortAlpha(
         config.speeds.map((x) => (x === oldT ? newT : x)),
       );
-      if (descState.v === oldT) descState.v = newT;
+      descState.v = newT;
       saveConfig(config);
       renderDescPanel();
     }
 
-    async function addLineIndex() {
-      const num = await promptFn("Numéro de ligne (1 à 5) :", "1");
-      if (num == null || !LINE_NUMS.includes(String(num).trim())) return;
-      const n = String(num).trim();
+    async function addLine() {
+      const raw = await promptFn("Numéro de la nouvelle ligne :", "6");
+      if (raw == null) return;
+      const n = normalizeLineNum(raw);
+      if (!n) return;
+      if (config.lineIndexes[n]) {
+        alertFn(`La ligne ${n} existe déjà.`);
+        return;
+      }
+      config.lineIndexes[n] = [];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function delLine() {
+      const lines = getLineNums(config.lineIndexes);
+      if (!lines.length) return;
+      const n = normalizeLineNum(
+        await promptPickOne("Ligne à supprimer :", lines, lines[0]),
+      );
+      if (!n) return;
+      if (!(await confirmEffacer(`la ligne ${n} et toutes ses destinations`)))
+        return;
+      delete config.lineIndexes[n];
+      delete descState.lines[n];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function modLine() {
+      const lines = getLineNums(config.lineIndexes);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Ligne à renommer :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn(
+        `Nouveau numéro pour la ligne ${from} :`,
+        from,
+      );
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (to !== from && config.lineIndexes[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne ${to} existe déjà. Remplacer ses destinations par celles de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      renameLineInConfig(from, to, true);
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function dupLine() {
+      const lines = getLineNums(config.lineIndexes);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Dupliquer la ligne :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn("Vers le numéro de ligne :", "");
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (config.lineIndexes[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne ${to} existe déjà. Écraser ses destinations par celles de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      config.lineIndexes[to] = [...(config.lineIndexes[from] || [])];
+      if (descState.lines[from]) descState.lines[to] = descState.lines[from];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function addLineDest(lineNum) {
       const raw = await promptFn(
-        "Indices de destination à ajouter (séparés par des virgules, ex. SA, RO, PL) :",
+        `Destinations à ajouter sur la ligne ${lineNum} (séparées par des virgules) :`,
         "",
       );
       if (raw == null) return;
       const batch = splitBatchInput(raw).map(normalizeCode).filter(Boolean);
       if (!batch.length) return;
-      const cur = config.lineIndexes[n] || [];
-      config.lineIndexes[n] = sortAlpha([...new Set([...cur, ...batch])]);
+      const cur = config.lineIndexes[lineNum] || [];
+      config.lineIndexes[lineNum] = sortAlpha([
+        ...new Set([...cur, ...batch]),
+      ]);
       saveConfig(config);
       renderDescPanel();
     }
 
-    async function delLineIndex() {
-      const num = await promptFn("Numéro de ligne (1 à 5) :", "1");
-      if (num == null || !LINE_NUMS.includes(String(num).trim())) return;
-      const n = String(num).trim();
-      const list = config.lineIndexes[n] || [];
-      if (!list.length) return;
-      const raw = await promptFn(
-        `Indice à supprimer sur la ligne ${n} :\n${list.join(", ")}`,
-        "",
-      );
-      if (raw == null || !String(raw).trim()) return;
-      const code = normalizeCode(raw);
-      if (
-        !(await confirmFn(`Supprimer l’indice « ${code} » sur la ligne ${n} ?`))
-      )
+    async function delLineDest(lineNum) {
+      const code = descState.lines[lineNum];
+      if (!code) {
+        alertFn(MSG_COCHER_INDES);
         return;
-      config.lineIndexes[n] = list.filter((x) => x !== code);
-      if (descState.lines[n] === code) delete descState.lines[n];
+      }
+      const label = `ligne ${lineNum} — ${code}`;
+      if (!(await confirmEffacer(label))) return;
+      config.lineIndexes[lineNum] = (config.lineIndexes[lineNum] || []).filter(
+        (x) => x !== code,
+      );
+      delete descState.lines[lineNum];
       saveConfig(config);
       renderDescPanel();
     }
 
-    async function modLineIndex() {
-      const num = await promptFn("Numéro de ligne (1 à 5) :", "1");
-      if (num == null || !LINE_NUMS.includes(String(num).trim())) return;
-      const n = String(num).trim();
-      const list = config.lineIndexes[n] || [];
-      if (!list.length) return;
-      const oldV = await promptFn(
-        `Indice à renommer (ligne ${n}) :\n${list.join(", ")}`,
-        "",
-      );
-      if (oldV == null || !String(oldV).trim()) return;
-      const oldC = normalizeCode(oldV);
-      if (!list.includes(oldC)) return;
+    async function modLineDest(lineNum) {
+      const oldC = descState.lines[lineNum];
+      if (!oldC) {
+        alertFn(MSG_COCHER_INDES);
+        return;
+      }
+      const label = `ligne ${lineNum} — ${oldC}`;
+      if (!(await confirmModifier(label))) return;
       const newV = await promptFn("Nouvel indice (majuscules) :", oldC);
       if (newV == null || !String(newV).trim()) return;
       const newC = normalizeCode(newV);
-      config.lineIndexes[n] = sortAlpha(
+      const list = config.lineIndexes[lineNum] || [];
+      config.lineIndexes[lineNum] = sortAlpha(
         list.map((x) => (x === oldC ? newC : x)),
       );
-      if (descState.lines[n] === oldC) descState.lines[n] = newC;
+      descState.lines[lineNum] = newC;
       saveConfig(config);
       renderDescPanel();
     }
@@ -651,37 +841,50 @@
       renderDescPanel();
     }
 
+    async function dupZone() {
+      if (!descState.zm) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const src = descState.zm;
+      const newV = await promptFn("Libellé du doublon :", src);
+      if (newV == null || !String(newV).trim()) return;
+      const newT = plmNormalizeZoneLabel(newV);
+      config.zones = sortAlpha([...new Set([...config.zones, newT])]);
+      descState.zm = newT;
+      saveConfig(config);
+      renderDescPanel();
+    }
+
     async function delZone() {
       if (!config.zones.length) return;
-      const raw = await promptFn(
-        `Zone à supprimer :\n${config.zones.join(", ")}`,
-        "",
-      );
-      if (raw == null || !String(raw).trim()) return;
-      const t = String(raw).trim();
-      if (!(await confirmFn(`Supprimer la zone « ${t} » ?`))) return;
+      if (!descState.zm) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const t = descState.zm;
+      if (!(await confirmEffacer(t))) return;
       config.zones = config.zones.filter((x) => x !== t);
-      if (descState.zm === t) descState.zm = null;
+      descState.zm = null;
       saveConfig(config);
       renderDescPanel();
     }
 
     async function modZone() {
       if (!config.zones.length) return;
-      const oldV = await promptFn(
-        `Zone à renommer :\n${config.zones.join(", ")}`,
-        "",
-      );
-      if (oldV == null || !String(oldV).trim()) return;
-      const oldT = String(oldV).trim();
-      if (!config.zones.includes(oldT)) return;
+      if (!descState.zm) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const oldT = descState.zm;
+      if (!(await confirmModifier(oldT))) return;
       const newV = await promptFn("Nouveau nom :", oldT);
       if (newV == null || !String(newV).trim()) return;
-      const newT = String(newV).trim();
+      const newT = plmNormalizeZoneLabel(newV);
       config.zones = sortAlpha(
         config.zones.map((x) => (x === oldT ? newT : x)),
       );
-      if (descState.zm === oldT) descState.zm = newT;
+      descState.zm = newT;
       saveConfig(config);
       renderDescPanel();
     }

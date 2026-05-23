@@ -2229,6 +2229,7 @@ function openPersonalLandmarkDialog(spec) {
           showAppPromptDialog(TAM_APP_DIALOG_TITLE, message, defaultValue ?? ""),
         confirm: (message) =>
           showAppConfirmDialog(TAM_APP_DIALOG_TITLE, message),
+        alert: (message) => tamAppAlert(message),
       });
       plmTextUi.setInitial(initialName, initialDesc);
     }
