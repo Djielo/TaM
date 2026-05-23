@@ -2010,6 +2010,11 @@ function openPersonalLandmarkDialog(spec) {
     const helpBtn = document.getElementById("appPersonalLandmarkDialogHelpBtn");
     const nameIn = document.getElementById("appPersonalLandmarkDialogName");
     const descIn = document.getElementById("appPersonalLandmarkDialogDesc");
+    const namePanel = document.getElementById("appPersonalLandmarkDialogNamePanel");
+    const descPanel = document.getElementById("appPersonalLandmarkDialogDescPanel");
+    const descPreview = document.getElementById(
+      "appPersonalLandmarkDialogDescPreview",
+    );
     const saveBtn = document.getElementById("appPersonalLandmarkDialogSave");
     const cancelBtn = document.getElementById("appPersonalLandmarkDialogCancel");
     const delBtn = document.getElementById("appPersonalLandmarkDialogDelete");
@@ -2018,6 +2023,9 @@ function openPersonalLandmarkDialog(spec) {
     if (
       !nameIn ||
       !descIn ||
+      !namePanel ||
+      !descPanel ||
+      !descPreview ||
       !saveBtn ||
       !cancelBtn ||
       !delBtn ||
@@ -2198,12 +2206,32 @@ function openPersonalLandmarkDialog(spec) {
     }
 
     const editGroupId = spec.groupId || null;
-    nameIn.value = spec.name != null ? String(spec.name) : "";
-    descIn.value = editGroupId
+    let initialName = spec.name != null ? String(spec.name) : "";
+    if (mode === "create" && !String(initialName).trim()) {
+      initialName = "G";
+    }
+    const initialDesc = editGroupId
       ? plmGetGroupDescription(editGroupId)
       : spec.description != null
         ? String(spec.description)
         : "";
+    nameIn.value = initialName;
+    descIn.value = initialDesc;
+    let plmTextUi = null;
+    if (typeof window.plmCreateStructuredTextUi === "function") {
+      plmTextUi = window.plmCreateStructuredTextUi({
+        nameEl: nameIn,
+        descEl: descIn,
+        namePanel,
+        descPanel,
+        descPreview,
+        prompt: (message, defaultValue) =>
+          showAppPromptDialog(TAM_APP_DIALOG_TITLE, message, defaultValue ?? ""),
+        confirm: (message) =>
+          showAppConfirmDialog(TAM_APP_DIALOG_TITLE, message),
+      });
+      plmTextUi.setInitial(initialName, initialDesc);
+    }
     let gridLat = Number(spec.lat);
     let gridLng = Number(spec.lng);
     if (mode === "edit" && spec.id) {
@@ -2240,6 +2268,7 @@ function openPersonalLandmarkDialog(spec) {
       if (capBandEl) {
         capBandEl.removeEventListener("change", onCapBandChange);
       }
+      if (plmTextUi) plmTextUi.destroy();
     }
     const finish = (payload) => {
       if (settled) return;
@@ -2266,6 +2295,7 @@ function openPersonalLandmarkDialog(spec) {
       finish({ action: "delete", id: spec.id });
     }
     function onSave() {
+      if (plmTextUi) plmTextUi.flush();
       const name = String(nameIn.value || "").trim();
       if (!name) {
         tamAppAlert("Indiquez un nom pour le repère.");
@@ -2295,6 +2325,7 @@ function openPersonalLandmarkDialog(spec) {
     }
     function onDuplicate() {
       if (mode !== "edit" || !spec.id) return;
+      if (plmTextUi) plmTextUi.flush();
       const name = String(nameIn.value || "").trim();
       if (!name) {
         tamAppAlert("Indiquez un nom pour le repère.");
