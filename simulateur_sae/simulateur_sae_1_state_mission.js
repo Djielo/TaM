@@ -476,6 +476,334 @@ function plmRenderSlotGrid(container, centerLat, centerLng, groupId, landmarkId)
     Object.keys(slotActive).filter((k) => slotActive[k]);
 }
 
+function plmLatLngFromGridOffset(pivotLat, pivotLng, qx, qy) {
+  if (!plmIsValidPlmLatLng(pivotLat, pivotLng)) return null;
+  if (plmMapUsesMagneticLayout() && map) {
+    const p0 = map.latLngToContainerPoint(L.latLng(pivotLat, pivotLng));
+    const p1 = L.point(
+      p0.x + qx * PLM_MAGNETIC_SPACING_PX,
+      p0.y + qy * PLM_MAGNETIC_SPACING_PX,
+    );
+    const ll = map.containerPointToLatLng(p1);
+    return [ll.lat, ll.lng];
+  }
+  return [
+    pivotLat - qy * PLM_SLOT_SPACING_LAT,
+    pivotLng + qx * PLM_SLOT_SPACING_LNG,
+  ];
+}
+
+function plmGroupPivotMember(groupId) {
+  const members = plmMembersOfGroup(groupId);
+  const root = members.find((m) => !String(m.parentId ?? "").trim());
+  return root || members[0] || null;
+}
+
+function plmBuildGroupGridLayout(groupId, padding) {
+  const pad = Number.isFinite(padding) ? padding : 1;
+  const pivotMem = plmGroupPivotMember(groupId);
+  if (!pivotMem) return null;
+  const pivotDisp = plmDisplayLatLngForLandmark(pivotMem);
+  if (!plmIsValidPlmLatLng(pivotDisp.lat, pivotDisp.lng)) return null;
+  const spacing = PLM_MAGNETIC_SPACING_PX;
+  const p0 =
+    map && plmMapUsesMagneticLayout()
+      ? map.latLngToContainerPoint(L.latLng(pivotDisp.lat, pivotDisp.lng))
+      : null;
+  const cells = new Map();
+  for (const mem of plmMembersOfGroup(groupId)) {
+    const d = plmDisplayLatLngForLandmark(mem);
+    if (!plmIsValidPlmLatLng(d.lat, d.lng)) continue;
+    let qx;
+    let qy;
+    if (p0) {
+      const p1 = map.latLngToContainerPoint(L.latLng(d.lat, d.lng));
+      qx = Math.round((p1.x - p0.x) / spacing);
+      qy = Math.round((p1.y - p0.y) / spacing);
+    } else {
+      qx = Math.round((d.lng - pivotDisp.lng) / PLM_SLOT_SPACING_LNG);
+      qy = Math.round(-(d.lat - pivotDisp.lat) / PLM_SLOT_SPACING_LAT);
+    }
+    cells.set(`${qx},${qy}`, {
+      landmarkId: mem.id,
+      isPivot: mem.id === pivotMem.id,
+    });
+  }
+  if (!cells.size) return null;
+  let minQx = 0;
+  let maxQx = 0;
+  let minQy = 0;
+  let maxQy = 0;
+  let first = true;
+  for (const key of cells.keys()) {
+    const [qx, qy] = key.split(",").map(Number);
+    if (first) {
+      minQx = maxQx = qx;
+      minQy = maxQy = qy;
+      first = false;
+    } else {
+      minQx = Math.min(minQx, qx);
+      maxQx = Math.max(maxQx, qx);
+      minQy = Math.min(minQy, qy);
+      maxQy = Math.max(maxQy, qy);
+    }
+  }
+  minQx -= pad;
+  maxQx += pad;
+  minQy -= pad;
+  maxQy += pad;
+  return {
+    groupId,
+    pivotId: pivotMem.id,
+    pivotLat: pivotDisp.lat,
+    pivotLng: pivotDisp.lng,
+    cells,
+    minQx,
+    maxQx,
+    minQy,
+    maxQy,
+  };
+}
+
+function plmResolveParentSlotForGridCell(layout, qx, qy) {
+  if (!layout) return null;
+  const key = `${qx},${qy}`;
+  if (layout.cells.has(key)) return null;
+  const deltas = [
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
+  ];
+  for (const [dx, dy] of deltas) {
+    const nKey = `${qx + dx},${qy + dy}`;
+    const occ = layout.cells.get(nKey);
+    if (!occ?.landmarkId) continue;
+    const slot = PLM_GRID_OFFSET_TO_SLOT[`${-dx},${-dy}`];
+    if (!slot) continue;
+    const taken = personalLandmarksList.some(
+      (m) => m.parentId === occ.landmarkId && m.slot === slot,
+    );
+    if (!taken) {
+      return { parentId: occ.landmarkId, slot };
+    }
+  }
+  return null;
+}
+
+function plmFindNearestGroupId(landmarkId) {
+  const item = personalLandmarksList.find((x) => x.id === landmarkId);
+  if (!item || item.groupId) return null;
+  const pos = plmDisplayLatLngForLandmark(item);
+  if (!plmIsValidPlmLatLng(pos.lat, pos.lng)) return null;
+  const groupIds = new Set();
+  for (const m of personalLandmarksList) {
+    if (m.groupId) groupIds.add(m.groupId);
+  }
+  let best = null;
+  let bestDist = Infinity;
+  for (const gid of groupIds) {
+    const members = plmMembersOfGroup(gid);
+    if (!members.length) continue;
+    let clat = 0;
+    let clng = 0;
+    for (const mem of members) {
+      const d = plmDisplayLatLngForLandmark(mem);
+      clat += d.lat;
+      clng += d.lng;
+    }
+    clat /= members.length;
+    clng /= members.length;
+    const dist = (pos.lat - clat) ** 2 + (pos.lng - clng) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = gid;
+    }
+  }
+  return best;
+}
+
+function plmRenderMergeGroupGrid(container, layout) {
+  if (!container || !layout) return;
+  container.innerHTML = "";
+  const cols = layout.maxQx - layout.minQx + 1;
+  container.style.gridTemplateColumns = `repeat(${cols}, 32px)`;
+  let selectedQx = null;
+  let selectedQy = null;
+  const updateOk = () => {
+    const okBtn = document.getElementById("appPlmMergeGroupDialogOk");
+    if (okBtn) okBtn.disabled = selectedQx == null;
+  };
+  const selectCell = (qx, qy, btn) => {
+    container.querySelectorAll(".tam-plm-slot-btn.is-selected").forEach((el) => {
+      el.classList.remove("is-selected");
+    });
+    selectedQx = qx;
+    selectedQy = qy;
+    btn.classList.add("is-selected");
+    updateOk();
+  };
+  for (let qy = layout.minQy; qy <= layout.maxQy; qy++) {
+    for (let qx = layout.minQx; qx <= layout.maxQx; qx++) {
+      const cell = document.createElement("div");
+      cell.className = "tam-plm-slot-cell";
+      const key = `${qx},${qy}`;
+      const occ = layout.cells.get(key);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tam-plm-slot-btn";
+      if (occ?.landmarkId) {
+        cell.classList.add("tam-plm-slot-cell--occupied");
+        btn.disabled = true;
+        btn.textContent = "●";
+        const mem = personalLandmarksList.find((x) => x.id === occ.landmarkId);
+        btn.title = mem?.name || "Repère du groupe";
+        btn.setAttribute("aria-label", mem?.name || "Repère du groupe");
+      } else {
+        const link = plmResolveParentSlotForGridCell(layout, qx, qy);
+        if (link) {
+          btn.textContent = "+";
+          btn.title = "Placer le repère ici";
+          btn.setAttribute("aria-label", "Placer le repère ici");
+          btn.addEventListener("click", () => selectCell(qx, qy, btn));
+        } else {
+          btn.disabled = true;
+          btn.classList.add("tam-plm-slot-btn--blocked");
+          btn.textContent = "·";
+          btn.title = "Emplacement indisponible";
+          btn.setAttribute("aria-label", "Emplacement indisponible");
+        }
+      }
+      cell.appendChild(btn);
+      container.appendChild(cell);
+    }
+  }
+  container._plmGetMergeSelection = () => {
+    if (selectedQx == null || selectedQy == null) return null;
+    const link = plmResolveParentSlotForGridCell(
+      layout,
+      selectedQx,
+      selectedQy,
+    );
+    if (!link) return null;
+    return { qx: selectedQx, qy: selectedQy, ...link };
+  };
+  updateOk();
+}
+
+function plmMergeLandmarkIntoGroup(landmarkId, groupId, selection, layout) {
+  if (!selection || !layout) return false;
+  const idx = personalLandmarksList.findIndex((x) => x.id === landmarkId);
+  if (idx < 0) return false;
+  const item = personalLandmarksList[idx];
+  if (item.groupId) return false;
+  const pos = plmLatLngFromGridOffset(
+    layout.pivotLat,
+    layout.pivotLng,
+    selection.qx,
+    selection.qy,
+  );
+  if (!pos || !plmIsValidPlmLatLng(pos[0], pos[1])) return false;
+  const groupName =
+    String(plmLandmarkForGroupLabel(groupId)?.name ?? "").trim() || item.name;
+  personalLandmarksList[idx] = {
+    ...item,
+    lat: pos[0],
+    lng: pos[1],
+    groupId,
+    parentId: selection.parentId,
+    slot: selection.slot,
+    name: groupName,
+    description: "",
+  };
+  layout.cells.set(`${selection.qx},${selection.qy}`, {
+    landmarkId,
+    isPivot: false,
+  });
+  if (plmMapUsesMagneticLayout()) {
+    plmApplyMagneticLayoutForGroup(groupId);
+  }
+  return true;
+}
+
+/**
+ * Modale : choisir l’emplacement d’un repère isolé dans le groupe le plus proche.
+ * @returns {Promise<boolean>} true si fusion effectuée
+ */
+function openPlmMergeIntoGroupDialog(landmarkId) {
+  return new Promise((resolve) => {
+    const groupId = plmFindNearestGroupId(landmarkId);
+    if (!groupId) {
+      tamAppAlert("Aucun groupe de repères à proximité.");
+      resolve(false);
+      return;
+    }
+    const layout = plmBuildGroupGridLayout(groupId, 1);
+    if (!layout) {
+      tamAppAlert("Impossible d’afficher la grille du groupe.");
+      resolve(false);
+      return;
+    }
+    const dlg = document.getElementById("appPlmMergeGroupDialog");
+    const introEl = document.getElementById("appPlmMergeGroupDialogIntro");
+    const gridEl = document.getElementById("appPlmMergeGroupDialogGrid");
+    const okBtn = document.getElementById("appPlmMergeGroupDialogOk");
+    const cancelBtn = document.getElementById("appPlmMergeGroupDialogCancel");
+    if (
+      !dlg ||
+      typeof dlg.showModal !== "function" ||
+      !introEl ||
+      !gridEl ||
+      !okBtn ||
+      !cancelBtn
+    ) {
+      resolve(false);
+      return;
+    }
+    const groupLabel =
+      String(plmLandmarkForGroupLabel(groupId)?.name ?? "").trim() ||
+      "groupe proche";
+    introEl.textContent = `Choisissez l’emplacement dans « ${groupLabel} » (cliquez sur +). Les cases vides autour du groupe sont proposées.`;
+    plmRenderMergeGroupGrid(gridEl, layout);
+    let settled = false;
+    const finish = (merged) => {
+      if (settled) return;
+      settled = true;
+      if (dlg.open) dlg.close();
+      resolve(!!merged);
+    };
+    const onOk = () => {
+      const sel =
+        typeof gridEl._plmGetMergeSelection === "function"
+          ? gridEl._plmGetMergeSelection()
+          : null;
+      if (!sel) return;
+      if (!plmMergeLandmarkIntoGroup(landmarkId, groupId, sel, layout)) {
+        tamAppAlert("Impossible de fusionner le repère à cet emplacement.");
+        return;
+      }
+      savePersonalLandmarksToStorage();
+      redrawPersonalLandmarksLayer();
+      setGpsStatus(`Repère fusionné dans le groupe « ${groupLabel} ».`);
+      finish(true);
+    };
+    const onCancel = () => finish(false);
+    const onClose = () => finish(false);
+    const onBackdrop = (ev) => {
+      if (ev.target === dlg) finish(false);
+    };
+    okBtn.addEventListener("click", onOk, { once: true });
+    cancelBtn.addEventListener("click", onCancel, { once: true });
+    dlg.addEventListener("close", onClose, { once: true });
+    dlg.addEventListener("click", onBackdrop, { once: true });
+    dlg.showModal();
+  });
+}
+
 function plmAddChildrenFromSlots(
   parentId,
   centerLat,
@@ -1689,6 +2017,50 @@ async function plmDeleteGroupFromContext(groupId) {
   setGpsStatus("Groupe de repères supprimé.");
 }
 
+async function plmDetachLandmarkFromGroup(landmarkId) {
+  const item = personalLandmarksList.find((x) => x.id === landmarkId);
+  if (!item?.groupId) return;
+  const ok = await showAppConfirmDialog(
+    TAM_APP_DIALOG_TITLE,
+    "Détacher ce repère du groupe ? Il restera à sa position actuelle sur la carte.",
+  );
+  if (!ok) return;
+  const idx = personalLandmarksList.findIndex((x) => x.id === landmarkId);
+  if (idx < 0) return;
+  const row = personalLandmarksList[idx];
+  const groupId = row.groupId;
+  const disp = plmDisplayLatLngForLandmark(row);
+  const groupDesc = plmGetGroupDescription(groupId);
+  const next = { ...row };
+  if (plmIsValidPlmLatLng(disp.lat, disp.lng)) {
+    next.lat = disp.lat;
+    next.lng = disp.lng;
+  }
+  delete next.groupId;
+  delete next.parentId;
+  delete next.slot;
+  if (groupDesc && !String(next.description ?? "").trim()) {
+    next.description = groupDesc;
+  }
+  personalLandmarksList[idx] = next;
+  for (let i = 0; i < personalLandmarksList.length; i++) {
+    const child = personalLandmarksList[i];
+    if (child.groupId !== groupId || child.parentId !== landmarkId) continue;
+    const childNext = { ...child };
+    delete childNext.parentId;
+    delete childNext.slot;
+    personalLandmarksList[i] = childNext;
+  }
+  if (plmMembersOfGroup(groupId).length > 0 && plmMapUsesMagneticLayout()) {
+    plmApplyMagneticLayoutForGroup(groupId);
+  }
+  plmRemoveGroupIfEmpty(groupId);
+  savePersonalLandmarksToStorage();
+  savePlmGroupsToStorage();
+  redrawPersonalLandmarksLayer();
+  setGpsStatus("Repère détaché du groupe.");
+}
+
 function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   const item = personalLandmarksList.find((x) => x.id === landmarkId);
   if (!item) return;
@@ -1698,6 +2070,12 @@ function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   plmContextMenuLandmarkId = landmarkId;
   const dupGroupBtn = menu.querySelector('[data-plm-ctx="dup-group"]');
   if (dupGroupBtn) dupGroupBtn.hidden = !item.groupId;
+  const detachGroupBtn = menu.querySelector('[data-plm-ctx="detach-group"]');
+  if (detachGroupBtn) detachGroupBtn.hidden = !item.groupId;
+  const mergeGroupBtn = menu.querySelector('[data-plm-ctx="merge-group"]');
+  if (mergeGroupBtn) {
+    mergeGroupBtn.hidden = !!item.groupId || !plmFindNearestGroupId(landmarkId);
+  }
   const delGroupBtn = menu.querySelector('[data-plm-ctx="del-group"]');
   if (delGroupBtn) delGroupBtn.hidden = !item.groupId;
   menu.hidden = false;
@@ -1743,6 +2121,10 @@ function plmInitLandmarkContextMenu() {
       );
       return;
     }
+    if (action === "merge-group") {
+      void openPlmMergeIntoGroupDialog(id);
+      return;
+    }
     if (action === "dup-group") {
       const item = personalLandmarksList.find((x) => x.id === id);
       if (!item?.groupId) return;
@@ -1753,6 +2135,10 @@ function plmInitLandmarkContextMenu() {
       setGpsStatus(
         "Groupe dupliqué : déplacez-le sur la carte si besoin.",
       );
+      return;
+    }
+    if (action === "detach-group") {
+      void plmDetachLandmarkFromGroup(id);
       return;
     }
     if (action === "del-landmark") {

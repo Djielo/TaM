@@ -1149,6 +1149,41 @@
         background: #eceff3;
         border-color: #dde3ea;
       }
+      .tam-plm-merge-grid {
+        display: grid;
+        gap: 3px;
+        margin: 10px auto 4px;
+        justify-content: center;
+      }
+      .tam-plm-merge-grid .tam-plm-slot-cell {
+        min-height: 32px;
+      }
+      .tam-plm-merge-grid .tam-plm-slot-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+      }
+      .tam-plm-merge-grid .tam-plm-slot-cell--occupied .tam-plm-slot-btn {
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .tam-plm-merge-grid .tam-plm-slot-btn.is-selected {
+        background: #005ca9;
+        border-color: #005ca9;
+        color: #fff;
+      }
+      .tam-plm-merge-grid .tam-plm-slot-btn--blocked {
+        cursor: default;
+        color: #c5cad1;
+        background: #fafbfc;
+        border-color: #e8ecf0;
+      }
+      .app-plm-merge-dialog .tam-plm-merge-intro {
+        margin: 0 0 6px;
+        font-size: 13px;
+        line-height: 1.45;
+        color: #4a5568;
+      }
       .app-personal-landmark-dialog .tam-plm-dialog-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -3678,6 +3713,24 @@
       </button>
       <button
         type="button"
+        class="tam-plm-context-menu__item"
+        data-plm-ctx="merge-group"
+        role="menuitem"
+        hidden
+      >
+        Fusionner dans un groupe
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item"
+        data-plm-ctx="detach-group"
+        role="menuitem"
+        hidden
+      >
+        Détacher du groupe
+      </button>
+      <button
+        type="button"
         class="tam-plm-context-menu__item tam-plm-context-menu__item--danger"
         data-plm-ctx="del-landmark"
         role="menuitem"
@@ -3694,6 +3747,50 @@
         Supprimer le groupe
       </button>
     </div>
+
+    <dialog
+      id="appPlmMergeGroupDialog"
+      class="app-message-dialog app-plm-merge-dialog"
+      aria-labelledby="appPlmMergeGroupDialogTitle"
+      aria-describedby="appPlmMergeGroupDialogBody"
+    >
+      <div class="app-message-dialog__inner">
+        <h2
+          id="appPlmMergeGroupDialogTitle"
+          class="app-message-dialog__title"
+        >
+          Fusionner dans un groupe
+        </h2>
+        <div id="appPlmMergeGroupDialogBody" class="app-message-dialog__body">
+          <p id="appPlmMergeGroupDialogIntro" class="tam-plm-merge-intro"></p>
+          <div
+            id="appPlmMergeGroupDialogGrid"
+            class="tam-plm-merge-grid"
+            role="group"
+            aria-label="Emplacement dans le groupe"
+          ></div>
+        </div>
+        <div
+          class="app-message-dialog__actions app-message-dialog__actions--split"
+        >
+          <button
+            type="button"
+            id="appPlmMergeGroupDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            id="appPlmMergeGroupDialogOk"
+            class="app-message-dialog__ok"
+            disabled
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    </dialog>
 
     <dialog
       id="appPersonalLandmarkHelpDialog"
@@ -3734,9 +3831,10 @@
           <p>
             <strong>Sur la carte :</strong> aux zooms les plus proches, les
             voisins d’un même groupe restent alignés (grille aimantée). Glisser
-            un repère du groupe déplace tout le groupe. Glisser un repère seul
-            le détache du groupe. Le bouton <strong>Aa</strong> (sous le bouton
-            repères) affiche ou masque les noms et descriptions sur la carte.
+            un repère du groupe déplace tout le groupe. Clic droit ou appui long
+            : fusionner un repère isolé dans un groupe proche, ou le détacher
+            d’un groupe. Le bouton <strong>Aa</strong> (sous le bouton repères)
+            affiche ou masque les noms et descriptions sur la carte.
           </p>
         </div>
         <div class="app-message-dialog__actions">
