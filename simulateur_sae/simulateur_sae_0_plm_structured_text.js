@@ -60,7 +60,7 @@
     );
   }
 
-  /** Noms enregistrés : chiffres d’abord, puis ordre alphabétique (regroupe les « CMU … »). */
+  /** Noms enregistrés : chiffres d’abord, puis ordre alphabétique. */
   function normalizeLineNum(raw) {
     const n = String(raw ?? "").trim();
     return /^\d+$/.test(n) ? n : "";
@@ -85,6 +85,22 @@
         numeric: true,
       });
     });
+  }
+
+  /** Noms de type CMR / CMU (préfixe ou mention dans le libellé). */
+  function isCmrStyleNamePreset(name) {
+    return /CM[UR]/i.test(String(name ?? ""));
+  }
+
+  function partitionNamePresets(arr) {
+    const sorted = sortNamePresets(arr);
+    const standard = [];
+    const cmr = [];
+    for (const preset of sorted) {
+      if (isCmrStyleNamePreset(preset)) cmr.push(preset);
+      else standard.push(preset);
+    }
+    return { standard, cmr };
   }
 
   function loadConfig() {
@@ -345,6 +361,51 @@
       return head;
     }
 
+    function appendNamePresetChip(box, preset) {
+      const row = document.createElement("div");
+      row.className = "tam-plm-struct-chip";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      const cid = `plm-name-${preset.replace(/\W/g, "_")}`;
+      cb.id = cid;
+      cb.checked = namePick.kind === "preset" && namePick.value === preset;
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          namePick = { kind: "preset", value: preset };
+          syncNameFromPick();
+        } else if (
+          namePick.kind === "preset" &&
+          namePick.value === preset
+        ) {
+          namePick = { kind: "manual" };
+          nameEl.value = "G";
+        }
+        renderNamePanel();
+      });
+      const lbl = document.createElement("label");
+      lbl.htmlFor = cid;
+      lbl.textContent = preset;
+      row.append(cb, lbl);
+      box.appendChild(row);
+    }
+
+    function appendNamePresetBox(parent, presets) {
+      if (!presets.length) return;
+      const box = document.createElement("div");
+      box.className = "tam-plm-struct-box tam-plm-struct-box--grid2";
+      for (const preset of presets) {
+        appendNamePresetChip(box, preset);
+      }
+      parent.appendChild(box);
+    }
+
+    function appendNamePresetDivider(parent) {
+      const hr = document.createElement("hr");
+      hr.className = "tam-plm-name-divider";
+      hr.setAttribute("aria-hidden", "true");
+      parent.appendChild(hr);
+    }
+
     function renderNamePanel() {
       namePanel.innerHTML = "";
       namePanel.appendChild(
@@ -357,36 +418,19 @@
       );
 
       if (config.namePresets.length) {
-        const box = document.createElement("div");
-        box.className = "tam-plm-struct-box tam-plm-struct-box--grid2";
-        for (const preset of sortNamePresets(config.namePresets)) {
-          const row = document.createElement("div");
-          row.className = "tam-plm-struct-chip";
-          const cb = document.createElement("input");
-          cb.type = "checkbox";
-          const cid = `plm-name-${preset.replace(/\W/g, "_")}`;
-          cb.id = cid;
-          cb.checked = namePick.kind === "preset" && namePick.value === preset;
-          cb.addEventListener("change", () => {
-            if (cb.checked) {
-              namePick = { kind: "preset", value: preset };
-              syncNameFromPick();
-            } else if (
-              namePick.kind === "preset" &&
-              namePick.value === preset
-            ) {
-              namePick = { kind: "manual" };
-              nameEl.value = "G";
-            }
-            renderNamePanel();
-          });
-          const lbl = document.createElement("label");
-          lbl.htmlFor = cid;
-          lbl.textContent = preset;
-          row.append(cb, lbl);
-          box.appendChild(row);
+        const { standard, cmr } = partitionNamePresets(config.namePresets);
+        const groups = document.createElement("div");
+        groups.className = "tam-plm-name-preset-groups";
+        if (standard.length) {
+          appendNamePresetBox(groups, standard);
         }
-        namePanel.appendChild(box);
+        if (standard.length && cmr.length) {
+          appendNamePresetDivider(groups);
+        }
+        if (cmr.length) {
+          appendNamePresetBox(groups, cmr);
+        }
+        namePanel.appendChild(groups);
       }
     }
 

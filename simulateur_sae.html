@@ -790,6 +790,17 @@
       .tam-plm-icon-btn .tam-plm-mi {
         font-size: 20px;
       }
+      .tam-plm-letter {
+        font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+          sans-serif;
+        font-weight: 800;
+        font-size: 17px;
+        line-height: 1;
+        letter-spacing: -0.02em;
+      }
+      .tam-plm-icon-btn .tam-plm-letter {
+        font-size: 15px;
+      }
       /* Marqueurs repères sur la carte : puce bord blanc + fond couleur + glyphe contrasté */
       .tam-plm-marker-chip {
         box-sizing: border-box;
@@ -805,6 +816,9 @@
       .tam-plm-mi--map-marker {
         font-size: 19px;
         line-height: 1;
+      }
+      .tam-plm-letter--map-marker {
+        font-size: 18px;
       }
       .tam-plm-color-row {
         display: flex;
@@ -841,6 +855,9 @@
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
       }
       .tam-personal-landmark-marker__bubble .tam-plm-mi--map-marker {
+        display: block;
+      }
+      .tam-personal-landmark-marker__bubble .tam-plm-letter--map-marker {
         display: block;
       }
       .app-personal-landmark-dialog .app-personal-landmark-dialog__label {
@@ -963,6 +980,19 @@
         grid-template-columns: 1fr 1fr;
         gap: 4px 10px;
         align-items: center;
+      }
+      .tam-plm-name-preset-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        width: 100%;
+      }
+      .tam-plm-name-divider {
+        align-self: center;
+        width: min(72%, 12rem);
+        margin: 10px auto;
+        border: none;
+        border-top: 1px solid #ccd3db;
       }
       .tam-plm-struct-box--chips {
         gap: 4px 6px;

@@ -981,6 +981,26 @@ function plmMaterialLigature(def) {
   return "place";
 }
 
+function plmIconLetter(def) {
+  const letter = String(def?.letter ?? "").trim();
+  return /^[A-Za-z]$/.test(letter) ? letter.toUpperCase() : "";
+}
+
+function plmIconInnerHtml(def, mapMarker) {
+  const letter = plmIconLetter(def);
+  if (letter) {
+    const cls = mapMarker
+      ? "tam-plm-letter tam-plm-letter--map-marker"
+      : "tam-plm-letter";
+    return `<span class="${cls}" aria-hidden="true">${letter}</span>`;
+  }
+  const lig = plmMaterialLigature(def);
+  const miCls = mapMarker
+    ? "material-icons tam-plm-mi tam-plm-mi--map-marker"
+    : "material-icons tam-plm-mi";
+  return `<i class="${miCls}" aria-hidden="true">${lig}</i>`;
+}
+
 function getPlmColorCatalog() {
   if (
     typeof window !== "undefined" &&
@@ -1168,11 +1188,11 @@ function buildPlmMarkerBubbleHtml(item) {
   const bg = normalizePlmColorHex(item?.colorHex);
   const def =
     getPlmIconCatalog().find((x) => x.id === iconId) || getPlmIconCatalog()[0];
-  const lig = plmMaterialLigature(def);
   const fg = plmContrastIconOnBackground(bg);
   const bgA = plmEscapeAttr(bg);
   const fgA = plmEscapeAttr(fg);
-  return `<div class="tam-personal-landmark-marker__bubble"><div class="tam-plm-marker-chip" style="background-color:${bgA};color:${fgA};"><i class="material-icons tam-plm-mi tam-plm-mi--map-marker" aria-hidden="true">${lig}</i></div></div>`;
+  const glyph = plmIconInnerHtml(def, true);
+  return `<div class="tam-personal-landmark-marker__bubble"><div class="tam-plm-marker-chip" style="background-color:${bgA};color:${fgA};">${glyph}</div></div>`;
 }
 
 /** Titre des boîtes de dialogue HTML du simulateur (remplace l’origine « localhost » du navigateur). */
@@ -2686,7 +2706,7 @@ function openPersonalLandmarkDialog(spec) {
         btn.dataset.plmIcon = id;
         btn.title = meta.label;
         btn.setAttribute("aria-label", meta.label);
-        btn.innerHTML = `<i class="material-icons tam-plm-mi" aria-hidden="true">${plmMaterialLigature(meta)}</i>`;
+        btn.innerHTML = plmIconInnerHtml(meta, false);
         container.appendChild(btn);
       }
     }
