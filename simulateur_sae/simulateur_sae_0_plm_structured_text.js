@@ -1,5 +1,5 @@
 /**
- * Repères personnels : description structurée (V / L / ZM) et presets nom (G, CMU).
+ * Repères personnels : description structurée (V / L / ZM) et noms enregistrés.
  * Chargé avant simulateur_sae_1_state_mission.js
  */
 (function () {
@@ -10,7 +10,7 @@
   const DEFAULT_INDEXES = ["MA", "OB", "RO", "PL", "SA", "LB", "H4"];
 
   const DEFAULT_CONFIG = {
-    speeds: ["10 km/h", "15 km/h", "40 km/h"],
+    speeds: ["10km/h", "15km/h", "40km/h"],
     lineIndexes: {
       1: [...DEFAULT_INDEXES],
       2: [...DEFAULT_INDEXES],
@@ -19,7 +19,7 @@
       5: [...DEFAULT_INDEXES],
     },
     zones: ["Gare", "Moularès"],
-    cmu: [],
+    namePresets: [],
   };
 
   function cloneDefaults() {
@@ -29,7 +29,7 @@
         LINE_NUMS.map((n) => [n, [...DEFAULT_CONFIG.lineIndexes[n]]]),
       ),
       zones: [...DEFAULT_CONFIG.zones],
-      cmu: [],
+      namePresets: [],
     };
   }
 
@@ -41,7 +41,10 @@
   }
 
   function normalizeSpeedLabel(raw) {
-    return String(raw ?? "").trim();
+    return String(raw ?? "")
+      .trim()
+      .replace(/\s*km\s*\/\s*h/gi, "km/h")
+      .replace(/(\d)\s+(?=km)/gi, "$1");
   }
 
   /** Corrige d’anciennes zones sans accent (ex. Moulares → Moularès). */
@@ -57,6 +60,22 @@
     );
   }
 
+  /** Noms enregistrés : chiffres d’abord, puis ordre alphabétique (regroupe les « CMU … »). */
+  function sortNamePresets(arr) {
+    return [...arr].sort((a, b) => {
+      const na = String(a).trim();
+      const nb = String(b).trim();
+      const aLeadNum = /^[0-9]/.test(na);
+      const bLeadNum = /^[0-9]/.test(nb);
+      if (aLeadNum && !bLeadNum) return -1;
+      if (!aLeadNum && bLeadNum) return 1;
+      return na.localeCompare(nb, "fr", {
+        sensitivity: "base",
+        numeric: true,
+      });
+    });
+  }
+
   function loadConfig() {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -70,27 +89,30 @@
         for (const n of LINE_NUMS) {
           const list = p.lineIndexes[n];
           if (Array.isArray(list) && list.length) {
-            base.lineIndexes[n] = sortAlpha(
-              [...new Set(list.map(normalizeCode).filter(Boolean))],
-            );
+            base.lineIndexes[n] = sortAlpha([
+              ...new Set(list.map(normalizeCode).filter(Boolean)),
+            ]);
           }
         }
       }
       if (Array.isArray(p.zones) && p.zones.length) {
-        base.zones = sortAlpha(
-          [
-            ...new Set(
-              p.zones
-                .map((z) => plmNormalizeZoneLabel(String(z).trim()))
-                .filter(Boolean),
-            ),
-          ],
-        );
+        base.zones = sortAlpha([
+          ...new Set(
+            p.zones
+              .map((z) => plmNormalizeZoneLabel(String(z).trim()))
+              .filter(Boolean),
+          ),
+        ]);
       }
-      if (Array.isArray(p.cmu)) {
-        base.cmu = sortAlpha(
-          [...new Set(p.cmu.map((z) => String(z).trim()).filter(Boolean))],
-        );
+      const presetSrc = Array.isArray(p.namePresets)
+        ? p.namePresets
+        : Array.isArray(p.cmu)
+          ? p.cmu
+          : [];
+      if (presetSrc.length) {
+        base.namePresets = sortNamePresets([
+          ...new Set(presetSrc.map((z) => String(z).trim()).filter(Boolean)),
+        ]);
       }
       return base;
     } catch (e) {
@@ -100,7 +122,15 @@
 
   function saveConfig(cfg) {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify(cfg));
+      localStorage.setItem(
+        LS_KEY,
+        JSON.stringify({
+          speeds: cfg.speeds,
+          lineIndexes: cfg.lineIndexes,
+          zones: cfg.zones,
+          namePresets: cfg.namePresets,
+        }),
+      );
     } catch (e) {
       // ignore
     }
@@ -181,9 +211,7 @@
         const v = window.prompt(msg, def ?? "");
         return v == null ? null : v;
       });
-    const confirmFn =
-      opts.confirm ||
-      (async (msg) => window.confirm(msg));
+    const confirmFn = opts.confirm || (async (msg) => window.confirm(msg));
 
     let config = loadConfig();
     let descState = emptyDescState();
@@ -206,66 +234,63 @@
     }
 
     function syncNameFromPick() {
-      if (namePick.kind === "cmu" && namePick.value) nameEl.value = namePick.value;
+      if (namePick.kind === "preset" && namePick.value) {
+        nameEl.value = namePick.value;
+      }
     }
 
     function onNameInput() {
       const v = String(nameEl.value || "").trim();
-      if (config.cmu.includes(v)) namePick = { kind: "cmu", value: v };
-      else namePick = { kind: "manual" };
+      if (config.namePresets.includes(v)) {
+        namePick = { kind: "preset", value: v };
+      } else namePick = { kind: "manual" };
       renderNamePanel();
+    }
+
+    function sectionHead(title, onAdd, onDel, onMod) {
+      const head = document.createElement("div");
+      head.className = "tam-plm-struct-section__head";
+      const titleEl = document.createElement("span");
+      titleEl.className = "tam-plm-struct-section__title";
+      titleEl.textContent = title;
+      head.appendChild(titleEl);
+      head.appendChild(sectionTools(onAdd, onDel, onMod));
+      return head;
     }
 
     function renderNamePanel() {
       namePanel.innerHTML = "";
-      const head = document.createElement("div");
-      head.className = "tam-plm-struct-section__head";
-      head.innerHTML =
-        '<span class="tam-plm-struct-section__title">CMU</span>';
-      const tools = document.createElement("div");
-      tools.className = "tam-plm-struct-tools";
-      const addBtn = document.createElement("button");
-      addBtn.type = "button";
-      addBtn.className = "tam-plm-struct-tool-btn";
-      addBtn.textContent = "Ajouter";
-      addBtn.addEventListener("click", () => void addCmu());
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "tam-plm-struct-tool-btn";
-      delBtn.textContent = "Supprimer";
-      delBtn.addEventListener("click", () => void delCmu());
-      const modBtn = document.createElement("button");
-      modBtn.type = "button";
-      modBtn.className = "tam-plm-struct-tool-btn";
-      modBtn.textContent = "Modifier";
-      modBtn.addEventListener("click", () => void modCmu());
-      tools.append(addBtn, delBtn, modBtn);
-      head.appendChild(tools);
-      namePanel.appendChild(head);
+      namePanel.appendChild(
+        sectionHead("Nom :", addNamePreset, delNamePreset, modNamePreset),
+      );
 
-      if (config.cmu.length) {
+      if (config.namePresets.length) {
         const box = document.createElement("div");
-        box.className = "tam-plm-struct-box";
-        for (const cmu of config.cmu) {
+        box.className = "tam-plm-struct-box tam-plm-struct-box--grid2";
+        for (const preset of sortNamePresets(config.namePresets)) {
           const row = document.createElement("div");
-          row.className = "tam-plm-struct-checkrow";
+          row.className = "tam-plm-struct-chip";
           const cb = document.createElement("input");
           cb.type = "checkbox";
-          const cid = `plm-cmu-${cmu.replace(/\W/g, "_")}`;
+          const cid = `plm-name-${preset.replace(/\W/g, "_")}`;
           cb.id = cid;
-          cb.checked = namePick.kind === "cmu" && namePick.value === cmu;
+          cb.checked = namePick.kind === "preset" && namePick.value === preset;
           cb.addEventListener("change", () => {
             if (cb.checked) {
-              namePick = { kind: "cmu", value: cmu };
+              namePick = { kind: "preset", value: preset };
               syncNameFromPick();
-            } else if (namePick.kind === "cmu" && namePick.value === cmu) {
+            } else if (
+              namePick.kind === "preset" &&
+              namePick.value === preset
+            ) {
               namePick = { kind: "manual" };
+              nameEl.value = "G";
             }
             renderNamePanel();
           });
           const lbl = document.createElement("label");
           lbl.htmlFor = cid;
-          lbl.textContent = cmu;
+          lbl.textContent = preset;
           row.append(cb, lbl);
           box.appendChild(row);
         }
@@ -273,54 +298,56 @@
       }
     }
 
-    async function addCmu() {
+    async function addNamePreset() {
       const raw = await promptFn(
-        "Noms CMU à ajouter (séparés par des virgules) :",
+        "Noms à ajouter (séparés par des virgules, ex. Auto, CMU Hornière) :",
         "",
       );
       if (raw == null) return;
       const batch = splitBatchInput(raw);
       if (!batch.length) return;
-      config.cmu = sortAlpha([...new Set([...config.cmu, ...batch])]);
+      config.namePresets = sortNamePresets([
+        ...new Set([...config.namePresets, ...batch]),
+      ]);
       saveConfig(config);
       renderNamePanel();
     }
 
-    async function delCmu() {
-      if (!config.cmu.length) return;
+    async function delNamePreset() {
+      if (!config.namePresets.length) return;
       const raw = await promptFn(
-        `CMU à supprimer (texte exact) :\n${config.cmu.join(", ")}`,
+        `Nom à supprimer (texte exact) :\n${config.namePresets.join(", ")}`,
         "",
       );
       if (raw == null || !String(raw).trim()) return;
       const t = String(raw).trim();
-      if (!(await confirmFn(`Supprimer la CMU « ${t} » ?`))) return;
-      config.cmu = config.cmu.filter((x) => x !== t);
-      if (namePick.kind === "cmu" && namePick.value === t) {
+      if (!(await confirmFn(`Supprimer le nom « ${t} » ?`))) return;
+      config.namePresets = config.namePresets.filter((x) => x !== t);
+      if (namePick.kind === "preset" && namePick.value === t) {
         namePick = { kind: "manual" };
-        nameEl.value = "";
+        nameEl.value = "G";
       }
       saveConfig(config);
       renderNamePanel();
     }
 
-    async function modCmu() {
-      if (!config.cmu.length) return;
+    async function modNamePreset() {
+      if (!config.namePresets.length) return;
       const oldV = await promptFn(
-        `CMU à renommer :\n${config.cmu.join(", ")}`,
+        `Nom à renommer :\n${config.namePresets.join(", ")}`,
         "",
       );
       if (oldV == null || !String(oldV).trim()) return;
       const oldT = String(oldV).trim();
-      if (!config.cmu.includes(oldT)) return;
+      if (!config.namePresets.includes(oldT)) return;
       const newV = await promptFn("Nouveau nom :", oldT);
       if (newV == null || !String(newV).trim()) return;
       const newT = String(newV).trim();
-      config.cmu = sortAlpha(
-        config.cmu.map((x) => (x === oldT ? newT : x)),
+      config.namePresets = sortNamePresets(
+        config.namePresets.map((x) => (x === oldT ? newT : x)),
       );
-      if (namePick.kind === "cmu" && namePick.value === oldT) {
-        namePick = { kind: "cmu", value: newT };
+      if (namePick.kind === "preset" && namePick.value === oldT) {
+        namePick = { kind: "preset", value: newT };
         syncNameFromPick();
       }
       saveConfig(config);
@@ -349,6 +376,41 @@
       return tools;
     }
 
+    function renderChipCheckbox(
+      container,
+      { id, groupName, labelText, checked, onChange },
+    ) {
+      const row = document.createElement("div");
+      row.className = "tam-plm-struct-chip";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      if (groupName) cb.name = groupName;
+      cb.id = id;
+      cb.checked = !!checked;
+      cb.addEventListener("change", () => onChange(cb));
+      const lbl = document.createElement("label");
+      lbl.htmlFor = id;
+      lbl.textContent = labelText;
+      row.append(cb, lbl);
+      container.appendChild(row);
+      return row;
+    }
+
+    function renderIndexCell(container, { id, code, checked, onChange }) {
+      const cell = document.createElement("div");
+      cell.className = "tam-plm-index-cell";
+      const lbl = document.createElement("label");
+      lbl.htmlFor = id;
+      lbl.textContent = code;
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = id;
+      cb.checked = !!checked;
+      cb.addEventListener("change", () => onChange(cb));
+      cell.append(lbl, cb);
+      container.appendChild(cell);
+    }
+
     function renderRadioGroup({
       container,
       groupName,
@@ -358,25 +420,19 @@
       formatLabel,
     }) {
       for (const item of items) {
-        const row = document.createElement("div");
-        row.className = "tam-plm-struct-checkrow";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.name = groupName;
-        const id = `${groupName}-${String(item).replace(/\W/g, "_")}`;
-        cb.id = id;
         const labelText = formatLabel ? formatLabel(item) : String(item);
-        cb.checked = selected === labelText || selected === item;
-        cb.addEventListener("change", () => {
-          if (cb.checked) onSelect(item, labelText);
-          else onSelect(null, null);
-          renderDescPanel();
+        const id = `${groupName}-${String(item).replace(/\W/g, "_")}`;
+        renderChipCheckbox(container, {
+          id,
+          groupName,
+          labelText,
+          checked: selected === labelText || selected === item,
+          onChange: (cb) => {
+            if (cb.checked) onSelect(item, labelText);
+            else onSelect(null, null);
+            renderDescPanel();
+          },
         });
-        const lbl = document.createElement("label");
-        lbl.htmlFor = id;
-        lbl.textContent = labelText;
-        row.append(cb, lbl);
-        container.appendChild(row);
       }
     }
 
@@ -385,16 +441,9 @@
 
       const secV = document.createElement("section");
       secV.className = "tam-plm-struct-section";
-      const headV = document.createElement("div");
-      headV.className = "tam-plm-struct-section__head";
-      headV.innerHTML =
-        '<span class="tam-plm-struct-section__title">Vitesse</span>';
-      secV.appendChild(headV);
-      secV.appendChild(
-        sectionTools(addSpeed, delSpeed, modSpeed),
-      );
+      secV.appendChild(sectionHead("Vitesse:", addSpeed, delSpeed, modSpeed));
       const boxV = document.createElement("div");
-      boxV.className = "tam-plm-struct-box";
+      boxV.className = "tam-plm-struct-box tam-plm-struct-box--chips";
       renderRadioGroup({
         container: boxV,
         groupName: "plm-v",
@@ -411,58 +460,52 @@
 
       const secL = document.createElement("section");
       secL.className = "tam-plm-struct-section";
-      const headL = document.createElement("div");
-      headL.className = "tam-plm-struct-section__head";
-      headL.innerHTML =
-        '<span class="tam-plm-struct-section__title">Lignes (INDES)</span>';
-      secL.appendChild(headL);
       secL.appendChild(
-        sectionTools(addLineIndex, delLineIndex, modLineIndex),
+        sectionHead(
+          "Lignes (INDES):",
+          addLineIndex,
+          delLineIndex,
+          modLineIndex,
+        ),
       );
       for (const num of LINE_NUMS) {
         const indexes = config.lineIndexes[num] || [];
         if (!indexes.length) continue;
-        const rowTitle = document.createElement("p");
-        rowTitle.className = "tam-plm-struct-line-label";
-        rowTitle.textContent = `${num} :`;
-        secL.appendChild(rowTitle);
+        const lineRow = document.createElement("div");
+        lineRow.className = "tam-plm-line-row";
+        const numEl = document.createElement("span");
+        numEl.className = "tam-plm-line-num";
+        numEl.textContent = `${num} :`;
+        lineRow.appendChild(numEl);
         const box = document.createElement("div");
-        box.className = "tam-plm-struct-box tam-plm-struct-box--line";
+        box.className = "tam-plm-struct-box tam-plm-struct-box--index";
         for (const code of indexes) {
-          const r = document.createElement("div");
-          r.className = "tam-plm-struct-checkrow tam-plm-struct-checkrow--inline";
-          const cb = document.createElement("input");
-          cb.type = "checkbox";
           const id = `plm-L${num}-${code}`;
-          cb.id = id;
-          cb.checked = descState.lines[num] === code;
-          cb.addEventListener("change", () => {
-            clearLegacyDesc();
-            if (cb.checked) descState.lines[num] = code;
-            else if (descState.lines[num] === code) delete descState.lines[num];
-            syncDescField();
-            renderDescPanel();
+          renderIndexCell(box, {
+            id,
+            code,
+            checked: descState.lines[num] === code,
+            onChange: (cb) => {
+              clearLegacyDesc();
+              if (cb.checked) descState.lines[num] = code;
+              else if (descState.lines[num] === code) {
+                delete descState.lines[num];
+              }
+              syncDescField();
+              renderDescPanel();
+            },
           });
-          const lbl = document.createElement("label");
-          lbl.htmlFor = id;
-          lbl.textContent = code;
-          r.append(cb, lbl);
-          box.appendChild(r);
         }
-        secL.appendChild(box);
+        lineRow.appendChild(box);
+        secL.appendChild(lineRow);
       }
       descPanel.appendChild(secL);
 
       const secZ = document.createElement("section");
       secZ.className = "tam-plm-struct-section";
-      const headZ = document.createElement("div");
-      headZ.className = "tam-plm-struct-section__head";
-      headZ.innerHTML =
-        '<span class="tam-plm-struct-section__title">Zones manœuvre</span>';
-      secZ.appendChild(headZ);
-      secZ.appendChild(sectionTools(addZone, delZone, modZone));
+      secZ.appendChild(sectionHead("Zones M.:", addZone, delZone, modZone));
       const boxZ = document.createElement("div");
-      boxZ.className = "tam-plm-struct-box";
+      boxZ.className = "tam-plm-struct-box tam-plm-struct-box--chips";
       renderRadioGroup({
         container: boxZ,
         groupName: "plm-zm",
@@ -482,7 +525,7 @@
 
     async function addSpeed() {
       const raw = await promptFn(
-        "Vitesses à ajouter (séparées par des virgules, ex. 10 km/h, 25 km/h) :",
+        "Vitesses à ajouter (séparées par des virgules, ex. 10km/h, 25km/h) :",
         "",
       );
       if (raw == null) return;
@@ -557,7 +600,9 @@
       );
       if (raw == null || !String(raw).trim()) return;
       const code = normalizeCode(raw);
-      if (!(await confirmFn(`Supprimer l’indice « ${code} » sur la ligne ${n} ?`)))
+      if (
+        !(await confirmFn(`Supprimer l’indice « ${code} » sur la ligne ${n} ?`))
+      )
         return;
       config.lineIndexes[n] = list.filter((x) => x !== code);
       if (descState.lines[n] === code) delete descState.lines[n];
@@ -597,13 +642,11 @@
       if (raw == null) return;
       const batch = splitBatchInput(raw);
       if (!batch.length) return;
-      config.zones = sortAlpha(
-        [
-          ...new Set(
-            [...config.zones, ...batch].map((z) => plmNormalizeZoneLabel(z)),
-          ),
-        ],
-      );
+      config.zones = sortAlpha([
+        ...new Set(
+          [...config.zones, ...batch].map((z) => plmNormalizeZoneLabel(z)),
+        ),
+      ]);
       saveConfig(config);
       renderDescPanel();
     }
@@ -652,8 +695,9 @@
     return {
       setInitial(name, description) {
         const n = String(name ?? "").trim();
-        if (config.cmu.includes(n)) namePick = { kind: "cmu", value: n };
-        else namePick = { kind: "manual" };
+        if (config.namePresets.includes(n)) {
+          namePick = { kind: "preset", value: n };
+        } else namePick = { kind: "manual" };
         nameEl.value = n;
         legacyDescRaw = null;
         const raw = String(description ?? "").trim();
@@ -675,7 +719,7 @@
         if (legacyDescRaw != null && !formatDescription(descState)) {
           descEl.value = legacyDescRaw;
         }
-        if (namePick.kind === "cmu" && namePick.value) {
+        if (namePick.kind === "preset" && namePick.value) {
           nameEl.value = namePick.value;
         }
       },

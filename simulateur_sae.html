@@ -448,7 +448,9 @@
         text-transform: lowercase;
       }
       /* Même écart entre zoom+ / itinéraire / fond carte / repères (un peu moins que le défaut Leaflet 10px). */
-      #map.leaflet-container .leaflet-top.leaflet-left > .leaflet-control:not(:first-child) {
+      #map.leaflet-container
+        .leaflet-top.leaflet-left
+        > .leaflet-control:not(:first-child) {
         margin-top: 7px;
       }
       /* Bascule fond plan / satellite : un lien dans .leaflet-bar. */
@@ -499,7 +501,8 @@
         text-decoration: none;
         color: #005ca9;
       }
-      .tam-personal-landmarks-control .tam-personal-landmarks-toggle:focus-visible {
+      .tam-personal-landmarks-control
+        .tam-personal-landmarks-toggle:focus-visible {
         outline: 2px solid #005ca9;
         outline-offset: 1px;
       }
@@ -922,21 +925,82 @@
       .tam-plm-struct-box {
         display: flex;
         flex-wrap: wrap;
+        gap: 4px 8px;
+      }
+      .tam-plm-struct-box--grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 4px 10px;
-      }
-      .tam-plm-struct-box--line {
-        margin-bottom: 6px;
-        padding-left: 4px;
-      }
-      .tam-plm-struct-checkrow {
-        display: inline-flex;
         align-items: center;
-        gap: 4px;
-        font-size: 12px;
       }
-      .tam-plm-struct-checkrow label {
+      .tam-plm-struct-box--chips {
+        gap: 4px 6px;
+      }
+      .tam-plm-struct-box--index {
+        flex: 1 1 auto;
+        gap: 2px 4px;
+      }
+      .tam-plm-struct-chip {
+        display: inline-grid;
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        column-gap: 2px;
+        font-size: 11px;
+        line-height: 14px;
+        min-width: 0;
+      }
+      .tam-plm-struct-chip input[type="checkbox"] {
+        margin: 0;
+        width: 14px;
+        height: 14px;
+        accent-color: #005ca9;
+        align-self: center;
+        justify-self: center;
+      }
+      .tam-plm-struct-chip label {
         cursor: pointer;
         user-select: none;
+        margin: 0;
+        padding: 0;
+        line-height: 14px;
+        align-self: center;
+      }
+      .tam-plm-line-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+      .tam-plm-line-num {
+        flex: 0 0 auto;
+        font-size: 11px;
+        font-weight: 700;
+        color: #4a5568;
+        line-height: 1.2;
+        padding-top: 1px;
+      }
+      .tam-plm-index-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 2px;
+        min-width: 1.75em;
+      }
+      .tam-plm-index-cell label {
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        user-select: none;
+        text-align: center;
+      }
+      .tam-plm-index-cell input[type="checkbox"] {
+        margin: 0;
+        width: 14px;
+        height: 14px;
+        accent-color: #005ca9;
       }
       .tam-plm-desc-preview {
         margin: 0 0 6px;
@@ -1057,7 +1121,8 @@
       .app-personal-landmark-help-dialog .app-message-dialog__body {
         margin: 0 0 6px;
       }
-      .app-personal-landmark-help-dialog .app-message-dialog__body.tam-plm-help-body {
+      .app-personal-landmark-help-dialog
+        .app-message-dialog__body.tam-plm-help-body {
         white-space: normal;
       }
       .app-personal-landmark-help-dialog .tam-plm-help-body {
@@ -1071,7 +1136,9 @@
       .app-personal-landmark-help-dialog .tam-plm-help-body > p:last-child {
         margin-bottom: 0;
       }
-      .app-personal-landmark-help-dialog .tam-plm-help-body > .tam-plm-help-defs {
+      .app-personal-landmark-help-dialog
+        .tam-plm-help-body
+        > .tam-plm-help-defs {
         margin: 0 0 9px;
       }
       .app-personal-landmark-help-dialog .tam-plm-help-defs p {
@@ -2686,7 +2753,10 @@
                       type="button"
                       class="secondary"
                       id="helpShowNetworkDataBtn"
-                      onclick="window.tamShowNetworkDataModal && window.tamShowNetworkDataModal()"
+                      onclick="
+                        window.tamShowNetworkDataModal &&
+                          window.tamShowNetworkDataModal()
+                      "
                       title="Afficher les informations de version des données réseau"
                     >
                       Afficher les données réseau (version)
@@ -2983,7 +3053,9 @@
             aria-label="Vitesse"
           >
             <div class="tam-map-speed-hud__panel">
-              <span id="mapSpeedHudValue" class="tam-map-speed-hud__value">0</span>
+              <span id="mapSpeedHudValue" class="tam-map-speed-hud__value"
+                >0</span
+              >
               <span class="tam-map-speed-hud__unit">km/h</span>
             </div>
           </div>
@@ -3043,7 +3115,10 @@
                   Calculer
                 </button>
               </div>
-              <div class="tam-route-ui__panelResult" id="mapHudRouteResult"></div>
+              <div
+                class="tam-route-ui__panelResult"
+                id="mapHudRouteResult"
+              ></div>
             </div>
           </div>
           <aside
@@ -3154,7 +3229,10 @@
               aria-label="Prochaine étape annoncée"
             >
               <p class="map-mission-hud__nextStrip-kicker">Prochaine étape</p>
-              <p id="mapRouteHudNextLine" class="map-mission-hud__nextStrip-name">
+              <p
+                id="mapRouteHudNextLine"
+                class="map-mission-hud__nextStrip-name"
+              >
                 —
               </p>
             </div>
@@ -3299,7 +3377,8 @@
               id="appPersonalLandmarkDialogFavCapIntro"
             >
               Veuillez indiquer le nombre d’icônes que vous souhaitez voir
-              apparaître dans la partie «&nbsp;Icônes récemment utilisées&nbsp;».
+              apparaître dans la partie «&nbsp;Icônes récemment
+              utilisées&nbsp;».
             </p>
             <div class="tam-plm-settings-row__field">
               <label
@@ -3318,9 +3397,7 @@
               />
             </div>
           </div>
-          <div
-            class="tam-plm-settings-row tam-plm-settings-popover__section"
-          >
+          <div class="tam-plm-settings-row tam-plm-settings-popover__section">
             <p
               class="tam-plm-settings-row__intro"
               id="appPersonalLandmarkDialogCapBandIntro"
@@ -3452,7 +3529,7 @@
         <div
           id="appPersonalLandmarkDialogNamePanel"
           class="tam-plm-struct-panel"
-          aria-label="CMU : noms de repère"
+          aria-label="Nom : libellés enregistrés"
         ></div>
         <label
           for="appPersonalLandmarkDialogDesc"
@@ -3468,7 +3545,7 @@
         <div
           id="appPersonalLandmarkDialogDescPanel"
           class="tam-plm-struct-panel"
-          aria-label="Vitesse, lignes et zones manœuvre"
+          aria-label="Vitesse, lignes INDES et zones M."
         ></div>
         <textarea
           id="appPersonalLandmarkDialogDesc"
@@ -3528,27 +3605,34 @@
         </h2>
         <div class="app-message-dialog__body tam-plm-help-body">
           <p>
-            <strong>Icônes récemment utilisées</strong> — pictogrammes choisis en dernier lors de l’enregistrement d’un repère ; la ligne du haut en affiche jusqu’au nombre indiqué via l’icône engrenage.
+            <strong>Icônes récemment utilisées</strong> — pictogrammes choisis
+            en dernier lors de l’enregistrement d’un repère ; la ligne du haut
+            en affiche jusqu’au nombre indiqué via l’icône engrenage.
           </p>
           <p>
-            <strong>Toutes les icônes</strong> — ouvrez la section pour parcourir le catalogue complet (les icônes déjà en tête y figurent aussi).
+            <strong>Toutes les icônes</strong> — ouvrez la section pour
+            parcourir le catalogue complet (les icônes déjà en tête y figurent
+            aussi).
           </p>
           <div class="tam-plm-help-defs">
+            <p><strong>Couleur</strong> — pastille du repère sur la carte.</p>
+            <p><strong>Nom du repère</strong> — obligatoire.</p>
             <p>
-              <strong>Couleur</strong> — pastille du repère sur la carte.
+              <strong>Description</strong> — facultative ; partagée par tout le
+              groupe si vous ajoutez des voisins.
             </p>
             <p>
-              <strong>Nom du repère</strong> — obligatoire.
-            </p>
-            <p>
-              <strong>Description</strong> — facultative ; partagée par tout le groupe si vous ajoutez des voisins.
-            </p>
-            <p>
-              <strong>Voisins (grille + / −)</strong> — un « + » ajoute un repère dans cette direction (même nom de groupe). Un « − » indique qu’un voisin existe déjà de ce côté.
+              <strong>Voisins (grille + / −)</strong> — un « + » ajoute un
+              repère dans cette direction (même nom de groupe). Un « − » indique
+              qu’un voisin existe déjà de ce côté.
             </p>
           </div>
           <p>
-            <strong>Sur la carte :</strong> aux zooms les plus proches, les voisins d’un même groupe restent alignés (grille aimantée). Glisser un repère du groupe déplace tout le groupe. Glisser un repère seul le détache du groupe. Le bouton <strong>Aa</strong> (sous le bouton repères) affiche ou masque les noms et descriptions sur la carte.
+            <strong>Sur la carte :</strong> aux zooms les plus proches, les
+            voisins d’un même groupe restent alignés (grille aimantée). Glisser
+            un repère du groupe déplace tout le groupe. Glisser un repère seul
+            le détache du groupe. Le bouton <strong>Aa</strong> (sous le bouton
+            repères) affiche ou masque les noms et descriptions sur la carte.
           </p>
         </div>
         <div class="app-message-dialog__actions">
@@ -3591,7 +3675,8 @@
             "",
             "Généré le : " + (m.generated_at || "-"),
             "Empreinte (dataset_digest) : " + (m.dataset_digest || "-"),
-            "Nombre de lignes : " + (m.route_count != null ? m.route_count : "-"),
+            "Nombre de lignes : " +
+              (m.route_count != null ? m.route_count : "-"),
             "Nombre de variantes : " +
               (m.pattern_count != null ? m.pattern_count : "-"),
             "Tracés bus réseau : " +
@@ -3630,7 +3715,8 @@
           try {
             var localMeta = null;
             try {
-              localMeta = window.data && window.data.meta ? window.data.meta : null;
+              localMeta =
+                window.data && window.data.meta ? window.data.meta : null;
             } catch (_e0) {
               localMeta = null;
             }
@@ -3647,14 +3733,23 @@
             lines.push(formatMeta(fetchedMeta));
             lines.push("");
             lines.push("Source (fetch) : " + safeString(resp.url || url));
-            lines.push("HTTP cache-control : " + safeString(resp.headers.get("cache-control")));
+            lines.push(
+              "HTTP cache-control : " +
+                safeString(resp.headers.get("cache-control")),
+            );
             lines.push("HTTP etag : " + safeString(resp.headers.get("etag")));
-            lines.push("HTTP last-modified : " + safeString(resp.headers.get("last-modified")));
+            lines.push(
+              "HTTP last-modified : " +
+                safeString(resp.headers.get("last-modified")),
+            );
 
             if (localMeta) {
               var same = metaSummary(localMeta) === metaSummary(fetchedMeta);
               lines.push("");
-              lines.push("Données déjà chargées par l’app : " + (same ? "identiques" : "DIFFÉRENTES"));
+              lines.push(
+                "Données déjà chargées par l’app : " +
+                  (same ? "identiques" : "DIFFÉRENTES"),
+              );
               if (!same) {
                 lines.push("");
                 lines.push("[Chargées par l’app]");
@@ -3667,7 +3762,7 @@
             openAppDialog(
               "Simulateur SAE TAM",
               "Données réseau\n\nImpossible de charger simulation_data.json.\n\n" +
-                String(e2 && (e2.message || e2) ? (e2.message || e2) : "Erreur"),
+                String(e2 && (e2.message || e2) ? e2.message || e2 : "Erreur"),
             );
           }
         }
