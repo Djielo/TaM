@@ -14,6 +14,7 @@
     { hex: "#c62828", label: "Rouge" },
     { hex: "#2e7d32", label: "Vert" },
     { hex: "#ef6c00", label: "Orange" },
+    { hex: "#c8d400", label: "Vert ligne 3" },
     { hex: "#6a1b9a", label: "Violet" },
     { hex: "#00838f", label: "Bleu-vert" },
     { hex: "#5d4037", label: "Brun" },
