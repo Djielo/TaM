@@ -4,6 +4,7 @@
  *
  * Icônes : Google Material Icons (ligatures), police chargée dans simulateur_sae.html.
  * Chaque entrée `material` est un nom de glyphe (voir codepoints du dépôt material-design-icons).
+ * Entrée `letter` (une lettre A–Z) : affichage typographique à la place d’un glyphe Material.
  * Recoloriage : `color` / currentColor sur le marqueur et les boutons du sélecteur.
  */
 (function () {
@@ -61,6 +62,10 @@
     { id: "num4", label: "Numéro 4", material: "looks_4" },
     { id: "num5", label: "Numéro 5", material: "looks_5" },
     { id: "num6", label: "Numéro 6", material: "looks_6" },
+    { id: "letter-a", label: "Lettre A", letter: "A" },
+    { id: "letter-b", label: "Lettre B", letter: "B" },
+    { id: "letter-c", label: "Lettre C", letter: "C" },
+    { id: "letter-z", label: "Lettre Z", letter: "Z" },
     { id: "traffic", label: "Circulation dense", material: "traffic" },
     { id: "info", label: "Information", material: "info" },
     { id: "flag", label: "Repère / jalonnement", material: "flag" },
