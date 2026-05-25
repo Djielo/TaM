@@ -23,6 +23,7 @@ function writeDeviationStore(store) {
       "Stockage local plein ou désactivé : impossible d'enregistrer la déviation.",
     );
   }
+  if (typeof plmScheduleAutoBackup === "function") plmScheduleAutoBackup();
 }
 
 /**
