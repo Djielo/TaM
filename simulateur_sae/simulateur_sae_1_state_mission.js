@@ -1142,6 +1142,8 @@ let tamAutoBackupTimer = 0;
 let tamAutoBackupLastJson = "";
 /** File System Access API : handle fichier persistant (null = pas encore accordé). */
 let tamBackupFileHandle = null;
+/** Promesse en cours d'acquisition du handle (évite les doublons). */
+let tamBackupFileHandlePromise = null;
 
 function tamCollectBackupPayload() {
   const data = {};
@@ -1244,6 +1246,9 @@ function tamImportBackup(file) {
 
 async function tamDoAutoBackup() {
   try {
+    if (tamBackupFileHandlePromise) {
+      await tamBackupFileHandlePromise;
+    }
     const payload = tamCollectBackupPayload();
     const json = JSON.stringify(payload);
     if (json === tamAutoBackupLastJson) return;
@@ -1252,13 +1257,6 @@ async function tamDoAutoBackup() {
     if (tamBackupFileHandle) {
       if (await tamWriteToFileHandle(pretty)) return;
     }
-    if (!tamBackupFileHandle && typeof window.showSaveFilePicker === "function") {
-      const handle = await tamAcquireFileHandle();
-      if (handle) {
-        tamBackupFileHandle = handle;
-        if (await tamWriteToFileHandle(pretty)) return;
-      }
-    }
     tamTriggerFileDownload(pretty, TAM_BACKUP_FILENAME);
   } catch (e) {
     // silencieux
@@ -1266,6 +1264,20 @@ async function tamDoAutoBackup() {
 }
 
 function plmScheduleAutoBackup() {
+  if (
+    !tamBackupFileHandle &&
+    !tamBackupFileHandlePromise &&
+    typeof window.showSaveFilePicker === "function"
+  ) {
+    tamBackupFileHandlePromise = tamAcquireFileHandle()
+      .then((handle) => {
+        tamBackupFileHandlePromise = null;
+        if (handle) tamBackupFileHandle = handle;
+      })
+      .catch(() => {
+        tamBackupFileHandlePromise = null;
+      });
+  }
   if (tamAutoBackupTimer) clearTimeout(tamAutoBackupTimer);
   tamAutoBackupTimer = setTimeout(() => {
     tamAutoBackupTimer = 0;
