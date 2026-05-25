@@ -46,8 +46,8 @@ const PLM_DEFAULT_ICON_ID = "pin";
 const PLM_DEFAULT_COLOR_NEW = "#005ca9";
 const PLM_DEFAULT_COLOR_LEGACY = "#c62828";
 /** Décalage lat/lng (degrés) pour placer une copie visible à côté du repère d’origine. */
-const PLM_DUPLICATE_OFFSET_LAT = -0.00022;
-const PLM_DUPLICATE_OFFSET_LNG = 0.00032;
+const PLM_DUPLICATE_OFFSET_LAT = 0;
+const PLM_DUPLICATE_OFFSET_LNG = 0.00008;
 const LS_KEY_PLM_GROUPS = "tam_personal_landmark_groups_v1";
 const PLM_SLOT_SPACING_LAT = 0.00022;
 const PLM_SLOT_SPACING_LNG = 0.00032;
@@ -3075,7 +3075,7 @@ function openPersonalLandmarkDialog(spec) {
     const editGroupId = spec.groupId || null;
     let initialName = spec.name != null ? String(spec.name) : "";
     if (mode === "create" && !String(initialName).trim()) {
-      initialName = "G";
+      initialName = "Groupe";
     }
     const initialDesc = editGroupId
       ? plmGetGroupDescription(editGroupId)
