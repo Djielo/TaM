@@ -46,8 +46,7 @@ const PLM_DEFAULT_ICON_ID = "pin";
 const PLM_DEFAULT_COLOR_NEW = "#005ca9";
 const PLM_DEFAULT_COLOR_LEGACY = "#c62828";
 /** Décalage lat/lng (degrés) pour placer une copie visible à côté du repère d’origine. */
-const PLM_DUPLICATE_OFFSET_LAT = 0;
-const PLM_DUPLICATE_OFFSET_LNG = 0.00008;
+const PLM_DUPLICATE_OFFSET_PX = 25;
 const LS_KEY_PLM_GROUPS = "tam_personal_landmark_groups_v1";
 const PLM_SLOT_SPACING_LAT = 0.00022;
 const PLM_SLOT_SPACING_LNG = 0.00032;
@@ -2163,16 +2162,20 @@ function plmCloseLandmarkContextMenu() {
   plmContextMenuLandmarkId = null;
 }
 
+function plmScreenOffsetToLatLng(lat, lng, dxPx, dyPx) {
+  const p = map.latLngToContainerPoint(L.latLng(lat, lng));
+  return map.containerPointToLatLng(L.point(p.x + dxPx, p.y + dyPx));
+}
+
 function plmDuplicateLandmarkFromId(sourceId) {
   const src = personalLandmarksList.find((x) => x.id === sourceId);
   if (!src) return null;
-  const lat = src.lat + PLM_DUPLICATE_OFFSET_LAT;
-  const lng = src.lng + PLM_DUPLICATE_OFFSET_LNG;
-  if (!plmIsValidPlmLatLng(lat, lng)) return null;
+  const dest = plmScreenOffsetToLatLng(src.lat, src.lng, PLM_DUPLICATE_OFFSET_PX, 0);
+  if (!plmIsValidPlmLatLng(dest.lat, dest.lng)) return null;
   const row = {
     id: plmNewLandmarkId(),
-    lat,
-    lng,
+    lat: dest.lat,
+    lng: dest.lng,
     name: src.name,
     description: src.groupId ? "" : String(src.description ?? ""),
     iconId: normalizePlmIconId(src.iconId),
@@ -2192,10 +2195,11 @@ function plmDuplicateGroupFromId(sourceGroupId) {
   for (const mem of members) {
     const newId = plmNewLandmarkId();
     idMap.set(mem.id, newId);
+    const dest = plmScreenOffsetToLatLng(mem.lat, mem.lng, PLM_DUPLICATE_OFFSET_PX, 0);
     personalLandmarksList.push({
       id: newId,
-      lat: mem.lat + PLM_DUPLICATE_OFFSET_LAT,
-      lng: mem.lng + PLM_DUPLICATE_OFFSET_LNG,
+      lat: dest.lat,
+      lng: dest.lng,
       name: mem.name,
       description: "",
       iconId: normalizePlmIconId(mem.iconId),
