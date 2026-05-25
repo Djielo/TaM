@@ -120,16 +120,18 @@
         base.speeds = p.speeds.map(normalizeSpeedLabel).filter(Boolean);
       }
       if (p.lineIndexes && typeof p.lineIndexes === "object") {
+        const loaded = {};
         for (const key of Object.keys(p.lineIndexes)) {
           const n = normalizeLineNum(key);
           if (!n) continue;
           const list = p.lineIndexes[key];
-          base.lineIndexes[n] = Array.isArray(list)
+          loaded[n] = Array.isArray(list)
             ? sortAlpha([
                 ...new Set(list.map(normalizeCode).filter(Boolean)),
               ])
             : [];
         }
+        base.lineIndexes = loaded;
       }
       if (Array.isArray(p.zones) && p.zones.length) {
         base.zones = sortAlpha([
