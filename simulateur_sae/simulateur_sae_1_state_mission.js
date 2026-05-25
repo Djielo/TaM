@@ -1141,6 +1141,76 @@ const TAM_BACKUP_ALL_KEYS = [
 let tamAutoBackupTimer = 0;
 let tamAutoBackupLastJson = "";
 
+const TAM_IDB_NAME = "tam-simulateur-backup";
+const TAM_IDB_STORE = "meta";
+const TAM_IDB_HANDLE_KEY = "fileHandle";
+
+function tamOpenIdb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(TAM_IDB_NAME, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(TAM_IDB_STORE)) {
+        db.createObjectStore(TAM_IDB_STORE);
+      }
+    };
+  });
+}
+
+async function tamGetStoredHandle() {
+  try {
+    const db = await tamOpenIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(TAM_IDB_STORE, "readonly");
+      const req = tx.objectStore(TAM_IDB_STORE).get(TAM_IDB_HANDLE_KEY);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function tamSetStoredHandle(handle) {
+  try {
+    const db = await tamOpenIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(TAM_IDB_STORE, "readwrite");
+      tx.objectStore(TAM_IDB_STORE).put(handle, TAM_IDB_HANDLE_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    // silencieux
+  }
+}
+
+async function tamWriteToHandle(handle, text) {
+  let perm = await handle.queryPermission({ mode: "readwrite" });
+  if (perm !== "granted") {
+    perm = await handle.requestPermission({ mode: "readwrite" });
+    if (perm !== "granted") return false;
+  }
+  const writable = await handle.createWritable();
+  await writable.write(text);
+  await writable.close();
+  return true;
+}
+
+function tamDownloadFallback(jsonString) {
+  const blob = new Blob([jsonString], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = TAM_BACKUP_FILENAME;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 function tamCollectBackupPayload() {
   const data = {};
   for (const key of TAM_BACKUP_ALL_KEYS) {
@@ -1160,61 +1230,36 @@ function tamCollectBackupPayload() {
   return data;
 }
 
-async function tamWriteOpfsBackup(json) {
-  try {
-    const root = await navigator.storage.getDirectory();
-    const handle = await root.getFileHandle(TAM_BACKUP_FILENAME, {
-      create: true,
-    });
-    const writable = await handle.createWritable();
-    await writable.write(json);
-    await writable.close();
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-async function tamReadOpfsBackup() {
-  try {
-    const root = await navigator.storage.getDirectory();
-    const handle = await root.getFileHandle(TAM_BACKUP_FILENAME);
-    const file = await handle.getFile();
-    return await file.text();
-  } catch (e) {
-    return null;
-  }
-}
-
-function tamTriggerFileDownload(json, filename) {
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  requestAnimationFrame(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
-}
-
-function tamImportBackupFromJson(data) {
-  if (!data || typeof data !== "object") return false;
-  for (const key of TAM_BACKUP_ALL_KEYS) {
-    if (data[key] != null) {
-      localStorage.setItem(key, JSON.stringify(data[key]));
+async function tamSaveToDevice(jsonString) {
+  let handle = await tamGetStoredHandle();
+  if (handle) {
+    try {
+      if (await tamWriteToHandle(handle, jsonString)) return;
+    } catch (e) {
+      handle = null;
     }
   }
-  loadPlmGroupsFromStorage();
-  loadPersonalLandmarksFromStorage();
-  if (plmSanitizeParentLinks()) {
-    savePersonalLandmarksToStorage();
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const picked = await window.showSaveFilePicker({
+        suggestedName: TAM_BACKUP_FILENAME,
+        types: [
+          {
+            description: "Sauvegarde simulateur TAM",
+            accept: { "application/json": [".json"] },
+          },
+        ],
+      });
+      await tamSetStoredHandle(picked);
+      if (await tamWriteToHandle(picked, jsonString)) return;
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        tamDownloadFallback(jsonString);
+        return;
+      }
+    }
   }
-  redrawPersonalLandmarksLayer();
-  return true;
+  tamDownloadFallback(jsonString);
 }
 
 function tamImportBackup(file) {
@@ -1223,8 +1268,19 @@ function tamImportBackup(file) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (!tamImportBackupFromJson(data)) throw new Error("format");
+      if (!data || typeof data !== "object") throw new Error("format");
+      for (const key of TAM_BACKUP_ALL_KEYS) {
+        if (data[key] != null) {
+          localStorage.setItem(key, JSON.stringify(data[key]));
+        }
+      }
+      loadPlmGroupsFromStorage();
+      loadPersonalLandmarksFromStorage();
+      if (plmSanitizeParentLinks()) {
+        savePersonalLandmarksToStorage();
+      }
       const count = personalLandmarksList.length;
+      redrawPersonalLandmarksLayer();
       tamAppAlert(
         `Restauration terminée : ${count} repère(s), déviations et réglages rechargés.`,
       );
@@ -1240,20 +1296,6 @@ function tamImportBackup(file) {
   reader.readAsText(file);
 }
 
-async function tamRestoreFromOpfsIfEmpty() {
-  if (personalLandmarksList.length > 0) return;
-  const text = await tamReadOpfsBackup();
-  if (!text) return;
-  try {
-    const data = JSON.parse(text);
-    if (tamImportBackupFromJson(data)) {
-      setGpsStatus("Données restaurées depuis la sauvegarde automatique.");
-    }
-  } catch (e) {
-    // silencieux
-  }
-}
-
 async function tamDoAutoBackup() {
   try {
     const payload = tamCollectBackupPayload();
@@ -1261,7 +1303,7 @@ async function tamDoAutoBackup() {
     if (json === tamAutoBackupLastJson) return;
     tamAutoBackupLastJson = json;
     const pretty = JSON.stringify(payload, null, 2);
-    await tamWriteOpfsBackup(pretty);
+    await tamSaveToDevice(pretty);
   } catch (e) {
     // silencieux
   }
@@ -3170,7 +3212,6 @@ loadPersonalLandmarksFromStorage();
 if (plmSanitizeParentLinks()) {
   savePersonalLandmarksToStorage();
 }
-void tamRestoreFromOpfsIfEmpty();
 plmSyncGroupsLayoutToZoom(true);
 
 let marker = L.marker([43.61, 3.88], {
