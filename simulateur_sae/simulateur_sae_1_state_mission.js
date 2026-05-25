@@ -286,15 +286,6 @@ function plmMapUsesMagneticLayout() {
   return z >= PLM_MAP_MAX_ZOOM - PLM_MAGNETIC_ZOOM_FROM_MAX;
 }
 
-function plmSlotFromPositions(originLat, originLng, memLat, memLng) {
-  if (!map) return null;
-  const p0 = map.latLngToContainerPoint(L.latLng(originLat, originLng));
-  const p1 = map.latLngToContainerPoint(L.latLng(memLat, memLng));
-  return (
-    plmNeighborSlotFromPixelDelta(p1.x - p0.x, p1.y - p0.y) ||
-    plmFindSlotKeyForDelta(memLat - originLat, memLng - originLng)
-  );
-}
 
 function plmLatLngFromSlot(pivotLat, pivotLng, slot) {
   const dir = PLM_SLOT_PIXEL_DIR[slot];
@@ -1213,22 +1204,22 @@ function tamDownloadFallback(jsonString) {
 }
 
 function tamCollectBackupPayload() {
-  const data = {};
+  const payload = {};
   for (const key of TAM_BACKUP_ALL_KEYS) {
     try {
       const raw = localStorage.getItem(key);
-      if (raw != null) data[key] = JSON.parse(raw);
+      if (raw != null) payload[key] = JSON.parse(raw);
     } catch (e) {
       const raw = localStorage.getItem(key);
-      if (raw != null) data[key] = raw;
+      if (raw != null) payload[key] = raw;
     }
   }
-  data._meta = {
+  payload._meta = {
     version: 2,
     date: new Date().toISOString(),
     landmarks: personalLandmarksList.length,
   };
-  return data;
+  return payload;
 }
 
 (async function tamRecoverHandleFromIdb() {
@@ -1247,11 +1238,11 @@ function tamImportBackup(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const data = JSON.parse(reader.result);
-      if (!data || typeof data !== "object") throw new Error("format");
+      const backup = JSON.parse(reader.result);
+      if (!backup || typeof backup !== "object") throw new Error("format");
       for (const key of TAM_BACKUP_ALL_KEYS) {
-        if (data[key] != null) {
-          localStorage.setItem(key, JSON.stringify(data[key]));
+        if (backup[key] != null) {
+          localStorage.setItem(key, JSON.stringify(backup[key]));
         }
       }
       loadPlmGroupsFromStorage();
@@ -3272,6 +3263,10 @@ map.on("rotate", () => {
 });
 map.on("zoomend", () => {
   applyMapVisualProfile();
+  if (plmZoomLayoutRaf) {
+    cancelAnimationFrame(plmZoomLayoutRaf);
+    plmZoomLayoutRaf = 0;
+  }
   plmSyncGroupsLayoutToZoom(true);
 });
 map.on("moveend", () => {
@@ -3446,11 +3441,12 @@ function setRecapVisible(on) {
 
 function flattenPolylineCoordsForDistance(latlngs) {
   if (!latlngs?.length) return [];
-  const head = latlngs[0];
-  if (head && typeof head.lat === "number") {
-    return latlngs.map((x) => [Number(x.lat), Number(x.lng)]);
+  let arr = latlngs;
+  while (arr.length && !(arr[0] && typeof arr[0].lat === "number")) {
+    arr = arr.flat();
+    if (!arr.length) return [];
   }
-  return flattenPolylineCoordsForDistance(latlngs.flat());
+  return arr.map((x) => [Number(x.lat), Number(x.lng)]);
 }
 
 /** Distance minimale (m) d’un point à une polyline [lat,lng][]. */
