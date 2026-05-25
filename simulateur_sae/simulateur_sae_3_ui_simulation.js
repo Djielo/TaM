@@ -7263,12 +7263,49 @@ setupTamRoutePlannerUi();
 if (typeof tamInstallBasemapToggleControl === "function") {
   tamInstallBasemapToggleControl();
 }
-burgerMenuBtn?.addEventListener("click", () => openControlPanel());
+burgerMenuBtn?.addEventListener("click", () => {
+  if (headerGearPopover && !headerGearPopover.hidden) {
+    headerGearPopover.hidden = true;
+  }
+  openControlPanel();
+});
 closeMenuBtn?.addEventListener("click", closeControlPanel);
 missionTabBtn?.addEventListener("click", () => setPanelTab("mission"));
 opsTabBtn?.addEventListener("click", () => setPanelTab("ops"));
-voiceTabBtn?.addEventListener("click", () => setPanelTab("voice"));
 helpTabBtn?.addEventListener("click", () => setPanelTab("help"));
+
+headerGearBtn?.addEventListener("click", () => {
+  if (!headerGearPopover) return;
+  headerGearPopover.hidden = !headerGearPopover.hidden;
+  if (!headerGearPopover.hidden) {
+    closeControlPanel();
+  }
+});
+document.addEventListener("click", (e) => {
+  if (!headerGearPopover || headerGearPopover.hidden) return;
+  if (
+    !headerGearPopover.contains(e.target) &&
+    e.target !== headerGearBtn
+  ) {
+    headerGearPopover.hidden = true;
+  }
+});
+(function wireHeaderBackup() {
+  const importBtn = document.getElementById("appPlmBackupImportBtn");
+  const fileInput = document.getElementById("appPlmBackupFileInput");
+  if (importBtn && fileInput) {
+    importBtn.addEventListener("click", () => {
+      fileInput.value = "";
+      fileInput.click();
+    });
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files && fileInput.files[0]) {
+        tamImportBackup(fileInput.files[0]);
+      }
+    });
+  }
+})();
+
 controlPanelEl
   ?.querySelectorAll(".panel-ops-subtabs [data-ops-subtab]")
   .forEach((btn) => {

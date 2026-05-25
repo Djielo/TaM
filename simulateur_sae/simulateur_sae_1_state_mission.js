@@ -1499,9 +1499,10 @@ const burgerMenuBtn = document.getElementById("burgerMenuBtn");
 const closeMenuBtn = document.getElementById("closeMenuBtn");
 const missionTabBtn = document.getElementById("missionTabBtn");
 const opsTabBtn = document.getElementById("opsTabBtn");
-const voiceTabBtn = document.getElementById("voiceTabBtn");
 const helpTabBtn = document.getElementById("helpTabBtn");
-/** Dernier onglet du menu pour rouvrir au même endroit (Ligne / Déviation / Audio / Aide). */
+const headerGearBtn = document.getElementById("headerGearBtn");
+const headerGearPopover = document.getElementById("headerGearPopover");
+/** Dernier onglet du menu pour rouvrir au même endroit (Ligne / Déviation / Aide). */
 let controlPanelRememberTab = "mission";
 /** Sous-onglet dans « Déviation » : dev | devtemp | rec */
 let controlPanelRememberOpsSubtab = "dev";
@@ -3010,20 +3011,6 @@ function openPersonalLandmarkDialog(spec) {
           togglePlmLandmarkSettingsPopover();
         });
       }
-      const importBtn = document.getElementById("appPlmBackupImportBtn");
-      const fileInput = document.getElementById("appPlmBackupFileInput");
-      if (importBtn && fileInput) {
-        importBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          fileInput.value = "";
-          fileInput.click();
-        });
-        fileInput.addEventListener("change", () => {
-          if (fileInput.files && fileInput.files[0]) {
-            tamImportBackup(fileInput.files[0]);
-          }
-        });
-      }
       const helpBtnEl = document.getElementById("appPersonalLandmarkDialogHelpBtn");
       const helpDlgEl = document.getElementById("appPersonalLandmarkHelpDialog");
       const helpOkEl = document.getElementById("appPersonalLandmarkHelpDialogOk");
@@ -4329,9 +4316,10 @@ map.on("click", (e) => {
 
 function setPanelTab(panelName) {
   if (!controlPanelEl) return;
+  if (panelName === "voice") panelName = "mission";
   const sections = controlPanelEl.querySelectorAll(".panel-section");
   sections.forEach((s) => s.classList.remove("show"));
-  [missionTabBtn, opsTabBtn, voiceTabBtn, helpTabBtn].forEach(
+  [missionTabBtn, opsTabBtn, helpTabBtn].forEach(
     (b) => b && b.classList.remove("active"),
   );
   if (panelName === "mission") {
@@ -4349,11 +4337,6 @@ function setPanelTab(panelName) {
     });
     applyOpsPanelsVisibility();
     opsTabBtn?.classList.add("active");
-  } else if (panelName === "voice") {
-    controlPanelEl
-      .querySelectorAll(".panel-audio")
-      .forEach((s) => s.classList.add("show"));
-    voiceTabBtn?.classList.add("active");
   } else if (panelName === "help") {
     controlPanelEl
       .querySelectorAll(".panel-help")
