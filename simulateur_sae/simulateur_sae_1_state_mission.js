@@ -1296,8 +1296,35 @@ function tamImportBackup(file) {
   reader.readAsText(file);
 }
 
+let tamHandleAcquirePromise = null;
+
+async function tamEnsureFileHandle() {
+  let handle = await tamGetStoredHandle();
+  if (handle) return handle;
+  if (typeof window.showSaveFilePicker !== "function") return null;
+  try {
+    const picked = await window.showSaveFilePicker({
+      suggestedName: TAM_BACKUP_FILENAME,
+      types: [
+        {
+          description: "Sauvegarde simulateur TAM",
+          accept: { "application/json": [".json"] },
+        },
+      ],
+    });
+    await tamSetStoredHandle(picked);
+    return picked;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function tamDoAutoBackup() {
   try {
+    if (tamHandleAcquirePromise) {
+      await tamHandleAcquirePromise;
+      tamHandleAcquirePromise = null;
+    }
     const payload = tamCollectBackupPayload();
     const json = JSON.stringify(payload);
     if (json === tamAutoBackupLastJson) return;
@@ -1310,6 +1337,9 @@ async function tamDoAutoBackup() {
 }
 
 function plmScheduleAutoBackup() {
+  if (!tamHandleAcquirePromise) {
+    tamHandleAcquirePromise = tamEnsureFileHandle();
+  }
   if (tamAutoBackupTimer) clearTimeout(tamAutoBackupTimer);
   tamAutoBackupTimer = setTimeout(() => {
     tamAutoBackupTimer = 0;
@@ -2498,7 +2528,7 @@ function loadPersonalLandmarksFromStorage() {
   seedPlmIconRecentFromLandmarksIfEmpty();
 }
 
-function savePersonalLandmarksToStorage() {
+function savePersonalLandmarksToStorage(skipFileBackup) {
   try {
     localStorage.setItem(
       LS_KEY_PERSONAL_LANDMARKS,
@@ -2507,7 +2537,7 @@ function savePersonalLandmarksToStorage() {
   } catch (e) {
     // ignore
   }
-  plmScheduleAutoBackup();
+  if (!skipFileBackup) plmScheduleAutoBackup();
 }
 
 function makePersonalLandmarkDivIcon(item) {
@@ -2573,7 +2603,7 @@ function plmSyncGroupsLayoutToZoom(persist) {
   if (plmMapUsesMagneticLayout()) {
     plmApplyMagneticLayoutForAllGroups();
     if (persist !== false) {
-      savePersonalLandmarksToStorage();
+      savePersonalLandmarksToStorage(true);
     }
   }
   redrawPersonalLandmarksLayer();
