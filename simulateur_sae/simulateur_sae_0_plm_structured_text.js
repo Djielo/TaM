@@ -62,14 +62,21 @@
 
   /** Noms enregistrés : chiffres d’abord, puis ordre alphabétique. */
   function normalizeLineNum(raw) {
-    const n = String(raw ?? "").trim();
-    return /^\d+$/.test(n) ? n : "";
+    const n = String(raw ?? "")
+      .trim()
+      .toUpperCase();
+    return /^\d+[A-Z]?$/.test(n) ? n : "";
   }
 
   function getLineNums(lineIndexes) {
     return Object.keys(lineIndexes || {})
       .filter((k) => normalizeLineNum(k))
-      .sort((a, b) => Number(a) - Number(b));
+      .sort((a, b) => {
+        const na = parseInt(a, 10);
+        const nb = parseInt(b, 10);
+        if (na !== nb) return na - nb;
+        return a.localeCompare(b);
+      });
   }
 
   function sortNamePresets(arr) {
@@ -190,7 +197,7 @@
         const body = line.replace(/^L\s*:/i, "").trim();
         for (const part of body.split(",")) {
           const bit = part.trim();
-          const m = bit.match(/^(\d+)\s*-\s*([A-Za-z0-9]+)$/);
+          const m = bit.match(/^(\d+[A-Za-z]?)\s*-\s*([A-Za-z0-9]+)$/);
           if (m) {
             const num = normalizeLineNum(m[1]);
             const code = normalizeCode(m[2]);
@@ -207,7 +214,12 @@
     if (state.v) out.push(`V: ${state.v}`);
     const lineParts = Object.keys(state.lines)
       .filter((n) => normalizeLineNum(n) && state.lines[n])
-      .sort((a, b) => Number(a) - Number(b))
+      .sort((a, b) => {
+        const na = parseInt(a, 10);
+        const nb = parseInt(b, 10);
+        if (na !== nb) return na - nb;
+        return a.localeCompare(b);
+      })
       .map((n) => `${n}-${state.lines[n]}`);
     if (lineParts.length) out.push(`L: ${lineParts.join(", ")}`);
     if (state.zm) out.push(`ZM: ${state.zm}`);
