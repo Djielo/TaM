@@ -1140,10 +1140,6 @@ const TAM_BACKUP_ALL_KEYS = [
 ];
 let tamAutoBackupTimer = 0;
 let tamAutoBackupLastJson = "";
-/** File System Access API : handle fichier persistant (null = pas encore accordé). */
-let tamBackupFileHandle = null;
-/** Promesse en cours d'acquisition du handle (évite les doublons). */
-let tamBackupFileHandlePromise = null;
 
 function tamCollectBackupPayload() {
   const data = {};
@@ -1164,16 +1160,29 @@ function tamCollectBackupPayload() {
   return data;
 }
 
-async function tamWriteToFileHandle(json) {
-  if (!tamBackupFileHandle) return false;
+async function tamWriteOpfsBackup(json) {
   try {
-    const writable = await tamBackupFileHandle.createWritable();
+    const root = await navigator.storage.getDirectory();
+    const handle = await root.getFileHandle(TAM_BACKUP_FILENAME, {
+      create: true,
+    });
+    const writable = await handle.createWritable();
     await writable.write(json);
     await writable.close();
     return true;
   } catch (e) {
-    tamBackupFileHandle = null;
     return false;
+  }
+}
+
+async function tamReadOpfsBackup() {
+  try {
+    const root = await navigator.storage.getDirectory();
+    const handle = await root.getFileHandle(TAM_BACKUP_FILENAME);
+    const file = await handle.getFile();
+    return await file.text();
+  } catch (e) {
+    return null;
   }
 }
 
@@ -1192,22 +1201,20 @@ function tamTriggerFileDownload(json, filename) {
   });
 }
 
-async function tamAcquireFileHandle() {
-  if (typeof window.showSaveFilePicker !== "function") return null;
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: TAM_BACKUP_FILENAME,
-      types: [
-        {
-          description: "Sauvegarde simulateur TAM",
-          accept: { "application/json": [".json"] },
-        },
-      ],
-    });
-    return handle;
-  } catch (e) {
-    return null;
+function tamImportBackupFromJson(data) {
+  if (!data || typeof data !== "object") return false;
+  for (const key of TAM_BACKUP_ALL_KEYS) {
+    if (data[key] != null) {
+      localStorage.setItem(key, JSON.stringify(data[key]));
+    }
   }
+  loadPlmGroupsFromStorage();
+  loadPersonalLandmarksFromStorage();
+  if (plmSanitizeParentLinks()) {
+    savePersonalLandmarksToStorage();
+  }
+  redrawPersonalLandmarksLayer();
+  return true;
 }
 
 function tamImportBackup(file) {
@@ -1216,19 +1223,8 @@ function tamImportBackup(file) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (!data || typeof data !== "object") throw new Error("format");
-      for (const key of TAM_BACKUP_ALL_KEYS) {
-        if (data[key] != null) {
-          localStorage.setItem(key, JSON.stringify(data[key]));
-        }
-      }
-      loadPlmGroupsFromStorage();
-      loadPersonalLandmarksFromStorage();
-      if (plmSanitizeParentLinks()) {
-        savePersonalLandmarksToStorage();
-      }
+      if (!tamImportBackupFromJson(data)) throw new Error("format");
       const count = personalLandmarksList.length;
-      redrawPersonalLandmarksLayer();
       tamAppAlert(
         `Restauration terminée : ${count} repère(s), déviations et réglages rechargés.`,
       );
@@ -1244,40 +1240,34 @@ function tamImportBackup(file) {
   reader.readAsText(file);
 }
 
+async function tamRestoreFromOpfsIfEmpty() {
+  if (personalLandmarksList.length > 0) return;
+  const text = await tamReadOpfsBackup();
+  if (!text) return;
+  try {
+    const data = JSON.parse(text);
+    if (tamImportBackupFromJson(data)) {
+      setGpsStatus("Données restaurées depuis la sauvegarde automatique.");
+    }
+  } catch (e) {
+    // silencieux
+  }
+}
+
 async function tamDoAutoBackup() {
   try {
-    if (tamBackupFileHandlePromise) {
-      await tamBackupFileHandlePromise;
-    }
     const payload = tamCollectBackupPayload();
     const json = JSON.stringify(payload);
     if (json === tamAutoBackupLastJson) return;
     tamAutoBackupLastJson = json;
     const pretty = JSON.stringify(payload, null, 2);
-    if (tamBackupFileHandle) {
-      if (await tamWriteToFileHandle(pretty)) return;
-    }
-    tamTriggerFileDownload(pretty, TAM_BACKUP_FILENAME);
+    await tamWriteOpfsBackup(pretty);
   } catch (e) {
     // silencieux
   }
 }
 
 function plmScheduleAutoBackup() {
-  if (
-    !tamBackupFileHandle &&
-    !tamBackupFileHandlePromise &&
-    typeof window.showSaveFilePicker === "function"
-  ) {
-    tamBackupFileHandlePromise = tamAcquireFileHandle()
-      .then((handle) => {
-        tamBackupFileHandlePromise = null;
-        if (handle) tamBackupFileHandle = handle;
-      })
-      .catch(() => {
-        tamBackupFileHandlePromise = null;
-      });
-  }
   if (tamAutoBackupTimer) clearTimeout(tamAutoBackupTimer);
   tamAutoBackupTimer = setTimeout(() => {
     tamAutoBackupTimer = 0;
@@ -3180,6 +3170,7 @@ loadPersonalLandmarksFromStorage();
 if (plmSanitizeParentLinks()) {
   savePersonalLandmarksToStorage();
 }
+void tamRestoreFromOpfsIfEmpty();
 plmSyncGroupsLayoutToZoom(true);
 
 let marker = L.marker([43.61, 3.88], {
