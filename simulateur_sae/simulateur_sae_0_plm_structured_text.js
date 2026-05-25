@@ -393,7 +393,7 @@
           namePick.value === preset
         ) {
           namePick = { kind: "manual" };
-          nameEl.value = "G";
+          nameEl.value = "Groupe";
         }
         renderNamePanel();
       });
@@ -492,7 +492,7 @@
       if (!(await confirmEffacer(t))) return;
       config.namePresets = config.namePresets.filter((x) => x !== t);
       namePick = { kind: "manual" };
-      nameEl.value = "G";
+      nameEl.value = "Groupe";
       saveConfig(config);
       renderNamePanel();
     }
