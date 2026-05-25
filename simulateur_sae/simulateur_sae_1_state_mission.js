@@ -2421,6 +2421,7 @@ function plmBindLandmarkContextMenu(marker, landmarkId) {
   marker.on("touchstart", (e) => {
     if (!e.originalEvent || e.originalEvent.touches.length !== 1) return;
     plmClearLongPressTimer();
+    if (marker.dragging) marker.dragging.disable();
     const touch = e.originalEvent.touches[0];
     plmLongPressTimer = setTimeout(() => {
       plmLongPressTimer = 0;
@@ -2430,6 +2431,7 @@ function plmBindLandmarkContextMenu(marker, landmarkId) {
   });
   marker.on("touchmove touchend touchcancel", () => {
     plmClearLongPressTimer();
+    if (marker.dragging) marker.dragging.enable();
   });
 }
 
@@ -2690,10 +2692,23 @@ function redrawPersonalLandmarksLayer() {
     });
     m.on("dragend", () => {
       plmSuppressLandmarkClickUntil = Date.now() + 450;
+      const ll = m.getLatLng();
+      const disp = plmDisplayLatLngForLandmark(item);
+      const pOrig = map.latLngToContainerPoint(L.latLng(disp.lat, disp.lng));
+      const pNow = map.latLngToContainerPoint(ll);
+      const pxDist = Math.hypot(pNow.x - pOrig.x, pNow.y - pOrig.y);
+      if (pxDist < 10) {
+        m.setLatLng([disp.lat, disp.lng]);
+        plmGroupDragSnapshot = null;
+        if (plmPausedMapDrag && map?.dragging && !map.dragging.enabled()) {
+          map.dragging.enable();
+        }
+        plmPausedMapDrag = false;
+        return;
+      }
       const snap = plmGroupDragSnapshot;
       try {
         if (snap && snap.draggedId === item.id) {
-          const ll = m.getLatLng();
           if (!plmIsValidPlmLatLng(ll.lat, ll.lng)) {
             redrawPersonalLandmarksLayer();
             return;
