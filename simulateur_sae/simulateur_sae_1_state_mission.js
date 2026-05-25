@@ -1208,32 +1208,6 @@ async function tamAcquireFileHandle() {
   }
 }
 
-async function tamExportBackup() {
-  const payload = tamCollectBackupPayload();
-  const json = JSON.stringify(payload, null, 2);
-  if (typeof window.showSaveFilePicker === "function" && !tamBackupFileHandle) {
-    const handle = await tamAcquireFileHandle();
-    if (handle) {
-      tamBackupFileHandle = handle;
-      if (await tamWriteToFileHandle(json)) {
-        tamAutoBackupLastJson = JSON.stringify(payload);
-        setGpsStatus("Sauvegarde exportée. Les prochaines seront automatiques.");
-        return;
-      }
-    }
-  }
-  if (tamBackupFileHandle) {
-    if (await tamWriteToFileHandle(json)) {
-      tamAutoBackupLastJson = JSON.stringify(payload);
-      setGpsStatus("Sauvegarde exportée.");
-      return;
-    }
-  }
-  tamTriggerFileDownload(json, TAM_BACKUP_FILENAME);
-  tamAutoBackupLastJson = JSON.stringify(payload);
-  setGpsStatus("Sauvegarde exportée (téléchargement).");
-}
-
 function tamImportBackup(file) {
   if (!file) return;
   const reader = new FileReader();
@@ -1276,8 +1250,14 @@ async function tamDoAutoBackup() {
     tamAutoBackupLastJson = json;
     const pretty = JSON.stringify(payload, null, 2);
     if (tamBackupFileHandle) {
-      await tamWriteToFileHandle(pretty);
-      return;
+      if (await tamWriteToFileHandle(pretty)) return;
+    }
+    if (!tamBackupFileHandle && typeof window.showSaveFilePicker === "function") {
+      const handle = await tamAcquireFileHandle();
+      if (handle) {
+        tamBackupFileHandle = handle;
+        if (await tamWriteToFileHandle(pretty)) return;
+      }
     }
     tamTriggerFileDownload(pretty, TAM_BACKUP_FILENAME);
   } catch (e) {
@@ -2951,15 +2931,8 @@ function openPersonalLandmarkDialog(spec) {
           togglePlmLandmarkSettingsPopover();
         });
       }
-      const exportBtn = document.getElementById("appPlmBackupExportBtn");
       const importBtn = document.getElementById("appPlmBackupImportBtn");
       const fileInput = document.getElementById("appPlmBackupFileInput");
-      if (exportBtn) {
-        exportBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          void tamExportBackup();
-        });
-      }
       if (importBtn && fileInput) {
         importBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();

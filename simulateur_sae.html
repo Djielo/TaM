@@ -848,14 +848,10 @@
         border-top: 1px solid #e2e8f0;
       }
       .tam-plm-backup-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
         margin-top: 4px;
       }
       .tam-plm-backup-btn {
-        flex: 1 1 auto;
-        min-width: 0;
+        width: 100%;
         padding: 8px 10px;
         border: 1px solid #ccd3db;
         border-radius: 6px;
@@ -866,7 +862,6 @@
         font-family: inherit;
         cursor: pointer;
         text-align: center;
-        white-space: nowrap;
       }
       .tam-plm-backup-btn:hover {
         background: #e8f0fa;
@@ -875,12 +870,6 @@
       }
       .tam-plm-backup-btn:active {
         background: #d0e3f5;
-      }
-      .tam-plm-backup-auto-info {
-        margin: 6px 0 0;
-        font-size: 11px;
-        line-height: 1.35;
-        color: #718096;
       }
       .tam-personal-landmark-marker__bubble {
         display: flex;
@@ -3594,23 +3583,17 @@
           </div>
           <div class="tam-plm-settings-row tam-plm-settings-popover__section">
             <p class="tam-plm-settings-row__intro">
-              Sauvegardez vos données (repères, déviations, réglages) dans un
-              fichier pour éviter de les perdre en cas de vidage du cache.
+              Vos données (repères, déviations, réglages) sont sauvegardées
+              automatiquement à chaque action validée. Pour restaurer après un
+              vidage de cache, utilisez le bouton ci-dessous.
             </p>
             <div class="tam-plm-backup-row">
-              <button
-                type="button"
-                id="appPlmBackupExportBtn"
-                class="tam-plm-backup-btn"
-              >
-                Sauvegarder
-              </button>
               <button
                 type="button"
                 id="appPlmBackupImportBtn"
                 class="tam-plm-backup-btn"
               >
-                Restaurer
+                Restaurer une sauvegarde
               </button>
             </div>
             <input
@@ -3620,10 +3603,6 @@
               hidden
               aria-hidden="true"
             />
-            <p class="tam-plm-backup-auto-info">
-              Sauvegarde automatique à chaque action validée (enregistrement,
-              suppression, duplication, fusion…).
-            </p>
           </div>
         </div>
         <h2 id="appPersonalLandmarkDialogTitle" class="tam-plm-sr-only">
@@ -3935,10 +3914,11 @@
             affiche ou masque les noms et descriptions sur la carte.
           </p>
           <p>
-            <strong>Sauvegarde :</strong> l'icône engrenage contient
-            « Sauvegarder » (export fichier) et « Restaurer » (import).
-            Toutes les données (repères, déviations, réglages) sont
-            sauvegardées automatiquement à chaque action validée.
+            <strong>Sauvegarde :</strong> toutes les données (repères,
+            déviations, réglages) sont sauvegardées automatiquement dans un
+            fichier à chaque action validée. En cas de vidage du cache,
+            l'icône engrenage contient un bouton « Restaurer une sauvegarde »
+            pour tout récupérer.
           </p>
         </div>
         <div class="app-message-dialog__actions">
