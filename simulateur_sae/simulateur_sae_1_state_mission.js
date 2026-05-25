@@ -144,6 +144,7 @@ function savePlmGroupsToStorage() {
   } catch (e) {
     // ignore
   }
+  if (typeof plmScheduleAutoBackup === "function") plmScheduleAutoBackup();
 }
 
 function plmGetGroupDescription(groupId) {
@@ -1119,6 +1120,179 @@ function savePlmCapFilterBandM(n) {
   }
   return v;
 }
+
+const TAM_BACKUP_FILENAME = "tam_sauvegarde_simulateur.json";
+const TAM_BACKUP_ALL_KEYS = [
+  LS_KEY_PERSONAL_LANDMARKS,
+  LS_KEY_PLM_GROUPS,
+  LS_KEY_PLM_ICON_RECENT,
+  LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP,
+  LS_KEY_PLM_CAP_FILTER_BAND_M,
+  LS_KEY_DEVIATIONS,
+  LS_KEY_OPS_LOG,
+  LS_KEY_VOICE,
+  LS_KEY_MODE,
+  LS_KEY_ENABLED,
+  LS_KEY_HEADING,
+  LS_KEY_RECAP,
+  LS_KEY_DRIVE_MODE,
+  "tam_plm_structured_text_config_v1",
+];
+let tamAutoBackupTimer = 0;
+let tamAutoBackupLastJson = "";
+/** File System Access API : handle fichier persistant (null = pas encore accordé). */
+let tamBackupFileHandle = null;
+
+function tamCollectBackupPayload() {
+  const data = {};
+  for (const key of TAM_BACKUP_ALL_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw != null) data[key] = JSON.parse(raw);
+    } catch (e) {
+      const raw = localStorage.getItem(key);
+      if (raw != null) data[key] = raw;
+    }
+  }
+  data._meta = {
+    version: 2,
+    date: new Date().toISOString(),
+    landmarks: personalLandmarksList.length,
+  };
+  return data;
+}
+
+async function tamWriteToFileHandle(json) {
+  if (!tamBackupFileHandle) return false;
+  try {
+    const writable = await tamBackupFileHandle.createWritable();
+    await writable.write(json);
+    await writable.close();
+    return true;
+  } catch (e) {
+    tamBackupFileHandle = null;
+    return false;
+  }
+}
+
+function tamTriggerFileDownload(json, filename) {
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  requestAnimationFrame(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
+async function tamAcquireFileHandle() {
+  if (typeof window.showSaveFilePicker !== "function") return null;
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: TAM_BACKUP_FILENAME,
+      types: [
+        {
+          description: "Sauvegarde simulateur TAM",
+          accept: { "application/json": [".json"] },
+        },
+      ],
+    });
+    return handle;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function tamExportBackup() {
+  const payload = tamCollectBackupPayload();
+  const json = JSON.stringify(payload, null, 2);
+  if (typeof window.showSaveFilePicker === "function" && !tamBackupFileHandle) {
+    const handle = await tamAcquireFileHandle();
+    if (handle) {
+      tamBackupFileHandle = handle;
+      if (await tamWriteToFileHandle(json)) {
+        tamAutoBackupLastJson = JSON.stringify(payload);
+        setGpsStatus("Sauvegarde exportée. Les prochaines seront automatiques.");
+        return;
+      }
+    }
+  }
+  if (tamBackupFileHandle) {
+    if (await tamWriteToFileHandle(json)) {
+      tamAutoBackupLastJson = JSON.stringify(payload);
+      setGpsStatus("Sauvegarde exportée.");
+      return;
+    }
+  }
+  tamTriggerFileDownload(json, TAM_BACKUP_FILENAME);
+  tamAutoBackupLastJson = JSON.stringify(payload);
+  setGpsStatus("Sauvegarde exportée (téléchargement).");
+}
+
+function tamImportBackup(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || typeof data !== "object") throw new Error("format");
+      for (const key of TAM_BACKUP_ALL_KEYS) {
+        if (data[key] != null) {
+          localStorage.setItem(key, JSON.stringify(data[key]));
+        }
+      }
+      loadPlmGroupsFromStorage();
+      loadPersonalLandmarksFromStorage();
+      if (plmSanitizeParentLinks()) {
+        savePersonalLandmarksToStorage();
+      }
+      const count = personalLandmarksList.length;
+      redrawPersonalLandmarksLayer();
+      tamAppAlert(
+        `Restauration terminée : ${count} repère(s), déviations et réglages rechargés.`,
+      );
+      setGpsStatus(`Sauvegarde restaurée.`);
+    } catch (e) {
+      tamAppAlert(
+        "Impossible de lire le fichier de sauvegarde. Vérifiez qu'il s'agit bien du fichier « " +
+        TAM_BACKUP_FILENAME +
+        " ».",
+      );
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function tamDoAutoBackup() {
+  try {
+    const payload = tamCollectBackupPayload();
+    const json = JSON.stringify(payload);
+    if (json === tamAutoBackupLastJson) return;
+    tamAutoBackupLastJson = json;
+    const pretty = JSON.stringify(payload, null, 2);
+    if (tamBackupFileHandle) {
+      await tamWriteToFileHandle(pretty);
+      return;
+    }
+    tamTriggerFileDownload(pretty, TAM_BACKUP_FILENAME);
+  } catch (e) {
+    // silencieux
+  }
+}
+
+function plmScheduleAutoBackup() {
+  if (tamAutoBackupTimer) clearTimeout(tamAutoBackupTimer);
+  tamAutoBackupTimer = setTimeout(() => {
+    tamAutoBackupTimer = 0;
+    void tamDoAutoBackup();
+  }, 500);
+}
+window.plmScheduleAutoBackup = plmScheduleAutoBackup;
 
 function closePlmLandmarkSettingsPopover() {
   const pop = document.getElementById("appPersonalLandmarkSettingsPopover");
@@ -2309,6 +2483,7 @@ function savePersonalLandmarksToStorage() {
   } catch (e) {
     // ignore
   }
+  plmScheduleAutoBackup();
 }
 
 function makePersonalLandmarkDivIcon(item) {
@@ -2774,6 +2949,27 @@ function openPersonalLandmarkDialog(spec) {
         gear.addEventListener("click", (ev) => {
           ev.stopPropagation();
           togglePlmLandmarkSettingsPopover();
+        });
+      }
+      const exportBtn = document.getElementById("appPlmBackupExportBtn");
+      const importBtn = document.getElementById("appPlmBackupImportBtn");
+      const fileInput = document.getElementById("appPlmBackupFileInput");
+      if (exportBtn) {
+        exportBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          void tamExportBackup();
+        });
+      }
+      if (importBtn && fileInput) {
+        importBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          fileInput.value = "";
+          fileInput.click();
+        });
+        fileInput.addEventListener("change", () => {
+          if (fileInput.files && fileInput.files[0]) {
+            tamImportBackup(fileInput.files[0]);
+          }
         });
       }
       const helpBtnEl = document.getElementById("appPersonalLandmarkDialogHelpBtn");

@@ -847,6 +847,41 @@
         padding-top: 12px;
         border-top: 1px solid #e2e8f0;
       }
+      .tam-plm-backup-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .tam-plm-backup-btn {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 8px 10px;
+        border: 1px solid #ccd3db;
+        border-radius: 6px;
+        background: #f4f6f8;
+        color: #1b1f24;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        text-align: center;
+        white-space: nowrap;
+      }
+      .tam-plm-backup-btn:hover {
+        background: #e8f0fa;
+        border-color: #005ca9;
+        color: #005ca9;
+      }
+      .tam-plm-backup-btn:active {
+        background: #d0e3f5;
+      }
+      .tam-plm-backup-auto-info {
+        margin: 6px 0 0;
+        font-size: 11px;
+        line-height: 1.35;
+        color: #718096;
+      }
       .tam-personal-landmark-marker__bubble {
         display: flex;
         align-items: center;
@@ -3557,6 +3592,39 @@
               />
             </div>
           </div>
+          <div class="tam-plm-settings-row tam-plm-settings-popover__section">
+            <p class="tam-plm-settings-row__intro">
+              Sauvegardez vos données (repères, déviations, réglages) dans un
+              fichier pour éviter de les perdre en cas de vidage du cache.
+            </p>
+            <div class="tam-plm-backup-row">
+              <button
+                type="button"
+                id="appPlmBackupExportBtn"
+                class="tam-plm-backup-btn"
+              >
+                Sauvegarder
+              </button>
+              <button
+                type="button"
+                id="appPlmBackupImportBtn"
+                class="tam-plm-backup-btn"
+              >
+                Restaurer
+              </button>
+            </div>
+            <input
+              type="file"
+              id="appPlmBackupFileInput"
+              accept=".json"
+              hidden
+              aria-hidden="true"
+            />
+            <p class="tam-plm-backup-auto-info">
+              Sauvegarde automatique à chaque action validée (enregistrement,
+              suppression, duplication, fusion…).
+            </p>
+          </div>
         </div>
         <h2 id="appPersonalLandmarkDialogTitle" class="tam-plm-sr-only">
           Repère personnel
@@ -3865,6 +3933,12 @@
             : fusionner un repère isolé dans un groupe proche, ou le détacher
             d’un groupe. Le bouton <strong>Aa</strong> (sous le bouton repères)
             affiche ou masque les noms et descriptions sur la carte.
+          </p>
+          <p>
+            <strong>Sauvegarde :</strong> l'icône engrenage contient
+            « Sauvegarder » (export fichier) et « Restaurer » (import).
+            Toutes les données (repères, déviations, réglages) sont
+            sauvegardées automatiquement à chaque action validée.
           </p>
         </div>
         <div class="app-message-dialog__actions">

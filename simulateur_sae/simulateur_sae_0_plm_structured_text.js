@@ -163,6 +163,9 @@
     } catch (e) {
       // ignore
     }
+    if (typeof window.plmScheduleAutoBackup === "function") {
+      window.plmScheduleAutoBackup();
+    }
   }
 
   function emptyDescState() {
