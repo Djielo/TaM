@@ -1140,6 +1140,8 @@ const TAM_BACKUP_ALL_KEYS = [
 ];
 let tamAutoBackupTimer = 0;
 let tamAutoBackupLastJson = "";
+let tamCachedFileHandle = null;
+let tamHandleReady = false;
 
 const TAM_IDB_NAME = "tam-simulateur-backup";
 const TAM_IDB_STORE = "meta";
@@ -1230,37 +1232,16 @@ function tamCollectBackupPayload() {
   return data;
 }
 
-async function tamSaveToDevice(jsonString) {
-  let handle = await tamGetStoredHandle();
-  if (handle) {
-    try {
-      if (await tamWriteToHandle(handle, jsonString)) return;
-    } catch (e) {
-      handle = null;
-    }
+(async function tamRecoverHandleFromIdb() {
+  try {
+    const h = await tamGetStoredHandle();
+    if (h) tamCachedFileHandle = h;
+  } catch (e) {
+    // silencieux
+  } finally {
+    tamHandleReady = true;
   }
-  if (typeof window.showSaveFilePicker === "function") {
-    try {
-      const picked = await window.showSaveFilePicker({
-        suggestedName: TAM_BACKUP_FILENAME,
-        types: [
-          {
-            description: "Sauvegarde simulateur TAM",
-            accept: { "application/json": [".json"] },
-          },
-        ],
-      });
-      await tamSetStoredHandle(picked);
-      if (await tamWriteToHandle(picked, jsonString)) return;
-    } catch (err) {
-      if (err?.name === "AbortError") {
-        tamDownloadFallback(jsonString);
-        return;
-      }
-    }
-  }
-  tamDownloadFallback(jsonString);
-}
+})();
 
 function tamImportBackup(file) {
   if (!file) return;
@@ -1277,10 +1258,11 @@ function tamImportBackup(file) {
       loadPlmGroupsFromStorage();
       loadPersonalLandmarksFromStorage();
       if (plmSanitizeParentLinks()) {
-        savePersonalLandmarksToStorage();
+        savePersonalLandmarksToStorage(true);
       }
       const count = personalLandmarksList.length;
       redrawPersonalLandmarksLayer();
+      plmScheduleAutoBackup();
       tamAppAlert(
         `Restauration terminée : ${count} repère(s), déviations et réglages rechargés.`,
       );
@@ -1296,54 +1278,67 @@ function tamImportBackup(file) {
   reader.readAsText(file);
 }
 
-let tamHandleAcquirePromise = null;
-
-async function tamEnsureFileHandle() {
-  let handle = await tamGetStoredHandle();
-  if (handle) return handle;
-  if (typeof window.showSaveFilePicker !== "function") return null;
-  try {
-    const picked = await window.showSaveFilePicker({
-      suggestedName: TAM_BACKUP_FILENAME,
-      types: [
-        {
-          description: "Sauvegarde simulateur TAM",
-          accept: { "application/json": [".json"] },
-        },
-      ],
-    });
-    await tamSetStoredHandle(picked);
-    return picked;
-  } catch (e) {
-    return null;
-  }
-}
-
 async function tamDoAutoBackup() {
   try {
-    if (tamHandleAcquirePromise) {
-      await tamHandleAcquirePromise;
-      tamHandleAcquirePromise = null;
-    }
     const payload = tamCollectBackupPayload();
     const json = JSON.stringify(payload);
     if (json === tamAutoBackupLastJson) return;
     tamAutoBackupLastJson = json;
     const pretty = JSON.stringify(payload, null, 2);
-    await tamSaveToDevice(pretty);
+
+    if (tamCachedFileHandle) {
+      try {
+        if (await tamWriteToHandle(tamCachedFileHandle, pretty)) return;
+      } catch (e) {
+        tamCachedFileHandle = null;
+      }
+    }
+
+    if (typeof window.showSaveFilePicker !== "function") {
+      tamDownloadFallback(pretty);
+    }
   } catch (e) {
     // silencieux
   }
 }
 
+let tamPickerPromise = null;
+
 function plmScheduleAutoBackup() {
-  if (!tamHandleAcquirePromise) {
-    tamHandleAcquirePromise = tamEnsureFileHandle();
+  if (
+    !tamCachedFileHandle &&
+    !tamPickerPromise &&
+    tamHandleReady &&
+    typeof window.showSaveFilePicker === "function"
+  ) {
+    tamPickerPromise = window
+      .showSaveFilePicker({
+        suggestedName: TAM_BACKUP_FILENAME,
+        types: [
+          {
+            description: "Sauvegarde simulateur TAM",
+            accept: { "application/json": [".json"] },
+          },
+        ],
+      })
+      .then((picked) => {
+        tamCachedFileHandle = picked;
+        return tamSetStoredHandle(picked);
+      })
+      .catch(() => {})
+      .finally(() => {
+        tamPickerPromise = null;
+      });
   }
+
   if (tamAutoBackupTimer) clearTimeout(tamAutoBackupTimer);
   tamAutoBackupTimer = setTimeout(() => {
     tamAutoBackupTimer = 0;
-    void tamDoAutoBackup();
+    const doIt = async () => {
+      if (tamPickerPromise) await tamPickerPromise;
+      await tamDoAutoBackup();
+    };
+    void doIt();
   }, 500);
 }
 window.plmScheduleAutoBackup = plmScheduleAutoBackup;
@@ -3240,7 +3235,7 @@ async function openPersonalLandmarkMarkerEditor(id) {
 loadPlmGroupsFromStorage();
 loadPersonalLandmarksFromStorage();
 if (plmSanitizeParentLinks()) {
-  savePersonalLandmarksToStorage();
+  savePersonalLandmarksToStorage(true);
 }
 plmSyncGroupsLayoutToZoom(true);
 
