@@ -15,6 +15,7 @@ Thumbs.db
 # Procédures d’usage personnel (garder uniquement en local)
 PROCEDURE_GPS_AUTONOME.txt
 PROCEDURE_TELEPHONE_ADB.txt
+HOWTO_BACKUP_ECRASEMENT.md
 
 # Donnees locales Open Data (volumineux / non versionnees)
 gtfs_data/

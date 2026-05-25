@@ -1140,8 +1140,76 @@ const TAM_BACKUP_ALL_KEYS = [
 ];
 let tamAutoBackupTimer = 0;
 let tamAutoBackupLastJson = "";
-/** File System Access API : handle fichier persistant (null = pas encore accordé). */
-let tamBackupFileHandle = null;
+
+const TAM_IDB_NAME = "tam-simulateur-backup";
+const TAM_IDB_STORE = "meta";
+const TAM_IDB_HANDLE_KEY = "fileHandle";
+
+function tamOpenIdb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(TAM_IDB_NAME, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(TAM_IDB_STORE)) {
+        db.createObjectStore(TAM_IDB_STORE);
+      }
+    };
+  });
+}
+
+async function tamGetStoredHandle() {
+  try {
+    const db = await tamOpenIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(TAM_IDB_STORE, "readonly");
+      const req = tx.objectStore(TAM_IDB_STORE).get(TAM_IDB_HANDLE_KEY);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function tamSetStoredHandle(handle) {
+  try {
+    const db = await tamOpenIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(TAM_IDB_STORE, "readwrite");
+      tx.objectStore(TAM_IDB_STORE).put(handle, TAM_IDB_HANDLE_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    // silencieux
+  }
+}
+
+async function tamWriteToHandle(handle, text) {
+  let perm = await handle.queryPermission({ mode: "readwrite" });
+  if (perm !== "granted") {
+    perm = await handle.requestPermission({ mode: "readwrite" });
+    if (perm !== "granted") return false;
+  }
+  const writable = await handle.createWritable();
+  await writable.write(text);
+  await writable.close();
+  return true;
+}
+
+function tamDownloadFallback(jsonString) {
+  const blob = new Blob([jsonString], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = TAM_BACKUP_FILENAME;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
 
 function tamCollectBackupPayload() {
   const data = {};
@@ -1162,76 +1230,36 @@ function tamCollectBackupPayload() {
   return data;
 }
 
-async function tamWriteToFileHandle(json) {
-  if (!tamBackupFileHandle) return false;
-  try {
-    const writable = await tamBackupFileHandle.createWritable();
-    await writable.write(json);
-    await writable.close();
-    return true;
-  } catch (e) {
-    tamBackupFileHandle = null;
-    return false;
+async function tamSaveToDevice(jsonString) {
+  let handle = await tamGetStoredHandle();
+  if (handle) {
+    try {
+      if (await tamWriteToHandle(handle, jsonString)) return;
+    } catch (e) {
+      handle = null;
+    }
   }
-}
-
-function tamTriggerFileDownload(json, filename) {
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  requestAnimationFrame(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
-}
-
-async function tamAcquireFileHandle() {
-  if (typeof window.showSaveFilePicker !== "function") return null;
-  try {
-    const handle = await window.showSaveFilePicker({
-      suggestedName: TAM_BACKUP_FILENAME,
-      types: [
-        {
-          description: "Sauvegarde simulateur TAM",
-          accept: { "application/json": [".json"] },
-        },
-      ],
-    });
-    return handle;
-  } catch (e) {
-    return null;
-  }
-}
-
-async function tamExportBackup() {
-  const payload = tamCollectBackupPayload();
-  const json = JSON.stringify(payload, null, 2);
-  if (typeof window.showSaveFilePicker === "function" && !tamBackupFileHandle) {
-    const handle = await tamAcquireFileHandle();
-    if (handle) {
-      tamBackupFileHandle = handle;
-      if (await tamWriteToFileHandle(json)) {
-        tamAutoBackupLastJson = JSON.stringify(payload);
-        setGpsStatus("Sauvegarde exportée. Les prochaines seront automatiques.");
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const picked = await window.showSaveFilePicker({
+        suggestedName: TAM_BACKUP_FILENAME,
+        types: [
+          {
+            description: "Sauvegarde simulateur TAM",
+            accept: { "application/json": [".json"] },
+          },
+        ],
+      });
+      await tamSetStoredHandle(picked);
+      if (await tamWriteToHandle(picked, jsonString)) return;
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        tamDownloadFallback(jsonString);
         return;
       }
     }
   }
-  if (tamBackupFileHandle) {
-    if (await tamWriteToFileHandle(json)) {
-      tamAutoBackupLastJson = JSON.stringify(payload);
-      setGpsStatus("Sauvegarde exportée.");
-      return;
-    }
-  }
-  tamTriggerFileDownload(json, TAM_BACKUP_FILENAME);
-  tamAutoBackupLastJson = JSON.stringify(payload);
-  setGpsStatus("Sauvegarde exportée (téléchargement).");
+  tamDownloadFallback(jsonString);
 }
 
 function tamImportBackup(file) {
@@ -1275,11 +1303,7 @@ async function tamDoAutoBackup() {
     if (json === tamAutoBackupLastJson) return;
     tamAutoBackupLastJson = json;
     const pretty = JSON.stringify(payload, null, 2);
-    if (tamBackupFileHandle) {
-      await tamWriteToFileHandle(pretty);
-      return;
-    }
-    tamTriggerFileDownload(pretty, TAM_BACKUP_FILENAME);
+    await tamSaveToDevice(pretty);
   } catch (e) {
     // silencieux
   }
@@ -2951,15 +2975,8 @@ function openPersonalLandmarkDialog(spec) {
           togglePlmLandmarkSettingsPopover();
         });
       }
-      const exportBtn = document.getElementById("appPlmBackupExportBtn");
       const importBtn = document.getElementById("appPlmBackupImportBtn");
       const fileInput = document.getElementById("appPlmBackupFileInput");
-      if (exportBtn) {
-        exportBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          void tamExportBackup();
-        });
-      }
       if (importBtn && fileInput) {
         importBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
