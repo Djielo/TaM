@@ -161,6 +161,20 @@ function plmFindImageForLandmark(landmarkId) {
   return null;
 }
 
+function plmFindStopImage(stopName) {
+  if (!stopName) return null;
+  const normalized = plmNormalizeForMatch(stopName);
+  for (const entry of PLM_IMAGE_CATALOG) {
+    if (entry.type !== "stop") continue;
+    for (const kw of entry.keywords) {
+      if (normalized.includes(plmNormalizeForMatch(kw))) {
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
 function plmOpenImageViewer(imagePath, caption) {
   const dialog = document.getElementById("tamPlmImageViewer");
   const img = document.getElementById("tamPlmImageViewerImg");

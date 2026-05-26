@@ -476,6 +476,17 @@ function drawAllStopsOverlay() {
           : `Arrêt desservi réactivé: ${st.stop_name || "-"}`,
       );
     });
+    if (typeof plmFindStopImage === "function") {
+      const stopImg = plmFindStopImage(st.stop_name);
+      if (stopImg) {
+        marker.on("contextmenu", (ev) => {
+          L.DomEvent.stop(ev);
+          if (typeof plmOpenImageViewer === "function") {
+            plmOpenImageViewer(stopImg.path, `Arrêt : ${st.stop_name || ""}`);
+          }
+        });
+      }
+    }
   }
 }
 
