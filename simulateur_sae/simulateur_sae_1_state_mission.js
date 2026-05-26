@@ -2347,10 +2347,6 @@ function plmInitLandmarkContextMenu() {
     const id = plmContextMenuLandmarkId;
     const action = btn.getAttribute("data-plm-ctx");
     plmCloseLandmarkContextMenu();
-    if (action === "edit") {
-      void openPersonalLandmarkMarkerEditor(id);
-      return;
-    }
     if (action === "dup-landmark") {
       if (!plmDuplicateLandmarkFromId(id)) return;
       savePersonalLandmarksToStorage();
