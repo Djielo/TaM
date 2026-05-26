@@ -4058,7 +4058,7 @@ function updateMapNavigation(opt) {
       tri.style.transform = "none";
     }
   } else {
-    if (typeof map.setBearing === "function") {
+    if (typeof map.setBearing === "function" && map.getBearing() !== 0) {
       map.setBearing(0);
     }
     if (tri) {
@@ -6520,7 +6520,7 @@ function updateRouteGuidanceMarkerFromGps() {
         tri.style.transform = "none";
       }
     } else {
-      if (map && typeof map.setBearing === "function") {
+      if (map && typeof map.setBearing === "function" && map.getBearing() !== 0) {
         map.setBearing(0);
       }
       if (tri) {
