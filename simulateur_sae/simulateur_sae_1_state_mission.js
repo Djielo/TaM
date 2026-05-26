@@ -2631,6 +2631,7 @@ function redrawPersonalLandmarksLayer() {
       icon: makePersonalLandmarkDivIcon(item),
       zIndexOffset: 450,
       draggable: true,
+      bubblingMouseEvents: false,
     });
     plmMarkerById.set(item.id, m);
     let plmPausedMapDrag = false;
