@@ -117,110 +117,6 @@ let plmGroupDragSnapshot = null;
 let plmZoomLayoutRaf = 0;
 let plmLabelsLayoutRaf = 0;
 
-/**
- * Catalogue des images associées aux repères personnels.
- * Chaque entrée : { path, type ('zone'|'cmu'|'stop'), keywords[] }
- * La correspondance se fait par mots-clés recherchés dans le nom ou la description
- * du repère / groupe (insensible à la casse et aux accents).
- */
-const PLM_IMAGE_CATALOG = [
-  { path: "images/4a_Zone_01_Saint_Cléophas.jpg", type: "zone", keywords: ["saint cleophas", "saint-cleophas", "saint cléophas"] },
-  { path: "images/4a_Zone_02_Gare_D_OBservatoire.jpg", type: "zone", keywords: ["gare"] },
-  { path: "images/4a_CMU_01_Pont_de_Sète.jpg", type: "cmu", keywords: ["pont de sete", "pont de sète"] },
-  { path: "images/4a_CMU_02_Republique.jpg", type: "cmu", keywords: ["republique", "république"] },
-  { path: "images/4a_Stop_00_Garcia_Lorca.jpg", type: "stop", keywords: ["garcia lorca"] },
-  { path: "images/4a_Stop_01_Restanque.jpg", type: "stop", keywords: ["restanque"] },
-  { path: "images/4a_Stop_02_Saint_Martin_Le_Jam.jpg", type: "stop", keywords: ["saint martin", "saint-martin"] },
-  { path: "images/4a_Stop_03_Nouveau_Saint_Rock.jpg", type: "stop", keywords: ["nouveau saint-roch", "nouveau saint roch", "nouveau saint rock"] },
-  { path: "images/4a_Stop_04_Rondelet.jpg", type: "stop", keywords: ["rondelet"] },
-  { path: "images/4a_Stop_05_Gare_Saint_Rock_Repiblique.jpg", type: "stop", keywords: ["gare saint-roch", "gare saint roch"] },
-  { path: "images/4a_Stop_06_Observatoire.jpg", type: "stop", keywords: ["observatoire"] },
-];
-
-function plmNormalizeForMatch(str) {
-  return String(str || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function plmFindImageForLandmark(landmarkId) {
-  const item = personalLandmarksList.find((x) => x.id === landmarkId);
-  if (!item) return null;
-  const name = plmNormalizeForMatch(item.name);
-  const desc = plmNormalizeForMatch(plmLandmarkDescriptionText(item));
-  const searchText = name + " " + desc;
-  for (const entry of PLM_IMAGE_CATALOG) {
-    for (const kw of entry.keywords) {
-      if (searchText.includes(plmNormalizeForMatch(kw))) {
-        return entry;
-      }
-    }
-  }
-  return null;
-}
-
-function plmFindStopImage(stopName) {
-  if (!stopName) return null;
-  const normalized = plmNormalizeForMatch(stopName);
-  for (const entry of PLM_IMAGE_CATALOG) {
-    if (entry.type !== "stop") continue;
-    for (const kw of entry.keywords) {
-      if (normalized.includes(plmNormalizeForMatch(kw))) {
-        return entry;
-      }
-    }
-  }
-  return null;
-}
-
-function plmOpenImageViewer(imagePath, caption) {
-  const dialog = document.getElementById("tamPlmImageViewer");
-  const img = document.getElementById("tamPlmImageViewerImg");
-  const cap = document.getElementById("tamPlmImageViewerCaption");
-  if (!dialog || !img) return;
-  img.src = imagePath;
-  img.alt = caption || "";
-  if (cap) cap.textContent = caption || "";
-  if (typeof dialog.showModal === "function") {
-    dialog.showModal();
-  } else {
-    dialog.setAttribute("open", "");
-  }
-}
-
-function plmCloseImageViewer() {
-  const dialog = document.getElementById("tamPlmImageViewer");
-  if (!dialog) return;
-  if (typeof dialog.close === "function") {
-    dialog.close();
-  } else {
-    dialog.removeAttribute("open");
-  }
-  const img = document.getElementById("tamPlmImageViewerImg");
-  if (img) img.src = "";
-}
-
-(function plmInitImageViewer() {
-  const closeBtn = document.getElementById("tamPlmImageViewerClose");
-  if (closeBtn) {
-    closeBtn.addEventListener("click", plmCloseImageViewer);
-  }
-  const dialog = document.getElementById("tamPlmImageViewer");
-  if (dialog) {
-    dialog.addEventListener("click", (ev) => {
-      if (ev.target === dialog || ev.target.classList.contains("tam-plm-image-viewer__backdrop")) {
-        plmCloseImageViewer();
-      }
-    });
-    dialog.addEventListener("cancel", (ev) => {
-      ev.preventDefault();
-      plmCloseImageViewer();
-    });
-  }
-})();
-
 function plmNewLandmarkId() {
   return `plm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -2421,15 +2317,6 @@ function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   }
   const delGroupBtn = menu.querySelector('[data-plm-ctx="del-group"]');
   if (delGroupBtn) delGroupBtn.hidden = !item.groupId;
-  const openImageBtn = menu.querySelector('[data-plm-ctx="open-image"]');
-  if (openImageBtn) {
-    const imgEntry = plmFindImageForLandmark(landmarkId);
-    openImageBtn.hidden = !imgEntry;
-    if (imgEntry) {
-      const typeLabel = imgEntry.type === "zone" ? "la zone" : imgEntry.type === "cmu" ? "la CMU" : "l'arrêt";
-      openImageBtn.textContent = `Ouvrir l'image de ${typeLabel}`;
-    }
-  }
   menu.hidden = false;
   menu.style.left = "0px";
   menu.style.top = "0px";
@@ -2460,15 +2347,6 @@ function plmInitLandmarkContextMenu() {
     const id = plmContextMenuLandmarkId;
     const action = btn.getAttribute("data-plm-ctx");
     plmCloseLandmarkContextMenu();
-    if (action === "open-image") {
-      const imgEntry = plmFindImageForLandmark(id);
-      if (imgEntry) {
-        const item = personalLandmarksList.find((x) => x.id === id);
-        const caption = item ? (item.name || "") + (plmLandmarkDescriptionText(item) ? " — " + plmLandmarkDescriptionText(item) : "") : "";
-        plmOpenImageViewer(imgEntry.path, caption);
-      }
-      return;
-    }
     if (action === "edit") {
       void openPersonalLandmarkMarkerEditor(id);
       return;

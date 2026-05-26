@@ -1125,77 +1125,6 @@
         background: #fdecea;
         color: #b71c1c;
       }
-      .tam-plm-context-menu__item--image {
-        color: #1565c0;
-        font-weight: 600;
-      }
-      .tam-plm-context-menu__item--image:hover,
-      .tam-plm-context-menu__item--image:focus-visible {
-        background: #e3f2fd;
-        color: #0d47a1;
-      }
-      .tam-plm-image-viewer {
-        position: fixed;
-        inset: 0;
-        width: 100vw;
-        height: 100vh;
-        max-width: 100vw;
-        max-height: 100vh;
-        margin: 0;
-        padding: 0;
-        border: none;
-        background: transparent;
-        z-index: 9000;
-      }
-      .tam-plm-image-viewer::backdrop {
-        background: rgba(0, 0, 0, 0.88);
-      }
-      .tam-plm-image-viewer__backdrop {
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.88);
-      }
-      .tam-plm-image-viewer__content {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-      }
-      .tam-plm-image-viewer__img {
-        max-width: 92vw;
-        max-height: 80vh;
-        object-fit: contain;
-        border-radius: 6px;
-        box-shadow: 0 4px 32px rgba(0, 0, 0, 0.5);
-      }
-      .tam-plm-image-viewer__caption {
-        margin-top: 12px;
-        color: #fff;
-        font-size: 1rem;
-        text-align: center;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
-      }
-      .tam-plm-image-viewer__close {
-        position: absolute;
-        top: 12px;
-        right: 16px;
-        background: rgba(255, 255, 255, 0.15);
-        border: none;
-        color: #fff;
-        font-size: 2rem;
-        line-height: 1;
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        cursor: pointer;
-        z-index: 1;
-      }
-      .tam-plm-image-viewer__close:hover {
-        background: rgba(255, 255, 255, 0.3);
-      }
       .app-personal-landmark-dialog .tam-plm-desc-field-hidden {
         position: absolute;
         width: 1px;
@@ -3877,12 +3806,11 @@
     >
       <button
         type="button"
-        class="tam-plm-context-menu__item tam-plm-context-menu__item--image"
-        data-plm-ctx="open-image"
+        class="tam-plm-context-menu__item"
+        data-plm-ctx="edit"
         role="menuitem"
-        hidden
       >
-        Ouvrir l'image
+        Modifier
       </button>
       <button
         type="button"
@@ -3937,31 +3865,6 @@
         Supprimer le groupe
       </button>
     </div>
-
-    <dialog
-      id="tamPlmImageViewer"
-      class="tam-plm-image-viewer"
-      aria-label="Visionneuse d'image"
-    >
-      <div class="tam-plm-image-viewer__backdrop"></div>
-      <div class="tam-plm-image-viewer__content">
-        <img
-          id="tamPlmImageViewerImg"
-          class="tam-plm-image-viewer__img"
-          src=""
-          alt=""
-        />
-        <p id="tamPlmImageViewerCaption" class="tam-plm-image-viewer__caption"></p>
-      </div>
-      <button
-        type="button"
-        class="tam-plm-image-viewer__close"
-        id="tamPlmImageViewerClose"
-        aria-label="Fermer"
-      >
-        &times;
-      </button>
-    </dialog>
 
     <dialog
       id="appPlmMergeGroupDialog"
