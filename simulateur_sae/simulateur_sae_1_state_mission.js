@@ -2846,37 +2846,50 @@ function tamCollectBackupPayload() {
   }
 })();
 
+function tamApplyBackupFromObject(backup, opts) {
+  const o = opts || {};
+  if (!backup || typeof backup !== "object") throw new Error("format");
+  for (const key of TAM_BACKUP_ALL_KEYS) {
+    if (backup[key] != null) {
+      localStorage.setItem(key, JSON.stringify(backup[key]));
+    }
+  }
+  loadPlmGroupsFromStorage();
+  loadPersonalLandmarksFromStorage();
+  loadPersonalZonesFromStorage();
+  if (plmSanitizeParentLinks()) {
+    savePersonalLandmarksToStorage(true);
+  }
+  const landmarkCount = personalLandmarksList.length;
+  const zoneCount = personalZonesList.length;
+  redrawPersonalLandmarksLayer();
+  plmRedrawZonesLayer();
+  if (typeof plmRefreshZoneLabels === "function") plmRefreshZoneLabels();
+  if (typeof plmSyncZoneVoiceAnnounceCheckboxes === "function") {
+    plmSyncZoneVoiceAnnounceCheckboxes();
+  }
+  if (!o.skipFileBackup && typeof plmScheduleAutoBackup === "function") {
+    plmScheduleAutoBackup({ skipCloudPush: true });
+  }
+  if (!o.silent) {
+    tamAppAlert(
+      `Restauration terminée : ${landmarkCount} repère(s), ${zoneCount} zone(s), déviations et réglages rechargés.`,
+    );
+  }
+  if (o.statusMessage && typeof setGpsStatus === "function") {
+    setGpsStatus(o.statusMessage);
+  } else if (!o.silent && typeof setGpsStatus === "function") {
+    setGpsStatus("Sauvegarde restaurée.");
+  }
+  return { landmarkCount, zoneCount };
+}
+
 function tamImportBackup(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const backup = JSON.parse(reader.result);
-      if (!backup || typeof backup !== "object") throw new Error("format");
-      for (const key of TAM_BACKUP_ALL_KEYS) {
-        if (backup[key] != null) {
-          localStorage.setItem(key, JSON.stringify(backup[key]));
-        }
-      }
-      loadPlmGroupsFromStorage();
-      loadPersonalLandmarksFromStorage();
-      loadPersonalZonesFromStorage();
-      if (plmSanitizeParentLinks()) {
-        savePersonalLandmarksToStorage(true);
-      }
-      const landmarkCount = personalLandmarksList.length;
-      const zoneCount = personalZonesList.length;
-      redrawPersonalLandmarksLayer();
-      plmRedrawZonesLayer();
-      if (typeof plmRefreshZoneLabels === "function") plmRefreshZoneLabels();
-      if (typeof plmSyncZoneVoiceAnnounceCheckboxes === "function") {
-        plmSyncZoneVoiceAnnounceCheckboxes();
-      }
-      plmScheduleAutoBackup();
-      tamAppAlert(
-        `Restauration terminée : ${landmarkCount} repère(s), ${zoneCount} zone(s), déviations et réglages rechargés.`,
-      );
-      setGpsStatus(`Sauvegarde restaurée.`);
+      tamApplyBackupFromObject(JSON.parse(reader.result));
     } catch (e) {
       tamAppAlert(
         "Impossible de lire le fichier de sauvegarde. Vérifiez qu'il s'agit bien du fichier « " +
@@ -2914,7 +2927,8 @@ async function tamDoAutoBackup() {
 
 let tamPickerPromise = null;
 
-function plmScheduleAutoBackup() {
+function plmScheduleAutoBackup(opts) {
+  const backupOpts = opts || {};
   if (
     !tamCachedFileHandle &&
     !tamPickerPromise &&
@@ -2947,6 +2961,12 @@ function plmScheduleAutoBackup() {
     const doIt = async () => {
       if (tamPickerPromise) await tamPickerPromise;
       await tamDoAutoBackup();
+      if (
+        !backupOpts.skipCloudPush &&
+        typeof tamCloudSchedulePush === "function"
+      ) {
+        tamCloudSchedulePush();
+      }
     };
     void doIt();
   }, 500);
@@ -3690,6 +3710,7 @@ function tamInstallBasemapToggleControl() {
   ctrlZone.addTo(map);
 
   tamBasemapExtrasControlsInstalled = true;
+  if (typeof tamCloudApplyReaderUi === "function") tamCloudApplyReaderUi();
 }
 
 const navIcon = L.divIcon({
@@ -4154,6 +4175,12 @@ function plmCloseZoneContextMenu() {
 }
 
 function plmShowZoneContextMenu(clientX, clientY, zoneId) {
+  if (
+    typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
+    tamCloudBlocksLandmarkZoneEdits()
+  ) {
+    return;
+  }
   if (!personalZonesList.some((x) => x.id === zoneId)) return;
   plmInitZoneContextMenu();
   const menu = document.getElementById("tamPlmZoneContextMenu");
@@ -4301,6 +4328,12 @@ async function plmDetachLandmarkFromGroup(landmarkId) {
 }
 
 function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
+  if (
+    typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
+    tamCloudBlocksLandmarkZoneEdits()
+  ) {
+    return;
+  }
   const item = personalLandmarksList.find((x) => x.id === landmarkId);
   if (!item) return;
   plmInitLandmarkContextMenu();
@@ -5049,6 +5082,13 @@ function syncPersonalLandmarkPlacementToggleUi() {
 }
 
 function setPersonalLandmarkPlacementActive(on) {
+  if (
+    on &&
+    typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
+    tamCloudBlocksLandmarkZoneEdits()
+  ) {
+    return;
+  }
   personalLandmarkPlacementActive = !!on;
   const c = map?.getContainer?.();
   if (c && c.style) {
@@ -5063,6 +5103,13 @@ function setPersonalLandmarkPlacementActive(on) {
  */
 function openPersonalZoneDialog(spec) {
   return new Promise((resolve) => {
+    if (
+      typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
+      tamCloudBlocksLandmarkZoneEdits()
+    ) {
+      resolve({ action: "cancel" });
+      return;
+    }
     const dlg = document.getElementById("appPersonalZoneDialog");
     if (!dlg || typeof dlg.showModal !== "function") {
       resolve({ action: "cancel" });
@@ -5736,6 +5783,12 @@ function openPersonalLandmarkDialog(spec) {
 }
 
 async function openPersonalLandmarkMarkerEditor(id) {
+  if (
+    typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
+    tamCloudBlocksLandmarkZoneEdits()
+  ) {
+    return;
+  }
   setPersonalLandmarkPlacementActive(false);
   const item = personalLandmarksList.find((x) => x.id === id);
   if (!item) return;

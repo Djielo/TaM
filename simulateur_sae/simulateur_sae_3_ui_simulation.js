@@ -7347,6 +7347,7 @@ headerGearBtn?.addEventListener("click", () => {
   headerGearPopover.hidden = !headerGearPopover.hidden;
   if (!headerGearPopover.hidden) {
     closeControlPanel();
+    if (typeof tamCloudRefreshUi === "function") tamCloudRefreshUi();
   }
 });
 document.addEventListener("click", (e) => {
@@ -7392,6 +7393,10 @@ window.addEventListener("orientationchange", refreshMapLayout);
 setRecapVisible(false);
 refreshMapLayout();
 applyMapVisualProfile();
+
+if (typeof tamCloudMaybeAutoPullOnStartup === "function") {
+  void tamCloudMaybeAutoPullOnStartup();
+}
 
 fetch("./simulation_data.json")
   .then((resp) => resp.json())
