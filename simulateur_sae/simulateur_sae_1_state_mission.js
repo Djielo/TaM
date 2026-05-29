@@ -395,7 +395,7 @@ function plmGridOffsetForMember(item, pivot) {
   );
 }
 
-function plmRefreshGroupGridOffsets(groupId) {
+function plmRefreshGroupGridOffsets(groupId, force) {
   const pivot = plmGroupPivotMember(groupId);
   if (!pivot || !map || !plmIsValidPlmLatLng(pivot.lat, pivot.lng)) {
     return false;
@@ -406,6 +406,15 @@ function plmRefreshGroupGridOffsets(groupId) {
   for (const mem of plmMembersOfGroup(groupId)) {
     const idx = personalLandmarksList.findIndex((x) => x.id === mem.id);
     if (idx < 0) continue;
+    const cur = personalLandmarksList[idx];
+    if (
+      !force &&
+      mem.id !== pivot.id &&
+      Number.isFinite(Number(cur.gridQx)) &&
+      Number.isFinite(Number(cur.gridQy))
+    ) {
+      continue;
+    }
     let qx = 0;
     let qy = 0;
     if (mem.id !== pivot.id && plmIsValidPlmLatLng(mem.lat, mem.lng)) {
@@ -413,11 +422,53 @@ function plmRefreshGroupGridOffsets(groupId) {
       qx = Math.round((p1.x - p0.x) / spacing);
       qy = Math.round((p1.y - p0.y) / spacing);
     }
-    const cur = personalLandmarksList[idx];
     if (cur.gridQx !== qx || cur.gridQy !== qy) {
       personalLandmarksList[idx] = { ...cur, gridQx: qx, gridQy: qy };
       changed = true;
     }
+  }
+  return changed;
+}
+
+/**
+ * Aux zooms magnétiques (z max, max−1, max−2) : recalcule lat/lng depuis la grille
+ * fixe (gridQx/gridQy), pour garder 30 px à l’écran en mode Cap (rotation carte intacte).
+ */
+function plmBakeGroupLatLngFromGrid(groupId) {
+  if (!plmMapUsesMagneticLayout() || !map) return false;
+  const pivot = plmGroupPivotMember(groupId);
+  if (!pivot || !plmIsValidPlmLatLng(pivot.lat, pivot.lng)) return false;
+  plmRefreshGroupGridOffsets(groupId, false);
+  let changed = false;
+  for (const mem of plmMembersOfGroup(groupId)) {
+    const idx = personalLandmarksList.findIndex((x) => x.id === mem.id);
+    if (idx < 0) continue;
+    const off = plmGridOffsetForMember(mem, pivot);
+    let lat = pivot.lat;
+    let lng = pivot.lng;
+    if (mem.id !== pivot.id) {
+      const pos = plmLatLngFromGridOffset(pivot.lat, pivot.lng, off.qx, off.qy);
+      if (!pos || !plmIsValidPlmLatLng(pos[0], pos[1])) continue;
+      lat = pos[0];
+      lng = pos[1];
+    }
+    const cur = personalLandmarksList[idx];
+    if (cur.lat !== lat || cur.lng !== lng) {
+      personalLandmarksList[idx] = { ...cur, lat, lng };
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function plmBakeAllGroupsLatLngFromGrid() {
+  if (!plmMapUsesMagneticLayout()) return false;
+  const seen = new Set();
+  let changed = false;
+  for (const item of personalLandmarksList) {
+    if (!item.groupId || seen.has(item.groupId)) continue;
+    seen.add(item.groupId);
+    if (plmBakeGroupLatLngFromGrid(item.groupId)) changed = true;
   }
   return changed;
 }
@@ -469,19 +520,19 @@ function plmDisplayLatLngForLandmark(item, visiting) {
   return { lat: pos[0], lng: pos[1] };
 }
 
-function plmApplyMagneticLayoutForGroup(groupId) {
+function plmApplyMagneticLayoutForGroup(groupId, force) {
   if (!plmMapUsesMagneticLayout()) return false;
-  return plmRefreshGroupGridOffsets(groupId);
+  return plmRefreshGroupGridOffsets(groupId, !!force);
 }
 
-function plmApplyMagneticLayoutForAllGroups() {
+function plmApplyMagneticLayoutForAllGroups(force) {
   if (!plmMapUsesMagneticLayout()) return false;
   const seen = new Set();
   let changed = false;
   for (const item of personalLandmarksList) {
     if (!item.groupId || seen.has(item.groupId)) continue;
     seen.add(item.groupId);
-    if (plmApplyMagneticLayoutForGroup(item.groupId)) changed = true;
+    if (plmApplyMagneticLayoutForGroup(item.groupId, force)) changed = true;
   }
   return changed;
 }
@@ -4624,8 +4675,10 @@ function plmIsValidPlmLatLng(lat, lng) {
 function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
   if (wasGroupDrag) {
     const row = personalLandmarksList.find((x) => x.id === landmarkId);
-    if (row?.groupId) {
-      plmRefreshGroupGridOffsets(row.groupId);
+    if (row?.groupId && plmMapUsesMagneticLayout()) {
+      plmBakeGroupLatLngFromGrid(row.groupId);
+    } else if (row?.groupId) {
+      plmRefreshGroupGridOffsets(row.groupId, true);
     }
     savePersonalLandmarksToStorage();
     redrawPersonalLandmarksLayer();
@@ -4666,7 +4719,8 @@ function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
  */
 function plmSyncGroupsLayoutToZoom(persist) {
   if (plmMapUsesMagneticLayout()) {
-    plmApplyMagneticLayoutForAllGroups();
+    plmApplyMagneticLayoutForAllGroups(false);
+    plmBakeAllGroupsLatLngFromGrid();
     if (persist !== false) {
       savePersonalLandmarksToStorage(true);
     }
