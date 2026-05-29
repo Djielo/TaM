@@ -312,13 +312,96 @@ function plmLatLngFromSlotDegrees(pivotLat, pivotLng, slot) {
   return [pivotLat + pair[0], pivotLng + pair[1]];
 }
 
+/** Groupe : décalage écran (grille 30 px) seulement en zoom magnétique, pas en mode Cap. */
+function plmGroupUsesScreenPivotLayout() {
+  if (plmMapHeadingUpActive()) return false;
+  return plmMapUsesMagneticLayout();
+}
+
+function plmGridOffsetFromPivotLatLng(pivotLat, pivotLng, memLat, memLng) {
+  if (
+    !map ||
+    !plmIsValidPlmLatLng(pivotLat, pivotLng) ||
+    !plmIsValidPlmLatLng(memLat, memLng)
+  ) {
+    return { qx: 0, qy: 0 };
+  }
+  const p0 = map.latLngToContainerPoint(L.latLng(pivotLat, pivotLng));
+  const p1 = map.latLngToContainerPoint(L.latLng(memLat, memLng));
+  const spacing = PLM_MAGNETIC_SPACING_PX;
+  return {
+    qx: Math.round((p1.x - p0.x) / spacing),
+    qy: Math.round((p1.y - p0.y) / spacing),
+  };
+}
+
+/** Décalage grille absolu (depuis le pivot du groupe), pas « une case depuis le parent ». */
+function plmGridOffsetForMember(item, pivot) {
+  if (!item || !pivot || item.id === pivot.id) return { qx: 0, qy: 0 };
+  const gqx = Number(item.gridQx);
+  const gqy = Number(item.gridQy);
+  if (Number.isFinite(gqx) && Number.isFinite(gqy)) {
+    return { qx: gqx, qy: gqy };
+  }
+  return plmGridOffsetFromPivotLatLng(
+    pivot.lat,
+    pivot.lng,
+    item.lat,
+    item.lng,
+  );
+}
+
+function plmRefreshGroupGridOffsets(groupId) {
+  const pivot = plmGroupPivotMember(groupId);
+  if (!pivot || !map || !plmIsValidPlmLatLng(pivot.lat, pivot.lng)) {
+    return false;
+  }
+  const p0 = map.latLngToContainerPoint(L.latLng(pivot.lat, pivot.lng));
+  const spacing = PLM_MAGNETIC_SPACING_PX;
+  let changed = false;
+  for (const mem of plmMembersOfGroup(groupId)) {
+    const idx = personalLandmarksList.findIndex((x) => x.id === mem.id);
+    if (idx < 0) continue;
+    let qx = 0;
+    let qy = 0;
+    if (mem.id !== pivot.id && plmIsValidPlmLatLng(mem.lat, mem.lng)) {
+      const p1 = map.latLngToContainerPoint(L.latLng(mem.lat, mem.lng));
+      qx = Math.round((p1.x - p0.x) / spacing);
+      qy = Math.round((p1.y - p0.y) / spacing);
+    }
+    const cur = personalLandmarksList[idx];
+    if (cur.gridQx !== qx || cur.gridQy !== qy) {
+      personalLandmarksList[idx] = { ...cur, gridQx: qx, gridQy: qy };
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /**
- * Position affichée : grille 30 px locale — chaque repère est à une case
- * du parent dont il a été ajouté (parentId + direction), chaîne récursive.
+ * Position affichée : repère isolé ou mode Cap = lat/lng stockés (comme une zone) ;
+ * groupe en zoom magnétique sans Cap = pivot + décalage écran (cases 30 px).
  */
 function plmDisplayLatLngForLandmark(item, visiting) {
   if (!item || !plmIsValidPlmLatLng(item.lat, item.lng)) {
     return { lat: item?.lat, lng: item?.lng };
+  }
+  if (plmMapHeadingUpActive()) {
+    return { lat: item.lat, lng: item.lng };
+  }
+  const groupId = String(item.groupId ?? "").trim();
+  if (plmGroupUsesScreenPivotLayout() && groupId) {
+    const pivot = plmGroupPivotMember(groupId);
+    if (pivot && plmIsValidPlmLatLng(pivot.lat, pivot.lng)) {
+      if (item.id === pivot.id) {
+        return { lat: pivot.lat, lng: pivot.lng };
+      }
+      const off = plmGridOffsetForMember(item, pivot);
+      const pos = plmLatLngFromGridOffset(pivot.lat, pivot.lng, off.qx, off.qy);
+      if (pos && plmIsValidPlmLatLng(pos[0], pos[1])) {
+        return { lat: pos[0], lng: pos[1] };
+      }
+    }
   }
   const parentId = String(item.parentId ?? "").trim();
   const slot = String(item.slot ?? "").trim();
@@ -344,21 +427,7 @@ function plmDisplayLatLngForLandmark(item, visiting) {
 
 function plmApplyMagneticLayoutForGroup(groupId) {
   if (!plmMapUsesMagneticLayout()) return false;
-  let changed = false;
-  for (const mem of plmMembersOfGroup(groupId)) {
-    const disp = plmDisplayLatLngForLandmark(mem);
-    const idx = personalLandmarksList.findIndex((x) => x.id === mem.id);
-    if (idx < 0) continue;
-    const cur = personalLandmarksList[idx];
-    if (
-      Math.abs(cur.lat - disp.lat) > 1e-9 ||
-      Math.abs(cur.lng - disp.lng) > 1e-9
-    ) {
-      personalLandmarksList[idx] = { ...cur, lat: disp.lat, lng: disp.lng };
-      changed = true;
-    }
-  }
-  return changed;
+  return plmRefreshGroupGridOffsets(groupId);
 }
 
 function plmApplyMagneticLayoutForAllGroups() {
@@ -708,6 +777,11 @@ function plmMergeLandmarkIntoGroup(landmarkId, groupId, selection, layout) {
   if (!pos || !plmIsValidPlmLatLng(pos[0], pos[1])) return false;
   const groupName =
     String(plmLandmarkForGroupLabel(groupId)?.name ?? "").trim() || item.name;
+  const pivot = plmGroupPivotMember(groupId);
+  const grid =
+    pivot && plmIsValidPlmLatLng(pivot.lat, pivot.lng)
+      ? plmGridOffsetFromPivotLatLng(pivot.lat, pivot.lng, pos[0], pos[1])
+      : { qx: selection.qx, qy: selection.qy };
   personalLandmarksList[idx] = {
     ...item,
     lat: pos[0],
@@ -715,6 +789,8 @@ function plmMergeLandmarkIntoGroup(landmarkId, groupId, selection, layout) {
     groupId,
     parentId: selection.parentId,
     slot: selection.slot,
+    gridQx: grid.qx,
+    gridQy: grid.qy,
     name: groupName,
     description: "",
   };
@@ -837,6 +913,18 @@ function plmAddChildrenFromSlots(
       lng = pos[1];
     }
     if (!plmIsValidPlmLatLng(lat, lng)) continue;
+    const parentRow = personalLandmarksList.find((x) => x.id === parentId);
+    const iconBearingDeg = plmLandmarkHasIconBearing(parentRow)
+      ? plmNormalizeBearingDeg(Number(parentRow.iconBearingDeg))
+      : plmCaptureLandmarkIconBearingDeg();
+    const pivot = plmGroupPivotMember(groupId);
+    const grid =
+      pivot && plmIsValidPlmLatLng(pivot.lat, pivot.lng)
+        ? plmGridOffsetFromPivotLatLng(pivot.lat, pivot.lng, lat, lng)
+        : (() => {
+            const dir = PLM_SLOT_PIXEL_DIR[slot];
+            return { qx: dir ? dir[0] : 0, qy: dir ? dir[1] : 0 };
+          })();
     personalLandmarksList.push({
       id: plmNewLandmarkId(),
       lat,
@@ -848,6 +936,9 @@ function plmAddChildrenFromSlots(
       groupId,
       parentId,
       slot,
+      gridQx: grid.qx,
+      gridQy: grid.qy,
+      iconBearingDeg,
     });
     added += 1;
   }
@@ -903,6 +994,9 @@ function plmCommitDialogSave(r) {
       row.parentId = prev.parentId;
       row.slot = prev.slot;
     }
+    if (plmLandmarkHasIconBearing(prev)) {
+      row.iconBearingDeg = plmNormalizeBearingDeg(Number(prev.iconBearingDeg));
+    }
     personalLandmarksList[idx] = row;
     if (finalGroupId) {
       plmSetGroupDescription(finalGroupId, r.description);
@@ -920,8 +1014,8 @@ function plmCommitDialogSave(r) {
       r.iconId,
       r.colorHex,
     );
-    if (finalGroupId && plmMapUsesMagneticLayout()) {
-      plmApplyMagneticLayoutForGroup(finalGroupId);
+    if (finalGroupId) {
+      plmRefreshGroupGridOffsets(finalGroupId);
     }
     if (!finalGroupId && !slots.length) {
       plmRemoveGroupIfEmpty(prev.groupId);
@@ -940,6 +1034,7 @@ function plmCommitDialogSave(r) {
     colorHex: normalizePlmColorHex(r.colorHex),
   };
   if (groupId) row.groupId = groupId;
+  row.iconBearingDeg = plmCaptureLandmarkIconBearingDeg();
   personalLandmarksList.push(row);
   if (groupId) {
     plmSetGroupDescription(groupId, r.description);
@@ -956,8 +1051,8 @@ function plmCommitDialogSave(r) {
     r.iconId,
     r.colorHex,
   );
-  if (groupId && plmMapUsesMagneticLayout()) {
-    plmApplyMagneticLayoutForGroup(groupId);
+  if (groupId) {
+    plmRefreshGroupGridOffsets(groupId);
   }
   return { ok: true, added };
 }
@@ -983,16 +1078,81 @@ function plmNormalizeZoneShape(raw) {
   return "circle";
 }
 
+function plmHeadingUpCheckboxEl() {
+  return typeof headingUpEl !== "undefined"
+    ? headingUpEl
+    : document.getElementById("headingUp");
+}
+
+/** Case « Cap » cochée (rotation carte pilotée par le cap). */
+function plmMapHeadingUpActive() {
+  if (!map) return false;
+  return !!plmHeadingUpCheckboxEl()?.checked;
+}
+
 /** Mode Cap actif : rectangle aligné à l’écran, pas au nord géographique. */
 function plmMapUsesCapView() {
-  if (!map) return false;
-  const headingEl =
-    typeof headingUpEl !== "undefined"
-      ? headingUpEl
-      : document.getElementById("headingUp");
-  if (!headingEl?.checked) return false;
+  if (!plmMapHeadingUpActive()) return false;
   if (typeof map.getBearing !== "function") return false;
   return Math.abs(map.getBearing()) > 0.4;
+}
+
+function plmMapBearingDeg() {
+  if (!map || typeof map.getBearing !== "function") return 0;
+  const b = map.getBearing();
+  return Number.isFinite(b) ? b : 0;
+}
+
+function plmNormalizeBearingDeg(deg) {
+  return ((Number(deg) % 360) + 360) % 360;
+}
+
+function plmLandmarkHasIconBearing(item) {
+  const v = item?.iconBearingDeg;
+  return v != null && v !== "" && Number.isFinite(Number(v));
+}
+
+/** Cap carte (°) au placement si « Cap » est coché — ancrage comme une zone. */
+function plmCaptureLandmarkIconBearingDeg() {
+  if (!plmMapHeadingUpActive()) return 0;
+  return plmNormalizeBearingDeg(plmMapBearingDeg());
+}
+
+/** Rotation fixe au placement ; en Cap, rotateWithView ajoute le cap courant (comme les zones). */
+function plmLandmarkIconRotationRad(item) {
+  if (!plmLandmarkHasIconBearing(item)) return 0;
+  return (
+    (-plmNormalizeBearingDeg(Number(item.iconBearingDeg)) * Math.PI) / 180
+  );
+}
+
+function plmLandmarkMarkerOptions(item) {
+  return {
+    icon: makePersonalLandmarkDivIcon(item),
+    zIndexOffset: 450,
+    draggable: true,
+    bubblingMouseEvents: false,
+    rotateWithView: plmMapHeadingUpActive(),
+    rotation: plmLandmarkIconRotationRad(item),
+  };
+}
+
+function plmSyncLandmarkMarkerRotations() {
+  if (!plmLandmarksLayerVisible) return;
+  const cap = plmMapHeadingUpActive();
+  for (const item of personalLandmarksList) {
+    const m = plmMarkerById.get(item.id);
+    if (!m) continue;
+    m.options.rotateWithView = cap;
+    const disp = plmDisplayLatLngForLandmark(item);
+    if (plmIsValidPlmLatLng(disp.lat, disp.lng)) {
+      m.setLatLng([disp.lat, disp.lng]);
+    }
+    if (typeof m.setRotation === "function") {
+      m.setRotation(plmLandmarkIconRotationRad(item));
+    }
+    m.update();
+  }
 }
 
 function plmZoneLatLngsToCornerTuples(latlngs) {
@@ -2324,31 +2484,19 @@ function plmStartZoneMapDraw(params) {
   };
 }
 
-function plmMeasurePersonalLandmarkDialogTabBody(dlg) {
-  const body = dlg?.querySelector("#appPersonalLandmarkDialogTabBody");
-  if (!body) return 0;
-  const panels = [...body.querySelectorAll(".tam-plm-tab-panel")];
-  const details = dlg.querySelector("#appPersonalLandmarkDialogAllDetails");
-  const detailsWasOpen = details?.open ?? false;
-  if (details) details.open = true;
-  let maxH = 0;
-  for (const panel of panels) {
-    const hadHidden = panel.hasAttribute("hidden");
-    panel.removeAttribute("hidden");
-    panel.classList.add("tam-plm-tab-panel--measure");
-    maxH = Math.max(maxH, panel.offsetHeight);
-    panel.classList.remove("tam-plm-tab-panel--measure");
-    if (hadHidden) panel.setAttribute("hidden", "");
-  }
-  if (details && !detailsWasOpen) details.open = false;
-  return maxH;
-}
-
+/** Hauteur utile du corps d’onglets : remplit l’espace sous les onglets jusqu’aux boutons. */
 function plmSyncPersonalLandmarkDialogTabHeights(dlg) {
   const body = dlg?.querySelector("#appPersonalLandmarkDialogTabBody");
-  if (!body) return;
-  const maxH = plmMeasurePersonalLandmarkDialogTabBody(dlg);
-  if (maxH > 0) body.style.minHeight = `${maxH}px`;
+  if (!body || !dlg?.open) return;
+  const actions = dlg.querySelector(".tam-plm-dialog-actions");
+  const bodyTop = body.getBoundingClientRect().top;
+  const actionsH = actions ? actions.offsetHeight : 0;
+  const gap = 14;
+  const avail = window.innerHeight - bodyTop - actionsH - gap;
+  const h = Math.max(240, Math.min(avail, Math.round(window.innerHeight * 0.8)));
+  body.style.height = `${h}px`;
+  body.style.minHeight = `${h}px`;
+  body.style.maxHeight = `${h}px`;
 }
 
 function plmActivatePersonalLandmarkDialogTab(dlg, tabId) {
@@ -2809,7 +2957,7 @@ function plmContrastIconOnBackground(bgHex) {
   return L > 0.52 ? "#000000" : "#ffffff";
 }
 
-function buildPlmMarkerBubbleHtml(item) {
+function buildPlmMarkerBubbleHtml(item, centerPivot) {
   const iconId = normalizePlmIconId(item?.iconId);
   const bg = normalizePlmColorHex(item?.colorHex);
   const def =
@@ -2818,7 +2966,10 @@ function buildPlmMarkerBubbleHtml(item) {
   const bgA = plmEscapeAttr(bg);
   const fgA = plmEscapeAttr(fg);
   const glyph = plmIconInnerHtml(def, true);
-  return `<div class="tam-personal-landmark-marker__bubble"><div class="tam-plm-marker-chip" style="background-color:${bgA};color:${fgA};">${glyph}</div></div>`;
+  const pivotCls = centerPivot
+    ? " tam-personal-landmark-marker__bubble--group-pivot"
+    : "";
+  return `<div class="tam-personal-landmark-marker__bubble${pivotCls}"><div class="tam-plm-marker-chip" style="background-color:${bgA};color:${fgA};">${glyph}</div></div>`;
 }
 
 /** Titre des boîtes de dialogue HTML du simulateur (remplace l’origine « localhost » du navigateur). */
@@ -3672,6 +3823,9 @@ function plmDuplicateLandmarkFromId(sourceId) {
     iconId: normalizePlmIconId(src.iconId),
     colorHex: normalizePlmColorHex(src.colorHex),
   };
+  if (plmLandmarkHasIconBearing(src)) {
+    row.iconBearingDeg = plmNormalizeBearingDeg(Number(src.iconBearingDeg));
+  }
   personalLandmarksList.push(row);
   return row.id;
 }
@@ -3695,7 +3849,7 @@ function plmDuplicateGroupFromId(sourceGroupId) {
     const newId = plmNewLandmarkId();
     idMap.set(mem.id, newId);
     const dest = plmScreenOffsetToLatLng(mem.lat, mem.lng, PLM_DUPLICATE_OFFSET_PX, 0);
-    personalLandmarksList.push({
+    const dupRow = {
       id: newId,
       lat: dest.lat,
       lng: dest.lng,
@@ -3704,7 +3858,11 @@ function plmDuplicateGroupFromId(sourceGroupId) {
       iconId: normalizePlmIconId(mem.iconId),
       colorHex: normalizePlmColorHex(mem.colorHex),
       groupId: newGroupId,
-    });
+    };
+    if (plmLandmarkHasIconBearing(mem)) {
+      dupRow.iconBearingDeg = plmNormalizeBearingDeg(Number(mem.iconBearingDeg));
+    }
+    personalLandmarksList.push(dupRow);
   }
   for (const mem of members) {
     const newId = idMap.get(mem.id);
@@ -3713,11 +3871,16 @@ function plmDuplicateGroupFromId(sourceGroupId) {
     if (idx < 0) continue;
     const parentNew = mem.parentId ? idMap.get(mem.parentId) : null;
     if (parentNew && mem.slot) {
-      personalLandmarksList[idx] = {
+      const next = {
         ...personalLandmarksList[idx],
         parentId: parentNew,
         slot: mem.slot,
       };
+      if (Number.isFinite(Number(mem.gridQx)) && Number.isFinite(Number(mem.gridQy))) {
+        next.gridQx = mem.gridQx;
+        next.gridQy = mem.gridQy;
+      }
+      personalLandmarksList[idx] = next;
     }
   }
   const refName =
@@ -4087,6 +4250,22 @@ function loadPersonalLandmarksFromStorage() {
             if (groupIdRaw) row.groupId = groupIdRaw;
             if (parentIdRaw) row.parentId = parentIdRaw;
             if (slotRaw) row.slot = slotRaw;
+            const gridQxRaw = Number(x?.gridQx);
+            const gridQyRaw = Number(x?.gridQy);
+            if (Number.isFinite(gridQxRaw) && Number.isFinite(gridQyRaw)) {
+              row.gridQx = gridQxRaw;
+              row.gridQy = gridQyRaw;
+            }
+            const iconBearingRaw = x?.iconBearingDeg;
+            if (
+              iconBearingRaw != null &&
+              iconBearingRaw !== "" &&
+              Number.isFinite(Number(iconBearingRaw))
+            ) {
+              row.iconBearingDeg = plmNormalizeBearingDeg(
+                Number(iconBearingRaw),
+              );
+            }
             return row;
           })
           .filter(
@@ -4117,11 +4296,12 @@ function savePersonalLandmarksToStorage(skipFileBackup) {
 }
 
 function makePersonalLandmarkDivIcon(item) {
+  const inGroup = !!String(item?.groupId ?? "").trim();
   return L.divIcon({
     className: "tam-personal-landmark-marker",
-    html: buildPlmMarkerBubbleHtml(item),
+    html: buildPlmMarkerBubbleHtml(item, inGroup),
     iconSize: [30, 30],
-    iconAnchor: [15, 30],
+    iconAnchor: inGroup ? [15, 15] : [15, 30],
   });
 }
 
@@ -4138,6 +4318,10 @@ function plmIsValidPlmLatLng(lat, lng) {
 
 function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
   if (wasGroupDrag) {
+    const row = personalLandmarksList.find((x) => x.id === landmarkId);
+    if (row?.groupId) {
+      plmRefreshGroupGridOffsets(row.groupId);
+    }
     savePersonalLandmarksToStorage();
     redrawPersonalLandmarksLayer();
     setGpsStatus("Groupe de repères déplacé.");
@@ -4189,7 +4373,7 @@ function plmScheduleMagneticRedraw() {
   if (plmZoomLayoutRaf) cancelAnimationFrame(plmZoomLayoutRaf);
   plmZoomLayoutRaf = requestAnimationFrame(() => {
     plmZoomLayoutRaf = 0;
-    if (plmMapUsesMagneticLayout()) {
+    if (plmMapUsesMagneticLayout() || plmMapHeadingUpActive()) {
       redrawPersonalLandmarksLayer();
     } else {
       plmScheduleLabelsRefresh();
@@ -4322,12 +4506,7 @@ function redrawPersonalLandmarksLayer() {
       continue;
     }
     const disp = plmDisplayLatLngForLandmark(item);
-    const m = L.marker([disp.lat, disp.lng], {
-      icon: makePersonalLandmarkDivIcon(item),
-      zIndexOffset: 450,
-      draggable: true,
-      bubblingMouseEvents: false,
-    });
+    const m = L.marker([disp.lat, disp.lng], plmLandmarkMarkerOptions(item));
     plmMarkerById.set(item.id, m);
     let plmPausedMapDrag = false;
     m.on("mousedown touchstart", (e) => {
@@ -5017,6 +5196,7 @@ function openPersonalLandmarkDialog(spec) {
       if (!tabBtn) return;
       activePlmTab = tabBtn.getAttribute("data-plm-tab") || "icon";
       plmActivatePersonalLandmarkDialogTab(dlg, activePlmTab);
+      requestAnimationFrame(() => plmSyncPersonalLandmarkDialogTabHeights(dlg));
       if (activePlmTab === "name") {
         requestAnimationFrame(() => {
           try {
@@ -5181,7 +5361,11 @@ function openPersonalLandmarkDialog(spec) {
       if (allDetailsEl) {
         allDetailsEl.removeEventListener("toggle", onAllDetailsToggle);
       }
-      if (tabBodyEl) tabBodyEl.style.minHeight = "";
+      if (tabBodyEl) {
+        tabBodyEl.style.height = "";
+        tabBodyEl.style.minHeight = "";
+        tabBodyEl.style.maxHeight = "";
+      }
       if (plmTextUi) plmTextUi.destroy();
     }
     const finish = (payload) => {
@@ -5309,6 +5493,7 @@ map.on("zoom", () => {
   plmScheduleLabelsRefresh();
 });
 map.on("rotate", () => {
+  plmSyncLandmarkMarkerRotations();
   plmScheduleMagneticRedraw();
   plmScheduleLabelsRefresh();
 });
