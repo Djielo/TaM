@@ -5,8 +5,8 @@
  */
 (function (global) {
   global.TAM_CLOUD_CONFIG = {
-    enabled: false,
-    supabaseUrl: "https://VOTRE-PROJET.supabase.co",
-    publishableKey: "VOTRE_CLE_PUBLISHABLE",
+    enabled: true,
+    supabaseUrl: "https://wdnlzpfdlgehjwpcvvpq.supabase.co",
+    publishableKey: "sb_publishable_XQdC1IEQt4dOr4aDgxffjw_PddpFrBN",
   };
 })(typeof window !== "undefined" ? window : globalThis);
