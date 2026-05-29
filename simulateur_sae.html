@@ -519,6 +519,159 @@
         background: #e8f2fa;
         color: #005ca9;
       }
+      .tam-personal-zones-control {
+        margin-top: 6px;
+      }
+      .tam-personal-zones-control .tam-personal-zones-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        text-decoration: none;
+        color: #8b2500;
+      }
+      .tam-personal-zones-control .tam-personal-zones-toggle:focus-visible {
+        outline: 2px solid #8b2500;
+        outline-offset: 1px;
+      }
+      .tam-personal-zones-control .tam-plm-zone-labels-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        text-decoration: none;
+        color: #8b2500;
+        font-size: 14px;
+        font-weight: 700;
+        font-family: inherit;
+        border-top: 1px solid #ccc;
+      }
+      .tam-personal-zones-control .tam-plm-zone-labels-toggle.is-on {
+        background: #fdeee8;
+        color: #8b2500;
+      }
+      .app-personal-zone-dialog.app-message-dialog,
+      .tam-plm-zone-dialog.app-message-dialog {
+        width: min(94vw, 380px);
+        max-width: min(94vw, 380px);
+      }
+      .tam-plm-zone-dialog .app-message-dialog__inner {
+        padding: 12px 14px 12px;
+      }
+      .tam-plm-zone-dialog .app-message-dialog__title {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .tam-plm-zone-dialog .app-message-dialog__body {
+        margin: 0 0 8px;
+        max-height: none;
+        overflow: visible;
+        white-space: normal;
+        line-height: 1.35;
+        font-size: 13px;
+      }
+      .tam-plm-zone-dialog .app-personal-landmark-dialog__label,
+      .tam-plm-zone-dialog
+        .app-personal-landmark-dialog__label.tam-plm-pickers__section {
+        margin: 6px 0 2px;
+      }
+      .tam-plm-zone-dialog .app-personal-landmark-dialog__label:first-of-type {
+        margin-top: 0;
+      }
+      .tam-plm-zone-dialog .app-prompt-dialog__input {
+        margin: 0 0 4px;
+        padding: 6px 8px;
+      }
+      .tam-plm-zone-dialog .tam-plm-color-row {
+        margin: 0 0 6px;
+      }
+      .tam-plm-zone-dialog .tam-plm-zone-shapes {
+        margin: 0 0 6px;
+        gap: 4px 12px;
+      }
+      .tam-plm-zone-dialog .tam-plm-zone-shapes legend {
+        margin: 0 0 4px;
+        padding: 0;
+      }
+      .tam-plm-zone-dialog .tam-plm-zone-weight-row {
+        margin: 0 0 6px;
+        font-size: 12px;
+      }
+      .tam-plm-zone-dialog .tam-plm-zone-draw-row {
+        margin: 0;
+      }
+      .tam-plm-zone-dialog .tam-plm-zone-draw-row button {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #8b2500;
+        border-radius: 6px;
+        background: #fff;
+        color: #1b1f24;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .tam-plm-zone-dialog .tam-plm-zone-draw-row button:hover {
+        background: #fdeee8;
+        color: #8b2500;
+      }
+      .tam-plm-zone-dialog .tam-plm-zone-status {
+        margin: 4px 0 0;
+        font-size: 11px;
+        line-height: 1.3;
+        color: #4a5568;
+      }
+      .tam-plm-zone-dialog .tam-plm-dialog-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        width: 100%;
+        margin-top: 8px;
+        padding: 0;
+        justify-content: stretch;
+      }
+      .tam-plm-zone-dialog .tam-plm-dialog-actions button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+        text-align: center;
+        padding: 10px 8px;
+      }
+      .tam-plm-zone-map-label {
+        background: transparent;
+        border: none;
+      }
+      .tam-plm-zone-map-label__bar {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 0;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: #fff;
+        border: 1px solid #8b2500;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+        text-align: center;
+        font-size: 12px;
+        line-height: 1.35;
+        color: #1b1f24;
+      }
+      .tam-plm-zone-map-label__text {
+        display: block;
+        width: 100%;
+        font-size: inherit;
+        font-weight: 700;
+        line-height: inherit;
+        color: inherit;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       .tam-plm-map-label {
         background: transparent;
         border: none;
@@ -559,6 +712,172 @@
       .tam-plm-dialog-inner {
         position: relative;
         width: 100%;
+      }
+      .tam-plm-tabs {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        gap: 0;
+        margin: 0 0 6px;
+        padding: 0;
+        border-bottom: 2px solid #ccd3db;
+      }
+      .tam-plm-tabs__btn {
+        flex: 1 1 0;
+        min-width: 0;
+        margin: 0;
+        padding: 5px 2px;
+        border: none;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        border-radius: 0;
+        background: transparent;
+        color: #4a5568;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: inherit;
+        line-height: 1.15;
+        cursor: pointer;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tam-plm-tabs__btn:hover {
+        color: #005ca9;
+        background: #f4f8fc;
+      }
+      .tam-plm-tabs__btn[aria-selected="true"] {
+        color: #005ca9;
+        border-bottom-color: #005ca9;
+        background: transparent;
+      }
+      .tam-plm-tabs__btn:focus-visible {
+        outline: 2px solid #005ca9;
+        outline-offset: -1px;
+      }
+      .tam-plm-dialog-tab-body {
+        position: relative;
+        width: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
+        box-sizing: border-box;
+      }
+      .tam-plm-tab-panel--measure {
+        visibility: hidden !important;
+        position: absolute !important;
+        left: 0;
+        right: 0;
+        top: 0;
+        pointer-events: none !important;
+      }
+      .tam-plm-zone-path {
+        cursor: pointer;
+      }
+      .tam-plm-zone-handle {
+        width: 14px;
+        height: 14px;
+        margin: -7px 0 0 -7px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: #005ca9;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+      }
+      .tam-plm-zone-intro {
+        margin: 0 0 8px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #4a5568;
+      }
+      .tam-plm-zone-field {
+        margin: 0 0 10px;
+      }
+      .tam-plm-zone-field label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .tam-plm-zone-shapes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        margin: 0 0 10px;
+        padding: 0;
+        border: none;
+      }
+      .tam-plm-zone-shapes legend {
+        width: 100%;
+        margin: 0 0 6px;
+        padding: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1b1f24;
+      }
+      .tam-plm-zone-shapes label {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .tam-plm-zone-weight-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .tam-plm-zone-weight-row input[type="range"] {
+        flex: 1;
+        min-width: 0;
+      }
+      .tam-plm-zone-weight-val {
+        min-width: 1.5rem;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        color: #4a5568;
+      }
+      .tam-plm-zone-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 8px;
+      }
+      .tam-plm-zone-actions button {
+        flex: 1 1 auto;
+        min-width: 8rem;
+        padding: 8px 10px;
+        border: 1px solid #ccd3db;
+        border-radius: 6px;
+        background: #f4f6f8;
+        color: #1b1f24;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+      }
+      .tam-plm-zone-actions button:hover {
+        background: #e8f0fa;
+        border-color: #005ca9;
+        color: #005ca9;
+      }
+      .tam-plm-zone-actions button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .tam-plm-zone-status {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #4a5568;
+      }
+      .tam-plm-zone-draw-hint {
+        display: none !important;
       }
       .tam-plm-dialog-topbar {
         display: flex;
@@ -3649,135 +3968,205 @@
         <h2 id="appPersonalLandmarkDialogTitle" class="tam-plm-sr-only">
           Repère personnel
         </h2>
-        <div class="tam-plm-dialog-topbar">
-          <p
-            class="tam-plm-topbar-title"
-            id="appPersonalLandmarkDialogFavHeading"
+        <div
+          class="tam-plm-tabs"
+          role="tablist"
+          aria-label="Sections du repère"
+        >
+          <button
+            type="button"
+            class="tam-plm-tabs__btn"
+            role="tab"
+            id="appPersonalLandmarkDialogTabIcon"
+            data-plm-tab="icon"
+            aria-selected="true"
+            aria-controls="appPersonalLandmarkDialogPanelIcon"
           >
-            Icônes récemment utilisées
-          </p>
-          <div class="tam-plm-topbar-actions">
-            <button
-              type="button"
-              id="appPersonalLandmarkDialogSettingsBtn"
-              class="tam-plm-settings-gear"
-              aria-expanded="false"
-              title="Réglages : icônes récentes et filtrage des repères en mode Cap"
-              aria-label="Réglages : icônes récentes et distance des repères au tracé en mode Cap"
-            >
-              <svg
-                width="22"
-                height="22"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <path
-                  fill="currentColor"
-                  d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.31-.08.63-.08.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.3.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"
-                />
-              </svg>
-            </button>
-            <button
-              type="button"
-              id="appPersonalLandmarkDialogHelpBtn"
-              class="tam-plm-help-btn"
-              title="Aide sur cette fenêtre"
-              aria-label="Aide : repère personnel"
-            >
-              ?
-            </button>
-          </div>
+            Icône
+          </button>
+          <button
+            type="button"
+            class="tam-plm-tabs__btn"
+            role="tab"
+            id="appPersonalLandmarkDialogTabName"
+            data-plm-tab="name"
+            aria-selected="false"
+            aria-controls="appPersonalLandmarkDialogPanelName"
+          >
+            Nom
+          </button>
+          <button
+            type="button"
+            class="tam-plm-tabs__btn"
+            role="tab"
+            id="appPersonalLandmarkDialogTabDesc"
+            data-plm-tab="desc"
+            aria-selected="false"
+            aria-controls="appPersonalLandmarkDialogPanelDesc"
+          >
+            Description
+          </button>
         </div>
         <div
-          class="tam-plm-icon-grid"
-          id="appPersonalLandmarkDialogFavIcons"
-          role="group"
-          aria-labelledby="appPersonalLandmarkDialogFavHeading"
-        ></div>
-        <details
-          class="tam-plm-all-icons-details"
-          id="appPersonalLandmarkDialogAllDetails"
+          id="appPersonalLandmarkDialogTabBody"
+          class="tam-plm-dialog-tab-body"
         >
-          <summary
-            class="tam-plm-all-icons-summary"
-            id="appPersonalLandmarkDialogAllHeading"
-          >
-            Toutes les icônes
-          </summary>
           <div
-            class="tam-plm-icon-grid tam-plm-icon-grid--all"
-            id="appPersonalLandmarkDialogAllIcons"
-            role="group"
-            aria-labelledby="appPersonalLandmarkDialogAllHeading"
-          ></div>
-        </details>
-        <p
-          class="app-personal-landmark-dialog__label tam-plm-pickers__section"
-          id="appPersonalLandmarkDialogColorHeading"
-        >
-          Couleur
-        </p>
-        <div
-          class="tam-plm-color-row"
-          id="appPersonalLandmarkDialogColors"
-          role="group"
-          aria-labelledby="appPersonalLandmarkDialogColorHeading"
-        ></div>
-        <p
-          class="app-personal-landmark-dialog__label"
-          id="appPersonalLandmarkDialogGridHeading"
-        >
-          Voisins sur la carte (8 directions)
-        </p>
-        <div
-          id="appPersonalLandmarkDialogSlotGrid"
-          class="tam-plm-slot-grid"
-          role="group"
-          aria-labelledby="appPersonalLandmarkDialogGridHeading"
-        ></div>
-        <label
-          for="appPersonalLandmarkDialogName"
-          class="app-personal-landmark-dialog__label"
-          >Nom du repère</label
-        >
-        <input
-          type="text"
-          id="appPersonalLandmarkDialogName"
-          class="app-prompt-dialog__input"
-          maxlength="120"
-          autocomplete="off"
-          spellcheck="true"
-        />
-        <div
-          id="appPersonalLandmarkDialogNamePanel"
-          class="tam-plm-struct-panel"
-          aria-label="Nom : libellés enregistrés"
-        ></div>
-        <label
-          for="appPersonalLandmarkDialogDesc"
-          class="app-personal-landmark-dialog__label"
-          >Description (optionnelle)</label
-        >
-        <div
-          id="appPersonalLandmarkDialogDescPreview"
-          class="tam-plm-desc-preview"
-          aria-live="polite"
-          data-empty="1"
-        ></div>
-        <div
-          id="appPersonalLandmarkDialogDescPanel"
-          class="tam-plm-struct-panel"
-          aria-label="Vitesse, lignes INDES et zones M."
-        ></div>
-        <textarea
-          id="appPersonalLandmarkDialogDesc"
-          class="app-prompt-dialog__textarea tam-plm-desc-field-hidden"
-          maxlength="500"
-          rows="2"
-          tabindex="-1"
-          aria-hidden="true"
-        ></textarea>
+            id="appPersonalLandmarkDialogPanelIcon"
+            class="tam-plm-tab-panel"
+            role="tabpanel"
+            data-plm-tab-panel="icon"
+            aria-labelledby="appPersonalLandmarkDialogTabIcon"
+          >
+            <div class="tam-plm-dialog-topbar">
+              <p
+                class="tam-plm-topbar-title"
+                id="appPersonalLandmarkDialogFavHeading"
+              >
+                Icônes récemment utilisées
+              </p>
+              <div class="tam-plm-topbar-actions">
+                <button
+                  type="button"
+                  id="appPersonalLandmarkDialogSettingsBtn"
+                  class="tam-plm-settings-gear"
+                  aria-expanded="false"
+                  title="Réglages : icônes récentes et filtrage des repères en mode Cap"
+                  aria-label="Réglages : icônes récentes et distance des repères au tracé en mode Cap"
+                >
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.31-.08.63-.08.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.3.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  id="appPersonalLandmarkDialogHelpBtn"
+                  class="tam-plm-help-btn"
+                  title="Aide sur cette fenêtre"
+                  aria-label="Aide : repère personnel"
+                >
+                  ?
+                </button>
+              </div>
+            </div>
+            <div
+              class="tam-plm-icon-grid"
+              id="appPersonalLandmarkDialogFavIcons"
+              role="group"
+              aria-labelledby="appPersonalLandmarkDialogFavHeading"
+            ></div>
+            <details
+              class="tam-plm-all-icons-details"
+              id="appPersonalLandmarkDialogAllDetails"
+            >
+              <summary
+                class="tam-plm-all-icons-summary"
+                id="appPersonalLandmarkDialogAllHeading"
+              >
+                Toutes les icônes
+              </summary>
+              <div
+                class="tam-plm-icon-grid tam-plm-icon-grid--all"
+                id="appPersonalLandmarkDialogAllIcons"
+                role="group"
+                aria-labelledby="appPersonalLandmarkDialogAllHeading"
+              ></div>
+            </details>
+            <p
+              class="app-personal-landmark-dialog__label tam-plm-pickers__section"
+              id="appPersonalLandmarkDialogColorHeading"
+            >
+              Couleur
+            </p>
+            <div
+              class="tam-plm-color-row"
+              id="appPersonalLandmarkDialogColors"
+              role="group"
+              aria-labelledby="appPersonalLandmarkDialogColorHeading"
+            ></div>
+            <p
+              class="app-personal-landmark-dialog__label"
+              id="appPersonalLandmarkDialogGridHeading"
+            >
+              Voisins sur la carte (8 directions)
+            </p>
+            <div
+              id="appPersonalLandmarkDialogSlotGrid"
+              class="tam-plm-slot-grid"
+              role="group"
+              aria-labelledby="appPersonalLandmarkDialogGridHeading"
+            ></div>
+          </div>
+          <div
+            id="appPersonalLandmarkDialogPanelName"
+            class="tam-plm-tab-panel"
+            role="tabpanel"
+            data-plm-tab-panel="name"
+            aria-labelledby="appPersonalLandmarkDialogTabName"
+            hidden
+          >
+            <label
+              for="appPersonalLandmarkDialogName"
+              class="app-personal-landmark-dialog__label"
+              >Nom du repère</label
+            >
+            <input
+              type="text"
+              id="appPersonalLandmarkDialogName"
+              class="app-prompt-dialog__input"
+              maxlength="120"
+              autocomplete="off"
+              spellcheck="true"
+            />
+            <div
+              id="appPersonalLandmarkDialogNamePanel"
+              class="tam-plm-struct-panel"
+              aria-label="Nom : libellés enregistrés"
+            ></div>
+          </div>
+          <div
+            id="appPersonalLandmarkDialogPanelDesc"
+            class="tam-plm-tab-panel"
+            role="tabpanel"
+            data-plm-tab-panel="desc"
+            aria-labelledby="appPersonalLandmarkDialogTabDesc"
+            hidden
+          >
+            <label
+              for="appPersonalLandmarkDialogDesc"
+              class="app-personal-landmark-dialog__label"
+              >Description (optionnelle)</label
+            >
+            <div
+              id="appPersonalLandmarkDialogDescPreview"
+              class="tam-plm-desc-preview"
+              aria-live="polite"
+              data-empty="1"
+            ></div>
+            <div
+              id="appPersonalLandmarkDialogDescPanel"
+              class="tam-plm-struct-panel"
+              aria-label="Vitesse, lignes INDES et zones M."
+            ></div>
+            <textarea
+              id="appPersonalLandmarkDialogDesc"
+              class="app-prompt-dialog__textarea tam-plm-desc-field-hidden"
+              maxlength="500"
+              rows="2"
+              tabindex="-1"
+              aria-hidden="true"
+            ></textarea>
+          </div>
+        </div>
         <div class="app-message-dialog__actions tam-plm-dialog-actions">
           <button
             type="button"
@@ -3796,6 +4185,152 @@
         </div>
       </div>
     </dialog>
+
+    <dialog
+      id="appPersonalZoneDialog"
+      class="app-message-dialog app-personal-zone-dialog tam-plm-zone-dialog"
+      aria-labelledby="appPersonalZoneDialogTitle"
+    >
+      <div class="app-message-dialog__inner">
+        <h2
+          id="appPersonalZoneDialogTitle"
+          class="app-message-dialog__title"
+        >
+          Nouvelle zone
+        </h2>
+        <div class="app-message-dialog__body">
+          <label
+            for="appPersonalZoneDialogName"
+            class="app-personal-landmark-dialog__label"
+            >Nom de la zone (optionnel)</label
+          >
+          <input
+            type="text"
+            id="appPersonalZoneDialogName"
+            class="app-prompt-dialog__input"
+            maxlength="80"
+            autocomplete="off"
+            spellcheck="true"
+          />
+          <p
+            class="app-personal-landmark-dialog__label tam-plm-pickers__section"
+            id="appPersonalZoneDialogColorHeading"
+          >
+            Couleur du contour
+          </p>
+          <div
+            class="tam-plm-color-row"
+            id="appPersonalZoneDialogColors"
+            role="group"
+            aria-labelledby="appPersonalZoneDialogColorHeading"
+          ></div>
+          <fieldset class="tam-plm-zone-shapes">
+            <legend>Forme</legend>
+            <label>
+              <input
+                type="radio"
+                name="appPersonalZoneDialogShape"
+                value="rectangle"
+                checked
+              />
+              Rectangle
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="appPersonalZoneDialogShape"
+                value="circle"
+              />
+              Cercle
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="appPersonalZoneDialogShape"
+                value="ellipse"
+              />
+              Ovale
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="appPersonalZoneDialogShape"
+                value="quadrilateral"
+              />
+              Quadrilatère
+            </label>
+          </fieldset>
+          <div class="tam-plm-zone-weight-row">
+            <label for="appPersonalZoneDialogWeight"
+              >Épaisseur du contour</label
+            >
+            <input
+              type="range"
+              id="appPersonalZoneDialogWeight"
+              min="1"
+              max="12"
+              step="1"
+              value="3"
+            />
+            <span
+              id="appPersonalZoneDialogWeightVal"
+              class="tam-plm-zone-weight-val"
+              >3</span
+            >
+          </div>
+          <div class="tam-plm-zone-draw-row">
+            <button type="button" id="appPersonalZoneDialogDraw">
+              Tracer sur la carte…
+            </button>
+          </div>
+          <p id="appPersonalZoneDialogStatus" class="tam-plm-zone-status">
+            2 clics : cercle, rectangle ou ovale. 4 clics : quadrilatère.
+          </p>
+        </div>
+        <div class="app-message-dialog__actions tam-plm-dialog-actions">
+          <button
+            type="button"
+            id="appPersonalZoneDialogCancel"
+            class="secondary app-message-dialog__ok"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            id="appPersonalZoneDialogSave"
+            class="app-message-dialog__ok"
+            disabled
+          >
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <div
+      id="tamPlmZoneContextMenu"
+      class="tam-plm-context-menu"
+      role="menu"
+      aria-label="Zone sur la carte"
+      hidden
+    >
+      <button
+        type="button"
+        class="tam-plm-context-menu__item"
+        data-plm-zone-ctx="edit-zone"
+        role="menuitem"
+      >
+        Modifier la zone…
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item tam-plm-context-menu__item--danger"
+        data-plm-zone-ctx="del-zone"
+        role="menuitem"
+      >
+        Supprimer la zone
+      </button>
+    </div>
 
     <div
       id="tamPlmContextMenu"
@@ -3940,8 +4475,12 @@
             voisins d’un même groupe restent alignés (grille aimantée). Glisser
             un repère du groupe déplace tout le groupe. Clic droit ou appui long
             : fusionner un repère isolé dans un groupe proche, ou le détacher
-            d’un groupe. Le bouton <strong>Aa</strong> (sous le bouton repères)
-            affiche ou masque les noms et descriptions sur la carte.
+            d’un groupe.             Le bouton <strong>Aa</strong> sous le bouton repères affiche les
+            libellés des repères. Le bloc <strong>zone</strong> (icône rectangle,
+            en dessous) sert aux zones : création via le bouton rectangle,
+            <strong>Aa</strong> dédié pour les noms des zones. Clic droit sur une
+            zone : modifier ou supprimer. Rectangle : côtés parallèles ;
+            quadrilatère : 4 sommets libres ; ovale : poignées pour l’étirer.
           </p>
           <p>
             <strong>Sauvegarde :</strong> toutes les données (repères,

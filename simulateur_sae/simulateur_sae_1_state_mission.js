@@ -48,6 +48,7 @@ const PLM_DEFAULT_COLOR_LEGACY = "#c62828";
 /** Décalage lat/lng (degrés) pour placer une copie visible à côté du repère d’origine. */
 const PLM_DUPLICATE_OFFSET_PX = 25;
 const LS_KEY_PLM_GROUPS = "tam_personal_landmark_groups_v1";
+const LS_KEY_PERSONAL_ZONES = "tam_personal_map_zones_v1";
 const PLM_SLOT_SPACING_LAT = 0.00022;
 const PLM_SLOT_SPACING_LNG = 0.00032;
 const PLM_SLOT_MATCH_THRESHOLD = 8e-11;
@@ -59,6 +60,10 @@ const PLM_MARKER_ICON_H = 30;
 const PLM_MARKER_ICON_ANCHOR_X = 15;
 const PLM_MARKER_ICON_ANCHOR_Y = 30;
 const PLM_LABEL_GAP_BELOW_PX = 4;
+/** Libellé zone : au-dessus du contour (écran), pas à l’intérieur. */
+const PLM_ZONE_LABEL_GAP_ABOVE_PX = 6;
+const PLM_ZONE_LABEL_MIN_WIDTH_PX = 56;
+const PLM_ZONE_LABEL_MAX_WIDTH_PX = 420;
 const PLM_SLOT_DELTA = {
   n: [PLM_SLOT_SPACING_LAT, 0],
   ne: [PLM_SLOT_SPACING_LAT, PLM_SLOT_SPACING_LNG],
@@ -955,6 +960,1405 @@ function plmCommitDialogSave(r) {
   return { ok: true, added };
 }
 
+function plmNewZoneId() {
+  return `plmz_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function plmNormalizeZoneShape(raw) {
+  const s = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "rectangle") return "rectangle";
+  if (
+    s === "quadrilateral" ||
+    s === "trapeze" ||
+    s === "trapèze" ||
+    s === "trapezoid"
+  ) {
+    return "quadrilateral";
+  }
+  if (s === "ellipse" || s === "oval" || s === "ovale") return "ellipse";
+  return "circle";
+}
+
+/** Mode Cap actif : rectangle aligné à l’écran, pas au nord géographique. */
+function plmMapUsesCapView() {
+  if (!map) return false;
+  const headingEl =
+    typeof headingUpEl !== "undefined"
+      ? headingUpEl
+      : document.getElementById("headingUp");
+  if (!headingEl?.checked) return false;
+  if (typeof map.getBearing !== "function") return false;
+  return Math.abs(map.getBearing()) > 0.4;
+}
+
+function plmZoneLatLngsToCornerTuples(latlngs) {
+  return latlngs.map((ll) => [ll.lat, ll.lng]);
+}
+
+function plmZoneCornerTuplesToLatLngs(corners) {
+  return corners.map(([la, ln]) => L.latLng(la, ln));
+}
+
+function plmRectangleCornersFromNorthBounds(swLat, swLng, neLat, neLng) {
+  const south = Math.min(swLat, neLat);
+  const north = Math.max(swLat, neLat);
+  const west = Math.min(swLng, neLng);
+  const east = Math.max(swLng, neLng);
+  return [
+    [south, west],
+    [south, east],
+    [north, east],
+    [north, west],
+  ];
+}
+
+/** Rectangle dont les côtés suivent l’affichage carte (mode Cap). */
+function plmZoneScreenRectCornersLatLng(latLng1, latLng2) {
+  const p1 = map.latLngToContainerPoint(latLng1);
+  const p2 = map.latLngToContainerPoint(latLng2);
+  const minX = Math.min(p1.x, p2.x);
+  const maxX = Math.max(p1.x, p2.x);
+  const minY = Math.min(p1.y, p2.y);
+  const maxY = Math.max(p1.y, p2.y);
+  return [
+    map.containerPointToLatLng(L.point(minX, minY)),
+    map.containerPointToLatLng(L.point(maxX, minY)),
+    map.containerPointToLatLng(L.point(maxX, maxY)),
+    map.containerPointToLatLng(L.point(minX, maxY)),
+  ];
+}
+
+function plmZoneRectangleFromTwoLatLng(p1, p2) {
+  if (plmMapUsesCapView()) {
+    return {
+      corners: plmZoneLatLngsToCornerTuples(
+        plmZoneScreenRectCornersLatLng(p1, p2),
+      ),
+      alignedToView: true,
+    };
+  }
+  const b = L.latLngBounds(p1, p2);
+  const sw = b.getSouthWest();
+  const ne = b.getNorthEast();
+  return {
+    corners: plmRectangleCornersFromNorthBounds(
+      sw.lat,
+      sw.lng,
+      ne.lat,
+      ne.lng,
+    ),
+    alignedToView: false,
+  };
+}
+
+function plmZoneRectangleMinSizeOk(corners) {
+  if (!map || !corners || corners.length < 4) return false;
+  const ll = plmZoneCornerTuplesToLatLngs(corners);
+  const d01 = map.distance(ll[0], ll[1]);
+  const d12 = map.distance(ll[1], ll[2]);
+  return (
+    Math.max(d01, d12) >= PLM_ZONE_MIN_RADIUS_M &&
+    Math.min(d01, d12) >= 1
+  );
+}
+
+function plmZoneProjectMeters(ll, origin) {
+  const p = map.project(ll, map.getZoom());
+  const o = map.project(origin, map.getZoom());
+  const latMid = (ll.lat + origin.lat) / 2;
+  const mPerPx =
+    (40075000 * Math.cos((latMid * Math.PI) / 180)) / (256 * 2 ** map.getZoom());
+  return { x: (p.x - o.x) * mPerPx, y: (o.y - p.y) * mPerPx };
+}
+
+function plmZoneUnprojectMeters(xy, origin) {
+  const latMid = origin.lat;
+  const mPerPx =
+    (40075000 * Math.cos((latMid * Math.PI) / 180)) / (256 * 2 ** map.getZoom());
+  const o = map.project(origin, map.getZoom());
+  const p = L.point(o.x + xy.x / mPerPx, o.y - xy.y / mPerPx);
+  return map.unproject(p, map.getZoom());
+}
+
+/** Rectangle : coin opposé fixe, côtés opposés parallèles (écran en mode Cap, sinon repère local). */
+function plmZoneDragRectangleCorner(corners, alignedToView, dragIndex, newLl) {
+  const c = plmZoneCornerTuplesToLatLngs(corners);
+  const opp = (dragIndex + 2) % 4;
+  if (alignedToView) {
+    const pOpp = map.latLngToContainerPoint(c[opp]);
+    const pDrag = map.latLngToContainerPoint(newLl);
+    const minX = Math.min(pOpp.x, pDrag.x);
+    const maxX = Math.max(pOpp.x, pDrag.x);
+    const minY = Math.min(pOpp.y, pDrag.y);
+    const maxY = Math.max(pOpp.y, pDrag.y);
+    return plmZoneLatLngsToCornerTuples(
+      plmZoneScreenRectCornersLatLng(
+        map.containerPointToLatLng(L.point(minX, minY)),
+        map.containerPointToLatLng(L.point(maxX, maxY)),
+      ),
+    );
+  }
+  const origin = L.latLng(
+    (c[dragIndex].lat + c[opp].lat) / 2,
+    (c[dragIndex].lng + c[opp].lng) / 2,
+  );
+  const u0 = plmZoneProjectMeters(c[(dragIndex + 1) % 4], origin);
+  const v0 = plmZoneProjectMeters(c[(dragIndex + 3) % 4], origin);
+  let ux = u0.x - plmZoneProjectMeters(c[dragIndex], origin).x;
+  let uy = u0.y - plmZoneProjectMeters(c[dragIndex], origin).y;
+  let vx = v0.x - plmZoneProjectMeters(c[dragIndex], origin).x;
+  let vy = v0.y - plmZoneProjectMeters(c[dragIndex], origin).y;
+  const lenU = Math.hypot(ux, uy) || 1;
+  ux /= lenU;
+  uy /= lenU;
+  const dot = vx * ux + vy * uy;
+  vx -= dot * ux;
+  vy -= dot * uy;
+  const lenV = Math.hypot(vx, vy) || 1;
+  vx /= lenV;
+  vy /= lenV;
+  const pDrag = plmZoneProjectMeters(newLl, origin);
+  const pOpp = plmZoneProjectMeters(c[opp], origin);
+  const halfDiagX = (pDrag.x - pOpp.x) / 2;
+  const halfDiagY = (pDrag.y - pOpp.y) / 2;
+  const halfW = Math.abs(halfDiagX * ux + halfDiagY * uy);
+  const halfH = Math.abs(halfDiagX * vx + halfDiagY * vy);
+  const centerM = {
+    x: (pDrag.x + pOpp.x) / 2,
+    y: (pDrag.y + pOpp.y) / 2,
+  };
+  const mk = (sx, sy) =>
+    plmZoneUnprojectMeters(
+      { x: centerM.x + sx * halfW * ux + sy * halfH * vx, y: centerM.y + sx * halfW * uy + sy * halfH * vy },
+      origin,
+    );
+  return plmZoneLatLngsToCornerTuples([
+    mk(-1, -1),
+    mk(1, -1),
+    mk(1, 1),
+    mk(-1, 1),
+  ]);
+}
+
+function plmZoneEllipseRingLatLngs(z, segments = 64) {
+  const pts = [];
+  const bearing0 = Number(z.bearingDeg) || 0;
+  for (let i = 0; i < segments; i++) {
+    const t = (2 * Math.PI * i) / segments;
+    const mx = z.radiusMajorM * Math.cos(t);
+    const my = z.radiusMinorM * Math.sin(t);
+    const dist = Math.max(PLM_ZONE_MIN_RADIUS_M, Math.hypot(mx, my));
+    const ang =
+      bearing0 + (Math.atan2(my, mx) * 180) / Math.PI;
+    pts.push(plmDestinationLatLng(z.centerLat, z.centerLng, ang, dist));
+  }
+  return pts;
+}
+
+/** Cadre écran de la zone + point d’ancrage sous la barre de nom (au-dessus du contour). */
+function plmZoneLabelLayout(zone) {
+  if (!map || !zone) return null;
+  const pts = plmZoneLatLngsFromShape(zone);
+  if (!pts.length) return null;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  for (const ll of pts) {
+    const p = map.latLngToContainerPoint(ll);
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+  }
+  if (!Number.isFinite(minX)) return null;
+  const widthPx = Math.min(
+    PLM_ZONE_LABEL_MAX_WIDTH_PX,
+    Math.max(PLM_ZONE_LABEL_MIN_WIDTH_PX, maxX - minX),
+  );
+  const centerX = (minX + maxX) / 2;
+  const anchorY = minY - PLM_ZONE_LABEL_GAP_ABOVE_PX;
+  const anchorLatLng = map.containerPointToLatLng(L.point(centerX, anchorY));
+  if (!plmIsValidPlmLatLng(anchorLatLng.lat, anchorLatLng.lng)) return null;
+  return { anchorLatLng, widthPx };
+}
+
+function plmCreateZoneMapLabelIcon(name, widthPx, strokeColor) {
+  const w = Math.round(widthPx);
+  const border = strokeColor || "#8b2500";
+  const html =
+    `<div class="tam-plm-zone-map-label__bar" style="width:${w}px;border-color:${border}">` +
+    `<span class="tam-plm-zone-map-label__text">${plmEscapeHtml(name)}</span></div>`;
+  const h = 26;
+  return L.divIcon({
+    className: "tam-plm-zone-map-label",
+    html,
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
+  });
+}
+
+function plmZoneLatLngsFromShape(zone) {
+  const shape = plmNormalizeZoneShape(zone?.shape);
+  if (shape === "circle") {
+    return plmZoneEllipseRingLatLngs({
+      centerLat: zone.centerLat,
+      centerLng: zone.centerLng,
+      radiusMajorM: zone.radiusM,
+      radiusMinorM: zone.radiusM,
+      bearingDeg: 0,
+    });
+  }
+  if (shape === "ellipse") {
+    return plmZoneEllipseRingLatLngs(zone);
+  }
+  return plmZoneCornerTuplesToLatLngs(zone.corners);
+}
+
+function plmZoneBoundsCornersFromLatLngs(latlngs, preferCapView) {
+  if (!latlngs?.length || !map) return null;
+  const useCap = !!preferCapView && plmMapUsesCapView();
+  if (useCap) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const ll of latlngs) {
+      const p = map.latLngToContainerPoint(ll);
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+    }
+    return {
+      corners: plmZoneLatLngsToCornerTuples(
+        plmZoneScreenRectCornersLatLng(
+          map.containerPointToLatLng(L.point(minX, minY)),
+          map.containerPointToLatLng(L.point(maxX, maxY)),
+        ),
+      ),
+      alignedToView: true,
+    };
+  }
+  const b = L.latLngBounds(latlngs);
+  const sw = b.getSouthWest();
+  const ne = b.getNorthEast();
+  return {
+    corners: plmRectangleCornersFromNorthBounds(
+      sw.lat,
+      sw.lng,
+      ne.lat,
+      ne.lng,
+    ),
+    alignedToView: false,
+  };
+}
+
+/** Conversion géométrique pour changer de forme sans re-tracer. */
+function plmZoneConvertShape(zone, targetShape) {
+  if (!zone) return null;
+  const from = plmNormalizeZoneShape(zone.shape);
+  const to = plmNormalizeZoneShape(targetShape);
+  const base = {
+    enabled: true,
+    strokeColor: zone.strokeColor,
+    strokeWeight: zone.strokeWeight,
+    shape: to,
+  };
+  if (from === to) {
+    return { ...zone, ...base, shape: to };
+  }
+  if (
+    (from === "rectangle" || from === "quadrilateral") &&
+    (to === "rectangle" || to === "quadrilateral")
+  ) {
+    if (to === "quadrilateral") {
+      return {
+        ...base,
+        corners: zone.corners,
+        alignedToView: !!zone.alignedToView,
+      };
+    }
+    const pts = plmZoneCornerTuplesToLatLngs(zone.corners);
+    const box = plmZoneBoundsCornersFromLatLngs(pts, zone.alignedToView);
+    if (!box) return null;
+    return { ...base, corners: box.corners, alignedToView: box.alignedToView };
+  }
+  if (from === "circle" && to === "ellipse") {
+    return {
+      ...base,
+      centerLat: zone.centerLat,
+      centerLng: zone.centerLng,
+      radiusMajorM: zone.radiusM,
+      radiusMinorM: zone.radiusM,
+      bearingDeg: 0,
+    };
+  }
+  if (from === "ellipse" && to === "circle") {
+    return {
+      ...base,
+      centerLat: zone.centerLat,
+      centerLng: zone.centerLng,
+      radiusM: Math.max(zone.radiusMajorM, zone.radiusMinorM),
+    };
+  }
+  const pts = plmZoneLatLngsFromShape(zone);
+  if (!pts.length) return null;
+  const centroid = L.latLng(
+    pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+    pts.reduce((s, p) => s + p.lng, 0) / pts.length,
+  );
+  if (to === "circle") {
+    let radiusM = PLM_ZONE_MIN_RADIUS_M;
+    for (const p of pts) {
+      radiusM = Math.max(radiusM, map.distance(centroid, p));
+    }
+    return {
+      ...base,
+      centerLat: centroid.lat,
+      centerLng: centroid.lng,
+      radiusM,
+    };
+  }
+  if (to === "ellipse") {
+    const b = L.latLngBounds(pts);
+    const c = b.getCenter();
+    const ne = b.getNorthEast();
+    const radiusMajorM = Math.max(
+      PLM_ZONE_MIN_RADIUS_M,
+      map.distance(c, L.latLng(ne.lat, c.lng)),
+    );
+    const radiusMinorM = Math.max(
+      PLM_ZONE_MIN_RADIUS_M,
+      map.distance(c, L.latLng(c.lat, ne.lng)),
+    );
+    return {
+      ...base,
+      centerLat: c.lat,
+      centerLng: c.lng,
+      radiusMajorM,
+      radiusMinorM,
+      bearingDeg: from === "ellipse" ? Number(zone.bearingDeg) || 0 : 0,
+    };
+  }
+  if (to === "rectangle" || to === "quadrilateral") {
+    const preferCap =
+      from === "rectangle" || from === "quadrilateral"
+        ? !!zone.alignedToView
+        : plmMapUsesCapView();
+    if (to === "quadrilateral" && (from === "quadrilateral" || from === "rectangle")) {
+      return {
+        ...base,
+        corners: zone.corners,
+        alignedToView: !!zone.alignedToView,
+      };
+    }
+    const box = plmZoneBoundsCornersFromLatLngs(pts, preferCap);
+    if (!box) return null;
+    return {
+      ...base,
+      corners: box.corners,
+      alignedToView: box.alignedToView,
+    };
+  }
+  return null;
+}
+
+function plmNormalizeZonePayload(raw) {
+  if (!raw || raw.enabled === false) return null;
+  const shape = plmNormalizeZoneShape(raw.shape);
+  const strokeColor = normalizePlmColorHex(raw.strokeColor);
+  const strokeWeight = Math.min(
+    12,
+    Math.max(1, Math.round(Number(raw.strokeWeight) || PLM_ZONE_DEFAULT_WEIGHT)),
+  );
+  if (shape === "rectangle" || shape === "quadrilateral") {
+    let corners = null;
+    let alignedToView = !!raw.alignedToView;
+    if (Array.isArray(raw.corners) && raw.corners.length >= 4) {
+      corners = raw.corners.slice(0, 4).map((c) => {
+        const la = Number(Array.isArray(c) ? c[0] : c?.lat);
+        const ln = Number(Array.isArray(c) ? c[1] : c?.lng);
+        if (!plmIsValidPlmLatLng(la, ln)) return null;
+        return [la, ln];
+      });
+      if (corners.some((x) => !x)) return null;
+    } else {
+      const swLat = Number(raw.swLat);
+      const swLng = Number(raw.swLng);
+      const neLat = Number(raw.neLat);
+      const neLng = Number(raw.neLng);
+      if (
+        !plmIsValidPlmLatLng(swLat, swLng) ||
+        !plmIsValidPlmLatLng(neLat, neLng)
+      ) {
+        return null;
+      }
+      corners = plmRectangleCornersFromNorthBounds(swLat, swLng, neLat, neLng);
+      alignedToView = false;
+    }
+    if (!plmZoneRectangleMinSizeOk(corners)) return null;
+    return {
+      enabled: true,
+      shape,
+      strokeColor,
+      strokeWeight,
+      corners,
+      alignedToView,
+    };
+  }
+  const centerLat = Number(raw.centerLat);
+  const centerLng = Number(raw.centerLng);
+  if (!plmIsValidPlmLatLng(centerLat, centerLng)) return null;
+  if (shape === "ellipse") {
+    let radiusMajorM = Number(raw.radiusMajorM);
+    let radiusMinorM = Number(raw.radiusMinorM);
+    if (!Number.isFinite(radiusMajorM) && Number.isFinite(Number(raw.radiusM))) {
+      radiusMajorM = Number(raw.radiusM);
+    }
+    if (!Number.isFinite(radiusMinorM) && Number.isFinite(Number(raw.radiusM))) {
+      radiusMinorM = Number(raw.radiusM);
+    }
+    if (
+      !Number.isFinite(radiusMajorM) ||
+      !Number.isFinite(radiusMinorM) ||
+      radiusMajorM < PLM_ZONE_MIN_RADIUS_M ||
+      radiusMinorM < PLM_ZONE_MIN_RADIUS_M
+    ) {
+      return null;
+    }
+    return {
+      enabled: true,
+      shape: "ellipse",
+      strokeColor,
+      strokeWeight,
+      centerLat,
+      centerLng,
+      radiusMajorM,
+      radiusMinorM,
+      bearingDeg: Number(raw.bearingDeg) || 0,
+    };
+  }
+  const radiusM = Number(raw.radiusM);
+  if (!Number.isFinite(radiusM) || radiusM < PLM_ZONE_MIN_RADIUS_M) {
+    return null;
+  }
+  return {
+    enabled: true,
+    shape: "circle",
+    strokeColor,
+    strokeWeight,
+    centerLat,
+    centerLng,
+    radiusM,
+  };
+}
+
+function plmZoneLayerOptions(zone, selected) {
+  const o = {
+    color: zone.strokeColor,
+    weight: zone.strokeWeight,
+    opacity: 0.95,
+    fillColor: zone.strokeColor,
+    fillOpacity: 0.1,
+    interactive: true,
+    className: selected
+      ? "tam-plm-zone-path tam-plm-zone-path--selected"
+      : "tam-plm-zone-path",
+  };
+  if (selected) {
+    o.weight = zone.strokeWeight + 2;
+    o.dashArray = "9 6";
+  }
+  return o;
+}
+
+function plmZoneOwnerKey(owner) {
+  if (!owner) return "";
+  return owner.kind === "zone" ? `z:${owner.id}` : "";
+}
+
+function plmZoneRecordOwner(zoneId) {
+  if (!zoneId) return null;
+  return { kind: "zone", id: zoneId };
+}
+
+function plmGetZoneOnLandmarkRow(row) {
+  if (!row) return null;
+  return plmNormalizeZonePayload(row.zone);
+}
+
+function plmZoneRowToPayload(row) {
+  if (!row) return null;
+  const { id, ...rest } = row;
+  return plmNormalizeZonePayload(rest);
+}
+
+function loadPersonalZonesFromStorage() {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem(LS_KEY_PERSONAL_ZONES) || "[]",
+    );
+    personalZonesList = Array.isArray(raw)
+      ? raw.filter((z) => z && typeof z.id === "string")
+      : [];
+  } catch (e) {
+    personalZonesList = [];
+  }
+}
+
+function savePersonalZonesToStorage(skipFileBackup) {
+  try {
+    localStorage.setItem(
+      LS_KEY_PERSONAL_ZONES,
+      JSON.stringify(personalZonesList),
+    );
+  } catch (e) {
+    /* ignore */
+  }
+  if (!skipFileBackup && typeof plmScheduleAutoBackup === "function") {
+    plmScheduleAutoBackup();
+  }
+}
+
+function plmMigrateAllZonesToIndependentList() {
+  let changed = false;
+  for (let i = 0; i < personalLandmarksList.length; i++) {
+    const item = personalLandmarksList[i];
+    const z = plmGetZoneOnLandmarkRow(item);
+    if (!z) continue;
+    personalZonesList.push({ id: plmNewZoneId(), ...z });
+    const next = { ...personalLandmarksList[i] };
+    delete next.zone;
+    personalLandmarksList[i] = next;
+    changed = true;
+  }
+  const seenGroups = new Set();
+  for (const gid of Object.keys(plmGroupsById)) {
+    if (seenGroups.has(gid)) continue;
+    seenGroups.add(gid);
+    const gz = plmNormalizeZonePayload(plmGroupsById[gid]?.zone);
+    if (!gz) continue;
+    personalZonesList.push({ id: plmNewZoneId(), ...gz });
+    const next = { ...plmGroupsById[gid] };
+    delete next.zone;
+    if (Object.keys(next).length === 0) delete plmGroupsById[gid];
+    else plmGroupsById[gid] = next;
+    changed = true;
+  }
+  if (changed) {
+    savePersonalZonesToStorage(true);
+    try {
+      savePersonalLandmarksToStorage(true);
+      savePlmGroupsToStorage();
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  return changed;
+}
+
+function plmZoneOwnersEqual(a, b) {
+  return (
+    !!a &&
+    !!b &&
+    a.kind === b.kind &&
+    String(a.id) === String(b.id)
+  );
+}
+
+function plmGetZoneForOwner(owner) {
+  if (!owner || owner.kind !== "zone") return null;
+  const row = personalZonesList.find((x) => x.id === owner.id);
+  return plmZoneRowToPayload(row);
+}
+
+function plmSetZoneForOwner(owner, zone) {
+  if (!owner || owner.kind !== "zone") return;
+  const normalized = zone ? plmNormalizeZonePayload(zone) : null;
+  const idx = personalZonesList.findIndex((x) => x.id === owner.id);
+  if (idx < 0) return;
+  const prevName = personalZonesList[idx]?.name;
+  if (normalized) {
+    const row = { id: owner.id, ...normalized };
+    if (prevName != null && String(prevName).trim()) {
+      row.name = String(prevName).trim();
+    }
+    personalZonesList[idx] = row;
+  } else {
+    personalZonesList.splice(idx, 1);
+  }
+  if (plmZoneOwnersEqual(plmSelectedZoneOwner, owner) && !normalized) {
+    plmSelectedZoneOwner = null;
+  }
+  savePersonalZonesToStorage(true);
+}
+
+function plmDeleteZoneForOwner(owner) {
+  plmSetZoneForOwner(owner, null);
+  plmRedrawZonesLayer();
+}
+
+function plmSelectZoneOwner(owner) {
+  if (!owner || !plmGetZoneForOwner(owner)) return;
+  plmSelectedZoneOwner = owner;
+  plmRedrawZonesLayer();
+  plmZoneDrawSetHint(
+    "Zone sélectionnée : glissez les poignées pour redimensionner. Suppr : effacer.",
+  );
+}
+
+function plmClearZoneSelection() {
+  if (!plmSelectedZoneOwner) return;
+  plmSelectedZoneOwner = null;
+  plmClearZoneEditHandles();
+  plmRedrawZonesLayer();
+}
+
+function plmEnsureZoneEditHandlesLayer() {
+  if (!map) return null;
+  if (!plmZoneEditHandlesLayer) {
+    plmZoneEditHandlesLayer = L.layerGroup().addTo(map);
+  }
+  return plmZoneEditHandlesLayer;
+}
+
+function plmClearZoneEditHandles() {
+  if (plmZoneEditHandlesLayer) plmZoneEditHandlesLayer.clearLayers();
+}
+
+function plmZoneHandleMarker(lat, lng, onDrag, onDragEnd) {
+  const m = L.marker([lat, lng], {
+    draggable: true,
+    bubblingMouseEvents: false,
+    zIndexOffset: 1200,
+    icon: L.divIcon({
+      className: "tam-plm-zone-handle",
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    }),
+  });
+  m.on("drag", () => {
+    if (typeof onDrag === "function") onDrag(m.getLatLng());
+  });
+  m.on("dragend", () => {
+    if (typeof onDragEnd === "function") onDragEnd(m.getLatLng());
+  });
+  return m;
+}
+
+function plmDestinationLatLng(lat, lng, bearingDeg, distM) {
+  const R = 6371000;
+  const br = (bearingDeg * Math.PI) / 180;
+  const lat1 = (lat * Math.PI) / 180;
+  const lng1 = (lng * Math.PI) / 180;
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(distM / R) +
+      Math.cos(lat1) * Math.sin(distM / R) * Math.cos(br),
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(br) * Math.sin(distM / R) * Math.cos(lat1),
+      Math.cos(distM / R) - Math.sin(lat1) * Math.sin(lat2),
+    );
+  return L.latLng((lat2 * 180) / Math.PI, (lng2 * 180) / Math.PI);
+}
+
+function plmRefreshZoneEditHandles() {
+  plmClearZoneEditHandles();
+  const layer = plmEnsureZoneEditHandlesLayer();
+  if (!layer || !plmSelectedZoneOwner) return;
+  const z = plmGetZoneForOwner(plmSelectedZoneOwner);
+  if (!z) return;
+  const owner = plmSelectedZoneOwner;
+
+  const commitZone = (next) => {
+    const normalized = plmNormalizeZonePayload(next);
+    if (!normalized) return;
+    plmSetZoneForOwner(owner, normalized);
+    plmRedrawZonesLayer();
+  };
+
+  const syncPoly = (latlngs) => {
+    const layerRef = personalZonesLayer?.getLayers?.().find(
+      (ly) =>
+        ly._plmZoneOwner && plmZoneOwnersEqual(ly._plmZoneOwner, owner),
+    );
+    if (layerRef && typeof layerRef.setLatLngs === "function") {
+      layerRef.setLatLngs(latlngs);
+    }
+  };
+
+  if (z.shape === "circle") {
+    let live = { ...z };
+    const syncCircle = () => {
+      const layerRef = personalZonesLayer?.getLayers?.().find(
+        (ly) =>
+          ly._plmZoneOwner &&
+          plmZoneOwnersEqual(ly._plmZoneOwner, owner),
+      );
+      if (layerRef && typeof layerRef.setLatLng === "function") {
+        layerRef.setLatLng([live.centerLat, live.centerLng]);
+        if (typeof layerRef.setRadius === "function") {
+          layerRef.setRadius(live.radiusM);
+        }
+      }
+    };
+    const centerMk = plmZoneHandleMarker(
+      z.centerLat,
+      z.centerLng,
+      (ll) => {
+        live = { ...live, centerLat: ll.lat, centerLng: ll.lng };
+        syncCircle();
+      },
+      (ll) => {
+        live = { ...live, centerLat: ll.lat, centerLng: ll.lng };
+        commitZone(live);
+      },
+    );
+    const edge0 = plmDestinationLatLng(z.centerLat, z.centerLng, 0, z.radiusM);
+    const edgeMk = plmZoneHandleMarker(
+      edge0.lat,
+      edge0.lng,
+      (ll) => {
+        const radiusM = Math.max(
+          PLM_ZONE_MIN_RADIUS_M,
+          map.distance(L.latLng(live.centerLat, live.centerLng), ll),
+        );
+        live = { ...live, radiusM };
+        syncCircle();
+      },
+      (ll) => {
+        const radiusM = Math.max(
+          PLM_ZONE_MIN_RADIUS_M,
+          map.distance(L.latLng(live.centerLat, live.centerLng), ll),
+        );
+        live = { ...live, radiusM };
+        commitZone(live);
+      },
+    );
+    centerMk.addTo(layer);
+    edgeMk.addTo(layer);
+    plmBindZoneHandleContextMenu(centerMk, owner);
+    plmBindZoneHandleContextMenu(edgeMk, owner);
+    return;
+  }
+
+  if (z.shape === "ellipse") {
+    let live = { ...z };
+    const syncEllipse = () => {
+      syncPoly(plmZoneEllipseRingLatLngs(live));
+    };
+    const centerMk = plmZoneHandleMarker(
+      z.centerLat,
+      z.centerLng,
+      (ll) => {
+        live = { ...live, centerLat: ll.lat, centerLng: ll.lng };
+        syncEllipse();
+      },
+      (ll) => {
+        live = { ...live, centerLat: ll.lat, centerLng: ll.lng };
+        commitZone(live);
+      },
+    );
+    const majorPt = plmDestinationLatLng(
+      z.centerLat,
+      z.centerLng,
+      z.bearingDeg,
+      z.radiusMajorM,
+    );
+    const minorPt = plmDestinationLatLng(
+      z.centerLat,
+      z.centerLng,
+      z.bearingDeg + 90,
+      z.radiusMinorM,
+    );
+    const majorMk = plmZoneHandleMarker(
+      majorPt.lat,
+      majorPt.lng,
+      (ll) => {
+        live = {
+          ...live,
+          radiusMajorM: Math.max(
+            PLM_ZONE_MIN_RADIUS_M,
+            map.distance(L.latLng(live.centerLat, live.centerLng), ll),
+          ),
+          bearingDeg:
+            (Math.atan2(
+              ll.lng - live.centerLng,
+              ll.lat - live.centerLat,
+            ) *
+              180) /
+            Math.PI,
+        };
+        syncEllipse();
+      },
+      (ll) => {
+        live = {
+          ...live,
+          radiusMajorM: Math.max(
+            PLM_ZONE_MIN_RADIUS_M,
+            map.distance(L.latLng(live.centerLat, live.centerLng), ll),
+          ),
+          bearingDeg:
+            (Math.atan2(
+              ll.lng - live.centerLng,
+              ll.lat - live.centerLat,
+            ) *
+              180) /
+            Math.PI,
+        };
+        commitZone(live);
+      },
+    );
+    const minorMk = plmZoneHandleMarker(
+      minorPt.lat,
+      minorPt.lng,
+      (ll) => {
+        live = {
+          ...live,
+          radiusMinorM: Math.max(
+            PLM_ZONE_MIN_RADIUS_M,
+            map.distance(L.latLng(live.centerLat, live.centerLng), ll),
+          ),
+        };
+        syncEllipse();
+      },
+      (ll) => {
+        live = {
+          ...live,
+          radiusMinorM: Math.max(
+            PLM_ZONE_MIN_RADIUS_M,
+            map.distance(L.latLng(live.centerLat, live.centerLng), ll),
+          ),
+        };
+        commitZone(live);
+      },
+    );
+    centerMk.addTo(layer);
+    majorMk.addTo(layer);
+    minorMk.addTo(layer);
+    plmBindZoneHandleContextMenu(centerMk, owner);
+    plmBindZoneHandleContextMenu(majorMk, owner);
+    plmBindZoneHandleContextMenu(minorMk, owner);
+    return;
+  }
+
+  let corners = plmZoneCornerTuplesToLatLngs(z.corners);
+  const constrained = z.shape === "rectangle";
+  const syncCorners = () => {
+    syncPoly(corners);
+  };
+  const commitCorners = () => {
+    commitZone({
+      ...z,
+      corners: plmZoneLatLngsToCornerTuples(corners),
+    });
+  };
+  let moveSnap = null;
+  const centerLat = corners.reduce((s, c) => s + c.lat, 0) / 4;
+  const centerLng = corners.reduce((s, c) => s + c.lng, 0) / 4;
+  const centerMk = plmZoneHandleMarker(
+    centerLat,
+    centerLng,
+    (ll) => {
+      if (!moveSnap) {
+        moveSnap = {
+          lat0: ll.lat,
+          lng0: ll.lng,
+          corners0: corners.map((c) => ({ lat: c.lat, lng: c.lng })),
+        };
+      }
+      const dLat = ll.lat - moveSnap.lat0;
+      const dLng = ll.lng - moveSnap.lng0;
+      corners = moveSnap.corners0.map((c) =>
+        L.latLng(c.lat + dLat, c.lng + dLng),
+      );
+      syncCorners();
+    },
+    (ll) => {
+      if (moveSnap) {
+        const dLat = ll.lat - moveSnap.lat0;
+        const dLng = ll.lng - moveSnap.lng0;
+        corners = moveSnap.corners0.map((c) =>
+          L.latLng(c.lat + dLat, c.lng + dLng),
+        );
+      }
+      moveSnap = null;
+      commitCorners();
+    },
+  );
+  centerMk.addTo(layer);
+  plmBindZoneHandleContextMenu(centerMk, owner);
+  for (let i = 0; i < 4; i++) {
+    const ll0 = corners[i];
+    const mk = plmZoneHandleMarker(
+      ll0.lat,
+      ll0.lng,
+      (ll) => {
+        if (constrained) {
+          corners = plmZoneCornerTuplesToLatLngs(
+            plmZoneDragRectangleCorner(
+              plmZoneLatLngsToCornerTuples(corners),
+              !!z.alignedToView,
+              i,
+              ll,
+            ),
+          );
+        } else {
+          corners[i] = ll;
+        }
+        syncCorners();
+      },
+      (ll) => {
+        if (constrained) {
+          corners = plmZoneCornerTuplesToLatLngs(
+            plmZoneDragRectangleCorner(
+              plmZoneLatLngsToCornerTuples(corners),
+              !!z.alignedToView,
+              i,
+              ll,
+            ),
+          );
+        } else {
+          corners[i] = ll;
+        }
+        commitCorners();
+      },
+    );
+    mk.addTo(layer);
+    plmBindZoneHandleContextMenu(mk, owner);
+  }
+}
+
+function plmBindZoneLayerContextMenu(layer, owner) {
+  layer.on("contextmenu", (e) => {
+    L.DomEvent.stop(e);
+    if (e.originalEvent) e.originalEvent.preventDefault();
+    const ev = e.originalEvent || e;
+    plmSelectZoneOwner(owner);
+    plmShowZoneContextMenu(ev.clientX, ev.clientY, owner.id);
+  });
+}
+
+function plmBindZoneHandleContextMenu(marker, owner) {
+  marker.on("contextmenu", (e) => {
+    L.DomEvent.stop(e);
+    if (e.originalEvent) e.originalEvent.preventDefault();
+    const ev = e.originalEvent || e;
+    plmSelectZoneOwner(owner);
+    plmShowZoneContextMenu(ev.clientX, ev.clientY, owner.id);
+  });
+}
+
+function plmCreateZoneMapLayer(z, owner, selected) {
+  const opts = plmZoneLayerOptions(z, selected);
+  let layer;
+  if (z.shape === "circle") {
+    layer = L.circle([z.centerLat, z.centerLng], {
+      ...opts,
+      radius: z.radiusM,
+    });
+  } else if (z.shape === "ellipse") {
+    layer = L.polygon(plmZoneEllipseRingLatLngs(z), opts);
+  } else {
+    layer = L.polygon(plmZoneCornerTuplesToLatLngs(z.corners), opts);
+  }
+  layer._plmZoneOwner = owner;
+  layer.on("click", (e) => {
+    L.DomEvent.stopPropagation(e);
+    plmSelectZoneOwner(owner);
+  });
+  plmBindZoneLayerContextMenu(layer, owner);
+  return layer;
+}
+
+function plmAddZoneLayerToGroup(zone, layerGroup, owner, selected) {
+  const z = plmNormalizeZonePayload(zone);
+  if (!z || !layerGroup) return null;
+  const layer = plmCreateZoneMapLayer(z, owner, selected);
+  layer.addTo(layerGroup);
+  return layer;
+}
+
+function plmRedrawZonesLayer() {
+  if (!personalZonesLayer) return;
+  personalZonesLayer.clearLayers();
+  plmClearZoneEditHandles();
+  for (const row of personalZonesList) {
+    const zone = plmZoneRowToPayload(row);
+    if (!zone) continue;
+    const owner = plmZoneRecordOwner(row.id);
+    const selected = plmZoneOwnersEqual(plmSelectedZoneOwner, owner);
+    plmAddZoneLayerToGroup(zone, personalZonesLayer, owner, selected);
+  }
+  if (plmSelectedZoneOwner && plmGetZoneForOwner(plmSelectedZoneOwner)) {
+    plmRefreshZoneEditHandles();
+  }
+  plmRefreshZoneLabels();
+}
+
+function plmEnsureZonePreviewLayer() {
+  if (!map) return null;
+  if (!plmZonePreviewLayer) {
+    plmZonePreviewLayer = L.layerGroup().addTo(map);
+  }
+  return plmZonePreviewLayer;
+}
+
+function plmClearZonePreviewLayer() {
+  if (plmZonePreviewLayer) plmZonePreviewLayer.clearLayers();
+}
+
+function plmRefreshZonePreviewLayer(zoneDraft, zoneEnabled) {
+  const layer = plmEnsureZonePreviewLayer();
+  if (!layer) return;
+  layer.clearLayers();
+  if (!zoneEnabled) return;
+  const z = plmNormalizeZonePayload(zoneDraft);
+  if (z) plmAddZoneLayerToGroup(z, layer, null, false);
+}
+
+function plmZoneStatusLabel(zone) {
+  const z = plmNormalizeZonePayload(zone);
+  if (!z) return "Aucune géométrie : tracez sur la carte.";
+  if (z.shape === "circle") {
+    return `Cercle : rayon ${Math.round(z.radiusM)} m.`;
+  }
+  if (z.shape === "ellipse") {
+    return `Ovale : ${Math.round(z.radiusMajorM)} × ${Math.round(z.radiusMinorM)} m.`;
+  }
+  const pts = plmZoneCornerTuplesToLatLngs(z.corners);
+  const w = map ? Math.round(map.distance(pts[0], pts[1])) : 0;
+  const h = map ? Math.round(map.distance(pts[1], pts[2])) : 0;
+  const capNote = z.alignedToView ? " (aligné mode Cap)" : "";
+  if (z.shape === "quadrilateral") {
+    return `Quadrilatère tracé sur la carte.${capNote}`;
+  }
+  return `Rectangle : environ ${w} × ${h} m.${capNote}`;
+}
+
+function plmZoneDrawSetHint(text) {
+  if (typeof setGpsStatus === "function") {
+    setGpsStatus(String(text || ""));
+  }
+}
+
+function plmStopZoneMapDraw(opts) {
+  const o = opts || {};
+  const session = plmZoneMapDrawSession;
+  if (!session) return;
+  plmZoneMapDrawSession = null;
+  if (session.onKeydown) {
+    document.removeEventListener("keydown", session.onKeydown);
+  }
+  if (session.previewShape) {
+    try {
+      session.previewShape.remove();
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  if (o.clearPreview) plmClearZonePreviewLayer();
+  if (o.cancelled && typeof session.onCancel === "function") {
+    session.onCancel();
+  }
+}
+
+function plmInstallZoneMapDrawHandlers() {
+  if (!map || map._tamPlmZoneDrawWired) return;
+  map._tamPlmZoneDrawWired = true;
+  map.on("click", plmOnMapClickZoneDraw);
+  map.on("mousemove", plmOnMapMouseMoveZoneDraw);
+}
+
+function plmIsEditableTargetFocused() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = String(el.tagName || "").toLowerCase();
+  return (
+    tag === "input" ||
+    tag === "textarea" ||
+    tag === "select" ||
+    el.isContentEditable
+  );
+}
+
+function plmOnMapClickDeselectZone() {
+  if (plmZoneMapDrawSession || personalLandmarkPlacementActive) return;
+  if (plmEditorDialogDepth > 0 || plmZoneDialogDepth > 0) return;
+  if (plmSelectedZoneOwner) plmClearZoneSelection();
+}
+
+function plmOnDocumentKeydownZone(ev) {
+  if (ev.key === "Escape" && plmSelectedZoneOwner) {
+    if (plmIsEditableTargetFocused()) return;
+    if (plmZoneMapDrawSession || plmEditorDialogDepth > 0 || plmZoneDialogDepth > 0)
+      return;
+    plmClearZoneSelection();
+    plmZoneDrawSetHint("");
+  }
+}
+
+function plmInstallZoneSelectionHandlers() {
+  if (!map || map._tamPlmZoneSelWired) return;
+  map._tamPlmZoneSelWired = true;
+  map.on("click", plmOnMapClickDeselectZone);
+  document.addEventListener("keydown", plmOnDocumentKeydownZone);
+}
+
+function plmOnMapClickZoneDraw(ev) {
+  const session = plmZoneMapDrawSession;
+  if (!session || !ev?.latlng) return;
+  L.DomEvent.stopPropagation(ev);
+  const ll = ev.latlng;
+  if (session.shape === "quadrilateral") {
+    if (!session.points) session.points = [];
+    session.points.push(ll);
+    if (session.points.length < 4) {
+      plmZoneDrawSetHint(
+        `Zone — clic ${session.points.length + 1}/4 du quadrilatère. Échap : annuler.`,
+      );
+      return;
+    }
+    const zoneDraft = {
+      enabled: true,
+      shape: "quadrilateral",
+      corners: plmZoneLatLngsToCornerTuples(session.points),
+      alignedToView: false,
+      strokeColor: session.strokeColor,
+      strokeWeight: session.strokeWeight,
+    };
+    const normalized = plmNormalizeZonePayload(zoneDraft);
+    if (!normalized) {
+      tamAppAlert("Zone trop petite : recommencez le tracé sur la carte.");
+      session.points = [];
+      plmZoneDrawSetHint(plmZoneDrawHintForStep("quadrilateral", 0, false));
+      return;
+    }
+    if (typeof session.onComplete === "function") {
+      session.onComplete(normalized);
+    }
+    plmStopZoneMapDraw({ clearPreview: false });
+    return;
+  }
+  if (session.step === 0) {
+    session.p1 = ll;
+    session.step = 1;
+    plmZoneDrawSetHint(plmZoneDrawHintForStep(session.shape, 1, session.capView));
+    return;
+  }
+  let zoneDraft = null;
+  if (session.shape === "circle" || session.shape === "ellipse") {
+    const radiusM = map.distance(session.p1, ll);
+    if (session.shape === "ellipse") {
+      zoneDraft = {
+        enabled: true,
+        shape: "ellipse",
+        centerLat: session.p1.lat,
+        centerLng: session.p1.lng,
+        radiusMajorM: radiusM,
+        radiusMinorM: radiusM,
+        bearingDeg: 0,
+        strokeColor: session.strokeColor,
+        strokeWeight: session.strokeWeight,
+      };
+    } else {
+      zoneDraft = {
+        enabled: true,
+        shape: "circle",
+        centerLat: session.p1.lat,
+        centerLng: session.p1.lng,
+        radiusM,
+        strokeColor: session.strokeColor,
+        strokeWeight: session.strokeWeight,
+      };
+    }
+  } else {
+    const rect = plmZoneRectangleFromTwoLatLng(session.p1, ll);
+    zoneDraft = {
+      enabled: true,
+      shape: "rectangle",
+      corners: rect.corners,
+      alignedToView: rect.alignedToView,
+      strokeColor: session.strokeColor,
+      strokeWeight: session.strokeWeight,
+    };
+  }
+  const normalized = plmNormalizeZonePayload(zoneDraft);
+  if (!normalized) {
+    tamAppAlert("Zone trop petite : recommencez le tracé sur la carte.");
+    if (session.previewShape) {
+      try {
+        session.previewShape.remove();
+      } catch (e) {
+        /* ignore */
+      }
+      session.previewShape = null;
+    }
+    session.step = 0;
+    session.p1 = null;
+    plmZoneDrawSetHint(
+      plmZoneDrawHintForStep(session.shape, 0, session.capView),
+    );
+    return;
+  }
+  if (typeof session.onComplete === "function") {
+    session.onComplete(normalized);
+  }
+  plmStopZoneMapDraw({ clearPreview: false });
+}
+
+function plmOnMapMouseMoveZoneDraw(ev) {
+  const session = plmZoneMapDrawSession;
+  if (!session || !ev?.latlng) return;
+  if (session.previewShape) {
+    try {
+      session.previewShape.remove();
+    } catch (e) {
+      /* ignore */
+    }
+    session.previewShape = null;
+  }
+  const opts = plmZoneLayerOptions({
+    strokeColor: session.strokeColor,
+    strokeWeight: session.strokeWeight,
+  });
+  if (session.shape === "quadrilateral") {
+    const pts = [...(session.points || [])];
+    if (!pts.length) return;
+    pts.push(ev.latlng);
+    if (pts.length >= 2) {
+      session.previewShape = L.polygon(pts, opts).addTo(map);
+    }
+    return;
+  }
+  if (session.step !== 1 || !session.p1) return;
+  if (session.shape === "circle" || session.shape === "ellipse") {
+    const radiusM = Math.max(
+      PLM_ZONE_MIN_RADIUS_M,
+      map.distance(session.p1, ev.latlng),
+    );
+    if (session.shape === "ellipse") {
+      session.previewShape = L.polygon(
+        plmZoneEllipseRingLatLngs({
+          centerLat: session.p1.lat,
+          centerLng: session.p1.lng,
+          radiusMajorM: radiusM,
+          radiusMinorM: radiusM,
+          bearingDeg: 0,
+        }),
+        opts,
+      ).addTo(map);
+    } else {
+      session.previewShape = L.circle(session.p1, {
+        ...opts,
+        radius: radiusM,
+      }).addTo(map);
+    }
+  } else {
+    const rect = plmZoneRectangleFromTwoLatLng(session.p1, ev.latlng);
+    session.previewShape = L.polygon(
+      plmZoneCornerTuplesToLatLngs(rect.corners),
+      opts,
+    ).addTo(map);
+  }
+}
+
+function plmZoneDrawHintForStep(shape, step, capView) {
+  if (shape === "quadrilateral") {
+    return "Zone — 4 clics : les sommets du quadrilatère. Échap : annuler.";
+  }
+  if (shape === "circle") {
+    return step === 0
+      ? "Zone — 1er clic : centre du cercle. Échap : annuler."
+      : "Zone — 2e clic : bord du cercle (rayon). Échap : annuler.";
+  }
+  if (shape === "ellipse") {
+    return step === 0
+      ? "Zone — 1er clic : centre de l’ovale. Échap : annuler."
+      : "Zone — 2e clic : bord (rayon). Échap : annuler.";
+  }
+  if (capView) {
+    return step === 0
+      ? "Zone (mode Cap) — 1er clic : coin du rectangle à l’écran. Échap : annuler."
+      : "Zone (mode Cap) — 2e clic : coin opposé à l’écran. Échap : annuler.";
+  }
+  return step === 0
+    ? "Zone — 1er clic : premier coin du rectangle. Échap : annuler."
+    : "Zone — 2e clic : coin opposé du rectangle. Échap : annuler.";
+}
+
+function plmStartZoneMapDraw(params) {
+  plmInstallZoneMapDrawHandlers();
+  plmStopZoneMapDraw({ clearPreview: false });
+  const shape = plmNormalizeZoneShape(params.shape);
+  const onKeydown = (ev) => {
+    if (ev.key !== "Escape" || !plmZoneMapDrawSession) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    plmStopZoneMapDraw({ clearPreview: true, cancelled: true });
+  };
+  document.addEventListener("keydown", onKeydown);
+  const capView = shape === "rectangle" && plmMapUsesCapView();
+  plmZoneDrawSetHint(plmZoneDrawHintForStep(shape, 0, capView));
+  plmZoneMapDrawSession = {
+    shape,
+    capView,
+    strokeColor: normalizePlmColorHex(params.strokeColor),
+    strokeWeight: params.strokeWeight,
+    step: 0,
+    p1: null,
+    points: shape === "quadrilateral" ? [] : null,
+    previewShape: null,
+    onComplete: params.onComplete,
+    onCancel: params.onCancel,
+    onKeydown,
+  };
+}
+
+function plmMeasurePersonalLandmarkDialogTabBody(dlg) {
+  const body = dlg?.querySelector("#appPersonalLandmarkDialogTabBody");
+  if (!body) return 0;
+  const panels = [...body.querySelectorAll(".tam-plm-tab-panel")];
+  const details = dlg.querySelector("#appPersonalLandmarkDialogAllDetails");
+  const detailsWasOpen = details?.open ?? false;
+  if (details) details.open = true;
+  let maxH = 0;
+  for (const panel of panels) {
+    const hadHidden = panel.hasAttribute("hidden");
+    panel.removeAttribute("hidden");
+    panel.classList.add("tam-plm-tab-panel--measure");
+    maxH = Math.max(maxH, panel.offsetHeight);
+    panel.classList.remove("tam-plm-tab-panel--measure");
+    if (hadHidden) panel.setAttribute("hidden", "");
+  }
+  if (details && !detailsWasOpen) details.open = false;
+  return maxH;
+}
+
+function plmSyncPersonalLandmarkDialogTabHeights(dlg) {
+  const body = dlg?.querySelector("#appPersonalLandmarkDialogTabBody");
+  if (!body) return;
+  const maxH = plmMeasurePersonalLandmarkDialogTabBody(dlg);
+  if (maxH > 0) body.style.minHeight = `${maxH}px`;
+}
+
+function plmActivatePersonalLandmarkDialogTab(dlg, tabId) {
+  const tabs = [...dlg.querySelectorAll(".tam-plm-tabs__btn[data-plm-tab]")];
+  const panels = [...dlg.querySelectorAll(".tam-plm-tab-panel[data-plm-tab-panel]")];
+  for (const t of tabs) {
+    const on = t.getAttribute("data-plm-tab") === tabId;
+    t.setAttribute("aria-selected", on ? "true" : "false");
+  }
+  for (const p of panels) {
+    const on = p.getAttribute("data-plm-tab-panel") === tabId;
+    if (on) p.removeAttribute("hidden");
+    else p.setAttribute("hidden", "");
+  }
+}
+
 function getPlmIconCatalog() {
   if (
     typeof window !== "undefined" &&
@@ -1114,6 +2518,7 @@ function savePlmCapFilterBandM(n) {
 const TAM_BACKUP_FILENAME = "tam_sauvegarde_simulateur.json";
 const TAM_BACKUP_ALL_KEYS = [
   LS_KEY_PERSONAL_LANDMARKS,
+  LS_KEY_PERSONAL_ZONES,
   LS_KEY_PLM_GROUPS,
   LS_KEY_PLM_ICON_RECENT,
   LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP,
@@ -2001,6 +3406,51 @@ function tamInstallBasemapToggleControl() {
   };
   ctrlPlm.addTo(map);
 
+  const ctrlZone = L.control({ position: "topleft" });
+  ctrlZone.onAdd = function onAddPersonalZonesCtrl() {
+    const wrap = L.DomUtil.create(
+      "div",
+      "leaflet-bar tam-personal-zones-control",
+    );
+    const aZone = L.DomUtil.create("a", "tam-personal-zones-toggle", wrap);
+    aZone.href = "#";
+    aZone.setAttribute("role", "button");
+    aZone.title = "Nouvelle zone sur la carte";
+    aZone.setAttribute(
+      "aria-label",
+      "Nouvelle zone : ouvrir la fenêtre de création. Clic droit sur une zone : modifier ou supprimer.",
+    );
+    aZone.innerHTML =
+      '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<rect x="4" y="6" width="16" height="12" fill="none" stroke="currentColor" stroke-width="2" rx="1"/>' +
+      "</svg>";
+    personalZoneToolToggleEl = aZone;
+    L.DomEvent.on(aZone, "click", (ev) => {
+      L.DomEvent.preventDefault(ev);
+      setPersonalLandmarkPlacementActive(false);
+      plmCloseZoneContextMenu();
+      void openPersonalZoneDialog({ mode: "create" });
+    });
+    const aZoneLabels = L.DomUtil.create("a", "tam-plm-zone-labels-toggle", wrap);
+    aZoneLabels.href = "#";
+    aZoneLabels.setAttribute("role", "button");
+    aZoneLabels.title = "Afficher les noms des zones";
+    aZoneLabels.setAttribute(
+      "aria-label",
+      "Afficher les noms des zones au-dessus de chaque zone.",
+    );
+    aZoneLabels.textContent = "Aa";
+    personalZoneLabelsToggleEl = aZoneLabels;
+    syncPlmZoneLabelsToggleUi();
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.on(aZoneLabels, "click", (ev) => {
+      L.DomEvent.preventDefault(ev);
+      setPlmZoneLabelsVisible(!plmZoneLabelsVisible);
+    });
+    return wrap;
+  };
+  ctrlZone.addTo(map);
+
   tamBasemapExtrasControlsInstalled = true;
 }
 
@@ -2035,7 +3485,24 @@ const skippedStopsLayer = L.layerGroup().addTo(map);
 const provisionalStopsLayer = L.layerGroup().addTo(map);
 /** Repères personnels (carrefours, points d’intérêt) — persistance locale. */
 const personalLandmarksLayer = L.layerGroup().addTo(map);
+/** Zones carte (cercle / rectangle), indépendantes des repères. */
+const personalZonesLayer = L.layerGroup().addTo(map);
 const personalLandmarkLabelsLayer = L.layerGroup();
+const personalZoneLabelsLayer = L.layerGroup();
+const PLM_ZONE_DEFAULT_WEIGHT = 3;
+const PLM_ZONE_MIN_RADIUS_M = 5;
+let personalZonesList = [];
+let plmZonePreviewLayer = null;
+let plmZoneMapDrawSession = null;
+/** { kind: 'zone', id: string } */
+let plmSelectedZoneOwner = null;
+let plmZoneDialogDepth = 0;
+let personalZoneToolToggleEl = null;
+let personalZoneLabelsToggleEl = null;
+let plmZoneLabelsVisible = false;
+let plmZoneEditHandlesLayer = null;
+let plmContextMenuZoneId = null;
+let plmZoneContextMenuWired = false;
 let personalLandmarksList = [];
 let personalLandmarkPlacementActive = false;
 let personalLandmarkPlacementToggleEl = null;
@@ -2183,6 +3650,14 @@ function plmDuplicateGroupFromId(sourceGroupId) {
   const newGroupId = plmGenerateGroupId();
   const desc = plmGetGroupDescription(sourceGroupId);
   if (desc) plmSetGroupDescription(newGroupId, desc);
+  let srcZone = null;
+  for (const m of plmMembersOfGroup(sourceGroupId)) {
+    srcZone = plmGetZoneOnLandmarkRow(m);
+    if (srcZone) break;
+  }
+  if (!srcZone) {
+    srcZone = plmNormalizeZonePayload(plmGroupsById[sourceGroupId]?.zone);
+  }
   const idMap = new Map();
   for (const mem of members) {
     const newId = plmNewLandmarkId();
@@ -2219,7 +3694,87 @@ function plmDuplicateGroupFromId(sourceGroupId) {
   if (plmMapUsesMagneticLayout()) {
     plmApplyMagneticLayoutForGroup(newGroupId);
   }
+  if (srcZone) {
+    personalZonesList.push({ id: plmNewZoneId(), ...srcZone });
+    savePersonalZonesToStorage(true);
+    plmRedrawZonesLayer();
+  }
   return newGroupId;
+}
+
+function plmCloseZoneContextMenu() {
+  const menu = document.getElementById("tamPlmZoneContextMenu");
+  if (menu) menu.hidden = true;
+  plmContextMenuZoneId = null;
+}
+
+function plmShowZoneContextMenu(clientX, clientY, zoneId) {
+  if (!personalZonesList.some((x) => x.id === zoneId)) return;
+  plmInitZoneContextMenu();
+  const menu = document.getElementById("tamPlmZoneContextMenu");
+  if (!menu) return;
+  plmCloseLandmarkContextMenu();
+  plmContextMenuZoneId = zoneId;
+  menu.hidden = false;
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    let x = Number(clientX) || 0;
+    let y = Number(clientY) || 0;
+    if (x + rect.width > window.innerWidth - 8) {
+      x = window.innerWidth - rect.width - 8;
+    }
+    if (y + rect.height > window.innerHeight - 8) {
+      y = window.innerHeight - rect.height - 8;
+    }
+    menu.style.left = `${Math.max(8, x)}px`;
+    menu.style.top = `${Math.max(8, y)}px`;
+  });
+}
+
+function plmInitZoneContextMenu() {
+  if (plmZoneContextMenuWired) return;
+  const menu = document.getElementById("tamPlmZoneContextMenu");
+  if (!menu) return;
+  plmZoneContextMenuWired = true;
+  menu.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-plm-zone-ctx]");
+    if (!btn || !plmContextMenuZoneId) return;
+    ev.stopPropagation();
+    const zoneId = plmContextMenuZoneId;
+    const action = btn.getAttribute("data-plm-zone-ctx");
+    plmCloseZoneContextMenu();
+    if (action === "edit-zone") {
+      void openPersonalZoneDialog({ mode: "edit", id: zoneId });
+      return;
+    }
+    if (action === "del-zone") {
+      void plmDeleteZoneFromContext(zoneId);
+    }
+  });
+  document.addEventListener("click", (ev) => {
+    if (menu.hidden) return;
+    if (menu.contains(ev.target)) return;
+    plmCloseZoneContextMenu();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") plmCloseZoneContextMenu();
+  });
+  if (map) {
+    map.on("click", () => plmCloseZoneContextMenu());
+  }
+}
+
+async function plmDeleteZoneFromContext(zoneId) {
+  const ok = await showAppConfirmDialog(
+    TAM_APP_DIALOG_TITLE,
+    "Supprimer cette zone sur la carte ?",
+  );
+  if (!ok) return;
+  plmDeleteZoneForOwner(plmZoneRecordOwner(zoneId));
+  plmClearZoneSelection();
+  plmZoneDrawSetHint("Zone supprimée.");
 }
 
 async function plmDeleteLandmarkFromContext(landmarkId) {
@@ -2747,14 +4302,16 @@ function redrawPersonalLandmarksLayer() {
     m.addTo(personalLandmarksLayer);
   }
   plmRefreshLabelsLayer();
+  plmRedrawZonesLayer();
 }
 
 function plmScheduleLabelsRefresh() {
-  if (!plmLabelsVisible) return;
+  if (!plmLabelsVisible && !plmZoneLabelsVisible) return;
   if (plmLabelsLayoutRaf) cancelAnimationFrame(plmLabelsLayoutRaf);
   plmLabelsLayoutRaf = requestAnimationFrame(() => {
     plmLabelsLayoutRaf = 0;
-    plmRefreshLabelsLayer();
+    if (plmLabelsVisible) plmRefreshLabelsLayer();
+    if (plmZoneLabelsVisible) plmRefreshZoneLabels();
   });
 }
 
@@ -2822,6 +4379,57 @@ function setPlmLabelsVisible(on) {
   redrawPersonalLandmarksLayer();
 }
 
+function plmRefreshZoneLabels() {
+  if (!personalZoneLabelsLayer) return;
+  personalZoneLabelsLayer.clearLayers();
+  if (!plmZoneLabelsVisible) return;
+  for (const row of personalZonesList) {
+    const name = String(row.name ?? "").trim();
+    if (!name) continue;
+    const zone = plmZoneRowToPayload(row);
+    if (!zone) continue;
+    const layout = plmZoneLabelLayout(zone);
+    if (!layout) continue;
+    L.marker([layout.anchorLatLng.lat, layout.anchorLatLng.lng], {
+      icon: plmCreateZoneMapLabelIcon(name, layout.widthPx, zone.strokeColor),
+      interactive: false,
+      zIndexOffset: 500,
+    }).addTo(personalZoneLabelsLayer);
+  }
+}
+
+function syncPlmZoneLabelsToggleUi() {
+  const el = personalZoneLabelsToggleEl;
+  if (!el) return;
+  if (plmZoneLabelsVisible) {
+    el.classList.add("is-on");
+    el.title = "Masquer les noms des zones";
+    el.setAttribute("aria-label", "Masquer les noms des zones sur la carte.");
+  } else {
+    el.classList.remove("is-on");
+    el.title = "Afficher les noms des zones";
+    el.setAttribute(
+      "aria-label",
+      "Afficher les noms des zones au-dessus de chaque zone.",
+    );
+  }
+}
+
+function setPlmZoneLabelsVisible(on) {
+  plmZoneLabelsVisible = !!on;
+  if (plmZoneLabelsVisible) {
+    if (!map.hasLayer(personalZoneLabelsLayer)) {
+      personalZoneLabelsLayer.addTo(map);
+    }
+    plmRefreshZoneLabels();
+  } else if (map.hasLayer(personalZoneLabelsLayer)) {
+    map.removeLayer(personalZoneLabelsLayer);
+    personalZoneLabelsLayer.clearLayers();
+  }
+  syncPlmZoneLabelsToggleUi();
+  plmRedrawZonesLayer();
+}
+
 function syncPersonalLandmarkPlacementToggleUi() {
   const el = personalLandmarkPlacementToggleEl;
   if (!el) return;
@@ -2850,6 +4458,273 @@ function setPersonalLandmarkPlacementActive(on) {
     c.style.cursor = personalLandmarkPlacementActive ? "crosshair" : "";
   }
   syncPersonalLandmarkPlacementToggleUi();
+}
+
+/**
+ * Modale zones carte (indépendante des repères).
+ * @param {{ mode: 'create'|'edit', id?: string }} spec
+ */
+function openPersonalZoneDialog(spec) {
+  return new Promise((resolve) => {
+    const dlg = document.getElementById("appPersonalZoneDialog");
+    if (!dlg || typeof dlg.showModal !== "function") {
+      resolve({ action: "cancel" });
+      return;
+    }
+    plmZoneDialogDepth += 1;
+    setPersonalLandmarkPlacementActive(false);
+    plmCloseZoneContextMenu();
+    const titleEl = document.getElementById("appPersonalZoneDialogTitle");
+    const nameIn = document.getElementById("appPersonalZoneDialogName");
+    const colorsEl = document.getElementById("appPersonalZoneDialogColors");
+    const weightEl = document.getElementById("appPersonalZoneDialogWeight");
+    const weightValEl = document.getElementById("appPersonalZoneDialogWeightVal");
+    const drawBtn = document.getElementById("appPersonalZoneDialogDraw");
+    const statusEl = document.getElementById("appPersonalZoneDialogStatus");
+    const saveBtn = document.getElementById("appPersonalZoneDialogSave");
+    const cancelBtn = document.getElementById("appPersonalZoneDialogCancel");
+    if (
+      !titleEl ||
+      !nameIn ||
+      !colorsEl ||
+      !weightEl ||
+      !weightValEl ||
+      !drawBtn ||
+      !statusEl ||
+      !saveBtn ||
+      !cancelBtn
+    ) {
+      plmZoneDialogDepth = Math.max(0, plmZoneDialogDepth - 1);
+      resolve({ action: "cancel" });
+      return;
+    }
+    const mode = spec.mode === "edit" ? "edit" : "create";
+    const editId = mode === "edit" ? spec.id : null;
+    const existingRow =
+      editId != null
+        ? personalZonesList.find((x) => x.id === editId)
+        : null;
+    const existing = plmZoneRowToPayload(existingRow);
+    let zoneDraft = existing ? { ...existing } : null;
+    let zoneShape = existing
+      ? plmNormalizeZoneShape(existing.shape)
+      : "rectangle";
+    let zoneWeight = existing
+      ? existing.strokeWeight
+      : PLM_ZONE_DEFAULT_WEIGHT;
+    let colorHex = existing
+      ? existing.strokeColor
+      : PLM_DEFAULT_COLOR_NEW;
+    let plmDialogCloseSuspended = false;
+    nameIn.value =
+      existingRow && existingRow.name != null ? String(existingRow.name) : "";
+    titleEl.textContent =
+      mode === "edit" ? "Modifier la zone" : "Nouvelle zone";
+
+    function plmReopenZoneDialogAfterDraw() {
+      plmDialogCloseSuspended = false;
+      if (!dlg.open && typeof dlg.showModal === "function") {
+        dlg.showModal();
+      }
+      syncZoneDialogUi();
+    }
+
+    function plmGetZoneShapeFromUi() {
+      const picked = dlg.querySelector(
+        'input[name="appPersonalZoneDialogShape"]:checked',
+      );
+      return plmNormalizeZoneShape(picked?.value);
+    }
+
+    function syncZoneDialogUi() {
+      weightEl.value = String(zoneWeight);
+      weightValEl.textContent = String(zoneWeight);
+      for (const inp of dlg.querySelectorAll(
+        'input[name="appPersonalZoneDialogShape"]',
+      )) {
+        inp.checked = inp.value === zoneShape;
+      }
+      dlg.querySelectorAll(".tam-plm-color-btn[data-plm-color]").forEach(
+        (btn) => {
+          btn.classList.toggle(
+            "selected",
+            btn.getAttribute("data-plm-color") === colorHex,
+          );
+        },
+      );
+      drawBtn.textContent = "Tracer sur la carte…";
+      drawBtn.hidden = false;
+      statusEl.textContent = zoneDraft
+        ? `${plmZoneStatusLabel(zoneDraft)} — changez la forme puis Enregistrer (sans re-tracer).`
+        : "2 clics : cercle, rectangle ou ovale. 4 clics : quadrilatère.";
+      saveBtn.disabled = !zoneDraft;
+      plmClearZonePreviewLayer();
+    }
+
+    function renderZoneColorButtons() {
+      colorsEl.innerHTML = "";
+      for (const c of getPlmColorCatalog()) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tam-plm-color-btn";
+        btn.dataset.plmColor = c.hex;
+        btn.title = c.label;
+        btn.setAttribute("aria-label", c.label);
+        btn.style.backgroundColor = c.hex;
+        colorsEl.appendChild(btn);
+      }
+    }
+
+    function onDlgClick(ev) {
+      const cb = ev.target.closest(".tam-plm-color-btn[data-plm-color]");
+      if (cb) {
+        colorHex = normalizePlmColorHex(cb.getAttribute("data-plm-color"));
+        syncZoneDialogUi();
+      }
+    }
+
+    function onWeightInput() {
+      zoneWeight = Math.min(
+        12,
+        Math.max(
+          1,
+          Math.round(Number(weightEl.value) || PLM_ZONE_DEFAULT_WEIGHT),
+        ),
+      );
+      syncZoneDialogUi();
+    }
+
+    function onShapeChange() {
+      zoneShape = plmGetZoneShapeFromUi();
+      syncZoneDialogUi();
+    }
+
+    function onDrawClick() {
+      zoneShape = plmGetZoneShapeFromUi();
+      zoneWeight = Math.min(
+        12,
+        Math.max(
+          1,
+          Math.round(Number(weightEl.value) || PLM_ZONE_DEFAULT_WEIGHT),
+        ),
+      );
+      zoneDraft = null;
+      plmClearZonePreviewLayer();
+      plmDialogCloseSuspended = true;
+      if (dlg.open) dlg.close();
+      plmStartZoneMapDraw({
+        shape: zoneShape,
+        strokeColor: colorHex,
+        strokeWeight: zoneWeight,
+        onComplete: (normalized) => {
+          zoneDraft = normalized;
+          zoneShape = normalized.shape;
+          zoneWeight = normalized.strokeWeight;
+          colorHex = normalized.strokeColor;
+          plmReopenZoneDialogAfterDraw();
+          plmZoneDrawSetHint("Zone tracée sur la carte.");
+        },
+        onCancel: () => {
+          plmReopenZoneDialogAfterDraw();
+          plmZoneDrawSetHint("Tracé annulé.");
+        },
+      });
+    }
+
+    let settled = false;
+    function cleanup() {
+      plmDialogCloseSuspended = false;
+      plmStopZoneMapDraw({ clearPreview: true });
+      dlg.removeEventListener("click", onDlgClick);
+      weightEl.removeEventListener("input", onWeightInput);
+      drawBtn.removeEventListener("click", onDrawClick);
+      cancelBtn.removeEventListener("click", onCancel);
+      saveBtn.removeEventListener("click", onSave);
+      dlg.removeEventListener("close", onClose);
+      for (const inp of dlg.querySelectorAll(
+        'input[name="appPersonalZoneDialogShape"]',
+      )) {
+        inp.removeEventListener("change", onShapeChange);
+      }
+    }
+
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (dlg.open) dlg.close();
+      plmZoneDialogDepth = Math.max(0, plmZoneDialogDepth - 1);
+      resolve(payload);
+    };
+
+    function onClose() {
+      if (plmDialogCloseSuspended) return;
+      finish({ action: "cancel" });
+    }
+
+    function plmZonePayloadForSave() {
+      if (!zoneDraft) return null;
+      const converted = plmZoneConvertShape(
+        {
+          ...zoneDraft,
+          strokeColor: colorHex,
+          strokeWeight: zoneWeight,
+        },
+        zoneShape,
+      );
+      if (!converted) {
+        tamAppAlert("Impossible de convertir cette forme : tracez une nouvelle zone.");
+        return null;
+      }
+      return plmNormalizeZonePayload(converted);
+    }
+
+    function onSave() {
+      if (!zoneDraft) {
+        tamAppAlert("Tracez d’abord la zone sur la carte.");
+        return;
+      }
+      const payload = plmZonePayloadForSave();
+      if (!payload) return;
+      const zoneName = String(nameIn.value || "").trim();
+      const row = { id: editId || plmNewZoneId(), ...payload };
+      if (zoneName) row.name = zoneName;
+      if (mode === "edit" && editId) {
+        const idx = personalZonesList.findIndex((x) => x.id === editId);
+        if (idx >= 0) personalZonesList[idx] = row;
+      } else {
+        personalZonesList.push(row);
+      }
+      savePersonalZonesToStorage();
+      plmRedrawZonesLayer();
+      finish({ action: "save", id: row.id });
+    }
+
+    function onCancel() {
+      finish({ action: "cancel" });
+    }
+
+    renderZoneColorButtons();
+    syncZoneDialogUi();
+    dlg.addEventListener("click", onDlgClick);
+    weightEl.addEventListener("input", onWeightInput);
+    drawBtn.addEventListener("click", onDrawClick);
+    for (const inp of dlg.querySelectorAll(
+      'input[name="appPersonalZoneDialogShape"]',
+    )) {
+      inp.addEventListener("change", onShapeChange);
+    }
+    dlg.addEventListener("close", onClose, { once: true });
+    saveBtn.addEventListener("click", onSave);
+    cancelBtn.addEventListener("click", onCancel);
+    if (!dlg.dataset.tamZoneBackdropWired) {
+      dlg.dataset.tamZoneBackdropWired = "1";
+      dlg.addEventListener("click", (ev) => {
+        if (ev.target === dlg) dlg.close();
+      });
+    }
+    dlg.showModal();
+  });
 }
 
 /**
@@ -2883,6 +4758,10 @@ function openPersonalLandmarkDialog(spec) {
     const saveBtn = document.getElementById("appPersonalLandmarkDialogSave");
     const cancelBtn = document.getElementById("appPersonalLandmarkDialogCancel");
     const slotGridEl = document.getElementById("appPersonalLandmarkDialogSlotGrid");
+    const tabBodyEl = document.getElementById("appPersonalLandmarkDialogTabBody");
+    const allDetailsEl = document.getElementById(
+      "appPersonalLandmarkDialogAllDetails",
+    );
     if (
       !nameIn ||
       !descIn ||
@@ -2899,7 +4778,8 @@ function openPersonalLandmarkDialog(spec) {
       !colorsEl ||
       !favCapEl ||
       !capBandEl ||
-      !slotGridEl
+      !slotGridEl ||
+      !tabBodyEl
     ) {
       plmEditorDialogDepth = Math.max(0, plmEditorDialogDepth - 1);
       resolve({ action: "cancel" });
@@ -2915,6 +4795,7 @@ function openPersonalLandmarkDialog(spec) {
         spec.colorHex != null ? spec.colorHex : PLM_DEFAULT_COLOR_NEW,
       ),
     };
+    let activePlmTab = "icon";
 
     function syncPlmPickerSelectionUi() {
       dlg.querySelectorAll(".tam-plm-icon-btn[data-plm-icon]").forEach((btn) => {
@@ -2987,10 +4868,31 @@ function openPersonalLandmarkDialog(spec) {
       }
     }
 
+    function onPlmTabClick(ev) {
+      const tabBtn = ev.target.closest(".tam-plm-tabs__btn[data-plm-tab]");
+      if (!tabBtn) return;
+      activePlmTab = tabBtn.getAttribute("data-plm-tab") || "icon";
+      plmActivatePersonalLandmarkDialogTab(dlg, activePlmTab);
+      if (activePlmTab === "name") {
+        requestAnimationFrame(() => {
+          try {
+            nameIn.focus({ preventScroll: true });
+          } catch (err) {
+            nameIn.focus();
+          }
+        });
+      }
+    }
+
+    function onAllDetailsToggle() {
+      plmSyncPersonalLandmarkDialogTabHeights(dlg);
+    }
+
     function onFavCapChange() {
       if (!favCapEl) return;
       savePlmFavoritesCap(favCapEl.value);
       rebuildPlmIconGrids();
+      requestAnimationFrame(() => plmSyncPersonalLandmarkDialogTabHeights(dlg));
     }
 
     function onCapBandChange() {
@@ -3058,12 +4960,17 @@ function openPersonalLandmarkDialog(spec) {
       capBandEl.value = String(getPlmCapFilterBandM());
     }
     rebuildPlmIconGrids();
+    plmActivatePersonalLandmarkDialogTab(dlg, activePlmTab);
     dlg.addEventListener("click", onPlmDlgClick);
+    dlg.addEventListener("click", onPlmTabClick);
     if (favCapEl) {
       favCapEl.addEventListener("change", onFavCapChange);
     }
     if (capBandEl) {
       capBandEl.addEventListener("change", onCapBandChange);
+    }
+    if (allDetailsEl) {
+      allDetailsEl.addEventListener("toggle", onAllDetailsToggle);
     }
 
     const editGroupId = spec.groupId || null;
@@ -3120,12 +5027,17 @@ function openPersonalLandmarkDialog(spec) {
       nameIn.removeEventListener("keydown", onNameKeydown);
       dlg.removeEventListener("close", onClose);
       dlg.removeEventListener("click", onPlmDlgClick);
+      dlg.removeEventListener("click", onPlmTabClick);
       if (favCapEl) {
         favCapEl.removeEventListener("change", onFavCapChange);
       }
       if (capBandEl) {
         capBandEl.removeEventListener("change", onCapBandChange);
       }
+      if (allDetailsEl) {
+        allDetailsEl.removeEventListener("toggle", onAllDetailsToggle);
+      }
+      if (tabBodyEl) tabBodyEl.style.minHeight = "";
       if (plmTextUi) plmTextUi.destroy();
     }
     const finish = (payload) => {
@@ -3187,6 +5099,7 @@ function openPersonalLandmarkDialog(spec) {
     nameIn.addEventListener("keydown", onNameKeydown);
     dlg.showModal();
     requestAnimationFrame(() => {
+      plmSyncPersonalLandmarkDialogTabHeights(dlg);
       try {
         nameIn.focus({ preventScroll: true });
       } catch (err) {
@@ -3194,6 +5107,12 @@ function openPersonalLandmarkDialog(spec) {
       }
       nameIn.select();
     });
+    if (!dlg.dataset.tamPlmTabResizeWired) {
+      dlg.dataset.tamPlmTabResizeWired = "1";
+      window.addEventListener("resize", () => {
+        if (dlg.open) plmSyncPersonalLandmarkDialogTabHeights(dlg);
+      });
+    }
   });
 }
 
@@ -3231,7 +5150,11 @@ loadPersonalLandmarksFromStorage();
 if (plmSanitizeParentLinks()) {
   savePersonalLandmarksToStorage(true);
 }
+loadPersonalZonesFromStorage();
+plmMigrateAllZonesToIndependentList();
 plmSyncGroupsLayoutToZoom(true);
+plmInstallZoneSelectionHandlers();
+plmRedrawZonesLayer();
 
 let marker = L.marker([43.61, 3.88], {
   icon: navIcon,
