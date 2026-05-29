@@ -4076,6 +4076,9 @@ function updateMapNavigation(opt) {
   if (typeof plmNotifyAlongPathMeters === "function") {
     plmNotifyAlongPathMeters(d);
   }
+  if (typeof plmOnMissionPositionUpdate === "function") {
+    plmOnMissionPositionUpdate(d, pos[0], pos[1]);
+  }
 }
 
 function currentStopIndexForDistance(d) {
@@ -4216,6 +4219,40 @@ function speakProchainArret(nom, forTest) {
     u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
   } else {
     // Fallback: on laisse le moteur choisir la voix systeme.
+    u.lang = "fr-FR";
+  }
+  u.rate = 0.92;
+  u.pitch = 1.0;
+  u.volume = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
+/** Annonce vocale franchissement bordure zone (réglage global zones). */
+function speakPlmZoneBorderCross(kind, zoneName) {
+  if (
+    typeof getPlmZoneVoiceAnnounceEnabled !== "function" ||
+    !getPlmZoneVoiceAnnounceEnabled()
+  ) {
+    return;
+  }
+  const label = String(zoneName ?? "").trim();
+  if (!label) return;
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  const voice = typeof resolveCurrentVoice === "function" ? resolveCurrentVoice() : null;
+  try {
+    window.speechSynthesis.cancel();
+  } catch (e) {
+    // ignore
+  }
+  const phrase =
+    kind === "exit"
+      ? `Vous sortez de la zone ${label}.`
+      : `Vous entrez dans la zone ${label}.`;
+  const u = new SpeechSynthesisUtterance(phrase);
+  if (voice) {
+    u.voice = voice;
+    u.lang = voice.lang && voice.lang.length ? voice.lang : "fr-FR";
+  } else {
     u.lang = "fr-FR";
   }
   u.rate = 0.92;
@@ -4427,6 +4464,13 @@ function resetMapForNewContext(kind) {
 
   try {
     currentPattern = null;
+  } catch (e) {
+    // ignore
+  }
+  try {
+    if (typeof plmResetZoneMissionTracking === "function") {
+      plmResetZoneMissionTracking();
+    }
   } catch (e) {
     // ignore
   }
@@ -7162,6 +7206,18 @@ function initVocalUI() {
     applyMapHeadingCapMode(false);
   } catch (e) {
     // ignore
+  }
+  const zoneVoiceEl = document.getElementById("appPlmZoneVoiceAnnounce");
+  if (
+    zoneVoiceEl &&
+    typeof plmSyncZoneVoiceAnnounceCheckboxes === "function"
+  ) {
+    plmSyncZoneVoiceAnnounceCheckboxes();
+    zoneVoiceEl.addEventListener("change", () => {
+      if (typeof setPlmZoneVoiceAnnounceEnabled === "function") {
+        setPlmZoneVoiceAnnounceEnabled(zoneVoiceEl.checked);
+      }
+    });
   }
   voiceModeEl.disabled = !voiceEnabledEl.checked;
   refreshVoiceSelect();
