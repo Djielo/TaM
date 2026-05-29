@@ -4430,6 +4430,7 @@ function resetMapForNewContext(kind) {
   } catch (e) {
     // ignore
   }
+  applyMapHeadingCapMode(false);
 
   // Masque explicitement le rail d’arrêts mission (sinon il peut rester affiché
   // jusqu’au prochain refresh lié à une mission).
@@ -4887,6 +4888,10 @@ async function setMission(pattern, opts) {
   stopToStopLayer.__tamSegIdx = -1;
 
   updateStopToStopOverlay();
+
+  if (!previewOnlyMode) {
+    applyMapHeadingCapMode(true);
+  }
 
   if (headingUpEl.checked) {
     updateMapNavigation({ centerCamera: true, zoom: 16 });
@@ -7133,6 +7138,18 @@ function saveMapPrefs() {
   }
 }
 
+/** Bascule Cap / Nord et répercute sur la carte, le HUD et les repères. */
+function applyMapHeadingCapMode(wantCap) {
+  const cap = !!wantCap;
+  if (headingUpEl.checked === cap) {
+    syncMapHudHeadingCheckboxFromMain();
+    syncMapRouteHudHeadingCheckboxFromMain();
+    return;
+  }
+  headingUpEl.checked = cap;
+  headingUpEl.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function initVocalUI() {
   try {
     const on = localStorage.getItem(LS_KEY_ENABLED);
@@ -7141,13 +7158,8 @@ function initVocalUI() {
     if (mode && ["depart", "mid", "both"].includes(mode)) {
       voiceModeEl.value = mode;
     }
-    const h = localStorage.getItem(LS_KEY_HEADING);
-    if (h === "0" || h === "false") {
-      headingUpEl.checked = false;
-    }
-    if (h === "1" || h === "true") {
-      headingUpEl.checked = true;
-    }
+    /* Carte de départ : toujours Nord ; le mode Cap est activé au lancement de ligne. */
+    applyMapHeadingCapMode(false);
   } catch (e) {
     // ignore
   }

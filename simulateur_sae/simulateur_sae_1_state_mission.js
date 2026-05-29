@@ -3736,14 +3736,18 @@ function plmScheduleLandmarkCapFilterRefresh() {
   });
 }
 
-function plmIsCapSideFilterActive() {
+function plmIsLiveMissionForLandmarkDisplay() {
   return (
-    !!headingUpEl?.checked &&
     !!currentPattern &&
     pathTotalMeters > 0 &&
     Array.isArray(activeCoordinates) &&
-    activeCoordinates.length >= 2
+    activeCoordinates.length >= 2 &&
+    !previewOnlyMode
   );
+}
+
+function plmIsCapSideFilterActive() {
+  return plmIsLiveMissionForLandmarkDisplay() && !!headingUpEl?.checked;
 }
 
 function plmProjectLandmarkForCapFilter(item) {
@@ -3776,8 +3780,11 @@ function plmIsGroupVisibleCapFilter(groupId) {
   return vis;
 }
 
-/** Masquage affichage (stockage inchangé) : mode Cap + à droite du tracé, proche du tracé. */
+/** Masquage affichage (stockage inchangé) : Nord sur mission = rien ; Cap = à droite du tracé, proche du tracé. */
 function plmIsLandmarkVisibleOnMap(item) {
+  if (plmIsLiveMissionForLandmarkDisplay() && !plmMapHeadingUpActive()) {
+    return false;
+  }
   if (!plmIsCapSideFilterActive()) return true;
   if (item.groupId) {
     return plmIsGroupVisibleCapFilter(item.groupId);
