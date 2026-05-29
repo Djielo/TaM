@@ -49,6 +49,8 @@ const PLM_DEFAULT_COLOR_LEGACY = "#c62828";
 const PLM_DUPLICATE_OFFSET_PX = 25;
 const LS_KEY_PLM_GROUPS = "tam_personal_landmark_groups_v1";
 const LS_KEY_PERSONAL_ZONES = "tam_personal_map_zones_v1";
+const LS_KEY_PLM_LANDMARKS_LAYER_VISIBLE = "tam_plm_landmarks_layer_visible_v1";
+const LS_KEY_PLM_ZONES_LAYER_VISIBLE = "tam_plm_zones_layer_visible_v1";
 const PLM_SLOT_SPACING_LAT = 0.00022;
 const PLM_SLOT_SPACING_LNG = 0.00032;
 const PLM_SLOT_MATCH_THRESHOLD = 8e-11;
@@ -1986,6 +1988,10 @@ function plmRedrawZonesLayer() {
   if (!personalZonesLayer) return;
   personalZonesLayer.clearLayers();
   plmClearZoneEditHandles();
+  if (!plmZonesLayerVisible) {
+    plmRefreshZoneLabels();
+    return;
+  }
   for (const row of personalZonesList) {
     const zone = plmZoneRowToPayload(row);
     if (!zone) continue;
@@ -2519,6 +2525,8 @@ const TAM_BACKUP_FILENAME = "tam_sauvegarde_simulateur.json";
 const TAM_BACKUP_ALL_KEYS = [
   LS_KEY_PERSONAL_LANDMARKS,
   LS_KEY_PERSONAL_ZONES,
+  LS_KEY_PLM_LANDMARKS_LAYER_VISIBLE,
+  LS_KEY_PLM_ZONES_LAYER_VISIBLE,
   LS_KEY_PLM_GROUPS,
   LS_KEY_PLM_ICON_RECENT,
   LS_KEY_PERSONAL_LANDMARK_FAVORITES_CAP,
@@ -3402,6 +3410,16 @@ function tamInstallBasemapToggleControl() {
       L.DomEvent.preventDefault(ev);
       setPlmLabelsVisible(!plmLabelsVisible);
     });
+    const aLmLayer = L.DomUtil.create("a", "tam-plm-visibility-toggle", wrap);
+    aLmLayer.href = "#";
+    aLmLayer.setAttribute("role", "button");
+    personalLandmarkLayerToggleEl = aLmLayer;
+    plmWireLayerOnOffToggle(aLmLayer, {
+      getVisible: () => plmLandmarksLayerVisible,
+      setVisible: setPlmLandmarksLayerVisible,
+      show: "Afficher les repères sur la carte",
+      hide: "Masquer les repères sur la carte",
+    });
     return wrap;
   };
   ctrlPlm.addTo(map);
@@ -3447,6 +3465,16 @@ function tamInstallBasemapToggleControl() {
       L.DomEvent.preventDefault(ev);
       setPlmZoneLabelsVisible(!plmZoneLabelsVisible);
     });
+    const aZoneLayer = L.DomUtil.create("a", "tam-plm-visibility-toggle", wrap);
+    aZoneLayer.href = "#";
+    aZoneLayer.setAttribute("role", "button");
+    personalZoneLayerToggleEl = aZoneLayer;
+    plmWireLayerOnOffToggle(aZoneLayer, {
+      getVisible: () => plmZonesLayerVisible,
+      setVisible: setPlmZonesLayerVisible,
+      show: "Afficher les zones sur la carte",
+      hide: "Masquer les zones sur la carte",
+    });
     return wrap;
   };
   ctrlZone.addTo(map);
@@ -3484,9 +3512,9 @@ const allStopsLayer = L.layerGroup().addTo(map);
 const skippedStopsLayer = L.layerGroup().addTo(map);
 const provisionalStopsLayer = L.layerGroup().addTo(map);
 /** Repères personnels (carrefours, points d’intérêt) — persistance locale. */
-const personalLandmarksLayer = L.layerGroup().addTo(map);
+const personalLandmarksLayer = L.layerGroup();
 /** Zones carte (cercle / rectangle), indépendantes des repères. */
-const personalZonesLayer = L.layerGroup().addTo(map);
+const personalZonesLayer = L.layerGroup();
 const personalLandmarkLabelsLayer = L.layerGroup();
 const personalZoneLabelsLayer = L.layerGroup();
 const PLM_ZONE_DEFAULT_WEIGHT = 3;
@@ -3499,6 +3527,10 @@ let plmSelectedZoneOwner = null;
 let plmZoneDialogDepth = 0;
 let personalZoneToolToggleEl = null;
 let personalZoneLabelsToggleEl = null;
+let personalLandmarkLayerToggleEl = null;
+let personalZoneLayerToggleEl = null;
+let plmLandmarksLayerVisible = false;
+let plmZonesLayerVisible = true;
 let plmZoneLabelsVisible = false;
 let plmZoneEditHandlesLayer = null;
 let plmContextMenuZoneId = null;
@@ -4165,11 +4197,123 @@ function plmScheduleMagneticRedraw() {
   });
 }
 
+function plmReadBoolPref(key, defaultVal) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === "1" || v === "true") return true;
+    if (v === "0" || v === "false") return false;
+  } catch (e) {
+    /* ignore */
+  }
+  return !!defaultVal;
+}
+
+function plmWriteBoolPref(key, val) {
+  try {
+    localStorage.setItem(key, val ? "1" : "0");
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function plmSyncLayerOnOffToggleUi(el, visible, showLabel, hideLabel) {
+  if (!el) return;
+  const on = !!visible;
+  el.textContent = on ? "On" : "Off";
+  el.classList.toggle("is-on", on);
+  el.classList.toggle("is-off", !on);
+  el.title = on ? hideLabel : showLabel;
+  el.setAttribute("aria-label", on ? hideLabel : showLabel);
+  el.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+function plmWireLayerOnOffToggle(el, spec) {
+  const sync = () => {
+    plmSyncLayerOnOffToggleUi(
+      el,
+      spec.getVisible(),
+      spec.show,
+      spec.hide,
+    );
+  };
+  L.DomEvent.on(el, "click", (ev) => {
+    L.DomEvent.preventDefault(ev);
+    spec.setVisible(!spec.getVisible());
+    sync();
+  });
+  sync();
+}
+
+function syncPlmLandmarksLayerToggleUi() {
+  plmSyncLayerOnOffToggleUi(
+    personalLandmarkLayerToggleEl,
+    plmLandmarksLayerVisible,
+    "Afficher les repères sur la carte",
+    "Masquer les repères sur la carte",
+  );
+}
+
+function syncPlmZonesLayerToggleUi() {
+  plmSyncLayerOnOffToggleUi(
+    personalZoneLayerToggleEl,
+    plmZonesLayerVisible,
+    "Afficher les zones sur la carte",
+    "Masquer les zones sur la carte",
+  );
+}
+
+function setPlmLandmarksLayerVisible(on) {
+  plmLandmarksLayerVisible = !!on;
+  plmWriteBoolPref(LS_KEY_PLM_LANDMARKS_LAYER_VISIBLE, plmLandmarksLayerVisible);
+  if (plmLandmarksLayerVisible) {
+    if (!map.hasLayer(personalLandmarksLayer)) {
+      personalLandmarksLayer.addTo(map);
+    }
+    redrawPersonalLandmarksLayer();
+  } else {
+    personalLandmarksLayer.clearLayers();
+    plmMarkerById = new Map();
+    if (map.hasLayer(personalLandmarksLayer)) {
+      map.removeLayer(personalLandmarksLayer);
+    }
+    setPersonalLandmarkPlacementActive(false);
+  }
+  syncPlmLandmarksLayerToggleUi();
+}
+
+function setPlmZonesLayerVisible(on) {
+  plmZonesLayerVisible = !!on;
+  plmWriteBoolPref(LS_KEY_PLM_ZONES_LAYER_VISIBLE, plmZonesLayerVisible);
+  if (plmZonesLayerVisible) {
+    if (!map.hasLayer(personalZonesLayer)) {
+      personalZonesLayer.addTo(map);
+    }
+    plmRedrawZonesLayer();
+  } else {
+    plmClearZoneSelection();
+    plmClearZoneEditHandles();
+    personalZonesLayer.clearLayers();
+    if (map.hasLayer(personalZonesLayer)) {
+      map.removeLayer(personalZonesLayer);
+    }
+    plmRefreshZoneLabels();
+  }
+  syncPlmZonesLayerToggleUi();
+}
+
+function plmApplyMapLayersVisibilityFromPrefs() {
+  setPlmLandmarksLayerVisible(
+    plmReadBoolPref(LS_KEY_PLM_LANDMARKS_LAYER_VISIBLE, false),
+  );
+  setPlmZonesLayerVisible(plmReadBoolPref(LS_KEY_PLM_ZONES_LAYER_VISIBLE, true));
+}
+
 function redrawPersonalLandmarksLayer() {
   personalLandmarksLayer.clearLayers();
   plmMarkerById = new Map();
   plmGroupDragSnapshot = null;
   plmGroupCapFilterCache.clear();
+  if (!plmLandmarksLayerVisible) return;
   for (const item of personalLandmarksList) {
     if (!plmIsValidPlmLatLng(item.lat, item.lng)) {
       continue;
@@ -5154,7 +5298,7 @@ loadPersonalZonesFromStorage();
 plmMigrateAllZonesToIndependentList();
 plmSyncGroupsLayoutToZoom(true);
 plmInstallZoneSelectionHandlers();
-plmRedrawZonesLayer();
+plmApplyMapLayersVisibilityFromPrefs();
 
 let marker = L.marker([43.61, 3.88], {
   icon: navIcon,
