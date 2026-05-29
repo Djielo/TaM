@@ -12,6 +12,9 @@ Thumbs.db
 # Cursor — règles et config locales d’équipe (non versionnées)
 .cursor/
 
+# Supabase cloud (clés publishable + URL du projet)
+simulateur_sae/tam_cloud_config.js
+
 # Procédures d’usage personnel (garder uniquement en local)
 PROCEDURE_GPS_AUTONOME.txt
 PROCEDURE_TELEPHONE_ADB.txt

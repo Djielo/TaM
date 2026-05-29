@@ -3009,6 +3009,44 @@
                 aria-hidden="true"
               />
             </div>
+            <div
+              id="tamCloudSection"
+              class="header-gear-popover__section"
+              hidden
+            >
+              <p class="header-gear-popover__title">Cloud partagé</p>
+              <p
+                id="tamCloudStatusNote"
+                class="header-gear-popover__note"
+                style="margin-top: 0; margin-bottom: 8px"
+              ></p>
+              <div class="tam-plm-backup-row">
+                <button
+                  type="button"
+                  id="tamCloudPullBtn"
+                  class="tam-plm-backup-btn"
+                >
+                  Récupérer depuis le cloud
+                </button>
+              </div>
+              <div class="tam-plm-backup-row">
+                <button
+                  type="button"
+                  id="tamCloudMasterLoginBtn"
+                  class="tam-plm-backup-btn"
+                >
+                  Connexion maître
+                </button>
+                <button
+                  type="button"
+                  id="tamCloudMasterLogoutBtn"
+                  class="tam-plm-backup-btn"
+                  hidden
+                >
+                  Déconnexion maître
+                </button>
+              </div>
+            </div>
             <div class="header-gear-popover__section">
               <p class="header-gear-popover__title">Audio</p>
               <div class="header-gear-popover__row">
@@ -4013,6 +4051,64 @@
     </div>
 
     <dialog
+      id="tamCloudMasterLoginDialog"
+      class="app-prompt-dialog"
+      aria-labelledby="tamCloudMasterLoginTitle"
+    >
+      <div class="app-message-dialog__inner">
+        <h2 id="tamCloudMasterLoginTitle" class="app-message-dialog__title">
+          Connexion maître (cloud)
+        </h2>
+        <p class="app-message-dialog__body" style="margin-bottom: 12px">
+          Compte créé dans Supabase (Authentication). Sert uniquement à publier
+          vos données vers le cloud.
+        </p>
+        <form id="tamCloudMasterLoginForm">
+          <label for="tamCloudMasterEmail" style="display: block; margin-bottom: 4px"
+            >E-mail</label
+          >
+          <input
+            id="tamCloudMasterEmail"
+            class="app-prompt-dialog__input"
+            type="email"
+            name="email"
+            autocomplete="username"
+            required
+            style="margin-bottom: 10px"
+          />
+          <label
+            for="tamCloudMasterPassword"
+            style="display: block; margin-bottom: 4px"
+            >Mot de passe</label
+          >
+          <input
+            id="tamCloudMasterPassword"
+            class="app-prompt-dialog__input"
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            required
+            style="margin-bottom: 12px"
+          />
+          <div
+            class="app-message-dialog__actions app-message-dialog__actions--split"
+          >
+            <button
+              type="button"
+              id="tamCloudMasterLoginCancel"
+              class="secondary app-message-dialog__ok"
+            >
+              Annuler
+            </button>
+            <button type="submit" class="app-message-dialog__ok">
+              Se connecter
+            </button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog
       id="appMessageDialog"
       class="app-message-dialog"
       aria-labelledby="appMessageDialogTitle"
@@ -4832,10 +4928,13 @@
         });
       })();
     </script>
+    <script src="simulateur_sae/tam_cloud_config.example.js"></script>
+    <script src="simulateur_sae/tam_cloud_config.js"></script>
     <script src="simulateur_sae/simulateur_sae_0_personal_landmarks_catalog.js"></script>
     <script src="simulateur_sae/simulateur_sae_0_plm_structured_text.js"></script>
     <script src="simulateur_sae/simulateur_sae_1_state_mission.js"></script>
     <script src="simulateur_sae/simulateur_sae_2_deviations.js"></script>
+    <script src="simulateur_sae/simulateur_sae_4_cloud_supabase.js"></script>
     <script src="simulateur_sae/simulateur_sae_3_ui_simulation.js"></script>
   </body>
 </html>
