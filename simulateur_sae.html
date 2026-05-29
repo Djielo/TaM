@@ -444,6 +444,27 @@
         color: #4a5568;
         text-transform: lowercase;
       }
+      .tam-map-zone-mission-hud {
+        position: absolute;
+        top: calc(max(10px, env(safe-area-inset-top, 0px)) + 52px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1210;
+        max-width: min(92vw, 420px);
+        pointer-events: none;
+      }
+      .tam-map-zone-mission-hud__panel {
+        padding: 4px 14px 5px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(139, 37, 0, 0.35);
+        box-shadow: 0 2px 8px rgba(0, 40, 80, 0.1);
+        text-align: center;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.35;
+        color: #1b1f24;
+      }
       /* Même écart entre zoom+ / itinéraire / fond carte / repères (un peu moins que le défaut Leaflet 10px). */
       #map.leaflet-container
         .leaflet-top.leaflet-left
@@ -579,23 +600,66 @@
       }
       .app-personal-zone-dialog.app-message-dialog,
       .tam-plm-zone-dialog.app-message-dialog {
-        width: min(94vw, 380px);
-        max-width: min(94vw, 380px);
+        width: min(94vw, 520px);
+        max-width: min(94vw, 520px);
+        height: min(max-content, calc(100dvh - 4vh));
+        max-height: calc(100dvh - 4vh);
+        overflow: clip;
+      }
+      @supports not (overflow: clip) {
+        .app-personal-zone-dialog.app-message-dialog,
+        .tam-plm-zone-dialog.app-message-dialog {
+          overflow: hidden;
+        }
       }
       .tam-plm-zone-dialog .app-message-dialog__inner {
+        display: flex;
+        flex-direction: column;
+        height: min(max-content, calc(100dvh - 4vh));
+        max-height: calc(100dvh - 4vh);
         padding: 12px 14px 12px;
+        overflow: hidden;
+        box-sizing: border-box;
       }
       .tam-plm-zone-dialog .app-message-dialog__title {
+        flex: 0 0 auto;
         margin: 0 0 8px;
         font-size: 16px;
       }
       .tam-plm-zone-dialog .app-message-dialog__body {
+        flex: 1 1 auto;
+        min-height: 0;
+        min-width: 0;
         margin: 0 0 8px;
-        max-height: none;
         overflow: visible;
+        display: flex;
+        flex-direction: column;
         white-space: normal;
         line-height: 1.35;
         font-size: 13px;
+      }
+      .tam-plm-zone-dialog .app-prompt-dialog__input {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        margin: 0 0 8px;
+        padding: 8px 10px;
+        border: none;
+        border-radius: 8px;
+        background: #fff;
+        color: #1b1f24;
+        font-size: 14px;
+        font-family: inherit;
+        line-height: 1.35;
+        box-shadow: inset 0 0 0 1px #ccd3db;
+        outline: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tam-plm-zone-dialog .app-prompt-dialog__input:focus {
+        box-shadow: inset 0 0 0 2px #005ca9;
+      }
+      .tam-plm-zone-dialog .app-message-dialog__body > *:not(.tam-plm-struct-panel) {
+        flex: 0 0 auto;
       }
       .tam-plm-zone-dialog .app-personal-landmark-dialog__label,
       .tam-plm-zone-dialog
@@ -605,13 +669,14 @@
       .tam-plm-zone-dialog .app-personal-landmark-dialog__label:first-of-type {
         margin-top: 0;
       }
-      .tam-plm-zone-dialog .app-prompt-dialog__input {
-        margin: 0 0 8px;
-        padding: 6px 8px;
-      }
       .tam-plm-zone-dialog .tam-plm-struct-panel {
-        max-height: 160px;
+        flex: 1 1 auto;
+        min-height: 0;
         margin: 0 0 10px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
       }
       .tam-plm-zone-dialog .tam-plm-asm-btn {
         width: auto;
@@ -672,6 +737,7 @@
         color: #4a5568;
       }
       .tam-plm-zone-dialog .tam-plm-dialog-actions {
+        flex: 0 0 auto;
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px;
@@ -2956,6 +3022,16 @@
                 >
               </div>
               <div class="header-gear-popover__row">
+                <input
+                  type="checkbox"
+                  id="appPlmZoneVoiceAnnounce"
+                  title="Annonces vocales entrée et sortie de zones"
+                />
+                <label for="appPlmZoneVoiceAnnounce" style="font-weight: 600"
+                  >Annonces entrée et sortie de zones</label
+                >
+              </div>
+              <div class="header-gear-popover__row">
                 <label for="voiceMode" style="white-space: nowrap"
                   >Quand annoncer</label
                 >
@@ -3705,6 +3781,18 @@
               >
               <span class="tam-map-speed-hud__unit">km/h</span>
             </div>
+          </div>
+          <div
+            id="mapZoneMissionHud"
+            class="tam-map-zone-mission-hud"
+            hidden
+            aria-live="polite"
+            aria-label="Zone visible"
+          >
+            <div
+              id="mapZoneMissionHudPanel"
+              class="tam-map-zone-mission-hud__panel"
+            ></div>
           </div>
           <div class="tam-route-ui" id="tamRouteUi" aria-hidden="true">
             <div class="tam-route-ui__panel" id="tamRoutePanel">
@@ -4593,7 +4681,7 @@
             quadrilatère : 4 sommets libres ; ovale : poignées pour l’étirer.
           </p>
           <p>
-            <strong>Sauvegarde :</strong> toutes les données (repères,
+            <strong>Sauvegarde :</strong> toutes les données (repères, zones,
             déviations, réglages) sont sauvegardées automatiquement dans un
             fichier à chaque action validée. En cas de vidage du cache, utilisez
             le bouton <strong>⚙</strong> de la page principale pour restaurer
