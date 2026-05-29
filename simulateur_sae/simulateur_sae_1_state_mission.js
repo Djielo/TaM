@@ -242,17 +242,40 @@ function plmEscapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function plmMarkerScreenBoundsFromLatLng(lat, lng) {
+function plmMarkerScreenBoundsFromLatLng(lat, lng, anchorX, anchorY) {
   if (!map) {
     return { left: 0, top: 0, right: 0, bottom: 0 };
   }
+  const ax =
+    typeof anchorX === "number" ? anchorX : PLM_MARKER_ICON_ANCHOR_X;
+  const ay =
+    typeof anchorY === "number" ? anchorY : PLM_MARKER_ICON_ANCHOR_Y;
   const p = map.latLngToContainerPoint(L.latLng(lat, lng));
   return {
-    left: p.x - PLM_MARKER_ICON_ANCHOR_X,
-    top: p.y - PLM_MARKER_ICON_ANCHOR_Y,
-    right: p.x - PLM_MARKER_ICON_ANCHOR_X + PLM_MARKER_ICON_W,
-    bottom: p.y - PLM_MARKER_ICON_ANCHOR_Y + PLM_MARKER_ICON_H,
+    left: p.x - ax,
+    top: p.y - ay,
+    right: p.x - ax + PLM_MARKER_ICON_W,
+    bottom: p.y - ay + PLM_MARKER_ICON_H,
   };
+}
+
+/** Bounds écran d’un repère affiché (ancre centre en groupe, pied sinon). */
+function plmMarkerScreenBoundsForLandmark(item) {
+  if (!item || !map) {
+    return { left: 0, top: 0, right: 0, bottom: 0 };
+  }
+  const marker = plmMarkerById?.get(item.id);
+  const ll = marker ? marker.getLatLng() : null;
+  const lat = ll ? ll.lat : plmDisplayLatLngForLandmark(item).lat;
+  const lng = ll ? ll.lng : plmDisplayLatLngForLandmark(item).lng;
+  const inGroup = !!String(item.groupId ?? "").trim();
+  const ay = inGroup ? PLM_MARKER_ICON_H / 2 : PLM_MARKER_ICON_ANCHOR_Y;
+  return plmMarkerScreenBoundsFromLatLng(
+    lat,
+    lng,
+    PLM_MARKER_ICON_ANCHOR_X,
+    ay,
+  );
 }
 
 /** Point d’ancrage du libellé : sous le repère, aligné à gauche de l’icône. */
@@ -266,15 +289,14 @@ function plmLabelTopLeftLatLngBelowMarker(lat, lng) {
 
 /** Libellé de groupe : sous le repère le plus bas, aligné à gauche du groupe. */
 function plmGroupLabelTopLeftLatLng(groupId) {
-  const members = plmMembersOfGroup(groupId).filter((m) =>
-    plmIsValidPlmLatLng(m.lat, m.lng),
+  const members = plmMembersOfGroup(groupId).filter(
+    (m) => plmIsValidPlmLatLng(m.lat, m.lng) && plmIsLandmarkVisibleOnMap(m),
   );
   if (!members.length || !map) return null;
   let minLeft = Infinity;
   let maxBottom = -Infinity;
   for (const m of members) {
-    const d = plmDisplayLatLngForLandmark(m);
-    const b = plmMarkerScreenBoundsFromLatLng(d.lat, d.lng);
+    const b = plmMarkerScreenBoundsForLandmark(m);
     if (b.left < minLeft) minLeft = b.left;
     if (b.bottom > maxBottom) maxBottom = b.bottom;
   }
@@ -4840,6 +4862,7 @@ function redrawPersonalLandmarksLayer() {
           other.setLatLng([pos.lat + dLat, pos.lng + dLng]);
         }
       }
+      plmScheduleLabelsRefresh();
     });
     m.on("dragend", () => {
       plmSuppressLandmarkClickUntil = Date.now() + 450;
