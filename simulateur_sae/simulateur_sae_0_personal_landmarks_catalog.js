@@ -51,6 +51,11 @@
     { id: "tram", label: "Tramway", material: "tram" },
     { id: "bus", label: "Bus", material: "directions_bus" },
     {
+      id: "wifi-remote",
+      label: "Télécommande à la volée (Wi‑Fi)",
+      material: "wifi",
+    },
+    {
       id: "pedestrian",
       label: "Piéton / accès",
       material: "directions_walk",
