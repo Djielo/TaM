@@ -5,7 +5,7 @@
 (function tamCloudSupabaseModule() {
   const LS_AUTH = "tam_cloud_supabase_auth_v1";
   const LS_REMOTE_UPDATED = "tam_cloud_remote_updated_at";
-  const LS_READER_INTRO = "tam_cloud_reader_intro_v2";
+  const LS_READER_INTRO = "tam_cloud_reader_intro_v3";
   const CLOUD_ROW_ID = "main";
   const PUSH_DEBOUNCE_MS = 2000;
 
@@ -340,7 +340,7 @@
     }
     if (typeof tamAppAlert === "function") {
       tamAppAlert(
-        "Repères, zones et réglages partagés se mettent à jour automatiquement depuis le cloud (téléphone maître). Vous n’avez pas besoin de les recréer sur cet appareil. Si une zone ou un repère manque, vous pouvez toujours le signaler au maître : cela ne vous empêche pas de partager ce qu’il aurait pu oublier.",
+        "Repères, zones et réglages partagés se mettent à jour automatiquement depuis le cloud (téléphone maître). Vous n’avez pas besoin de les recréer sur cet appareil.\n\nSi une zone ou un repère manque, vous pouvez toujours le signaler aux développeurs : cela ne vous empêche pas de partager ce qu’ils auraient pu oublier.",
       );
     }
   }
