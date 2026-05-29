@@ -606,8 +606,30 @@
         margin-top: 0;
       }
       .tam-plm-zone-dialog .app-prompt-dialog__input {
-        margin: 0 0 4px;
+        margin: 0 0 8px;
         padding: 6px 8px;
+      }
+      .tam-plm-zone-dialog .tam-plm-struct-panel {
+        max-height: 160px;
+        margin: 0 0 10px;
+      }
+      .tam-plm-zone-dialog .tam-plm-asm-btn {
+        width: auto;
+        min-width: 1.65em;
+        flex: 0 0 auto;
+        padding: 2px 5px;
+        font-size: 11px;
+        font-weight: 700;
+        border: 1px solid #ccd3db;
+        border-radius: 6px;
+        background: #fff;
+        color: #005ca9;
+        cursor: pointer;
+        line-height: 1.2;
+      }
+      .tam-plm-zone-dialog .tam-plm-asm-btn:hover {
+        background: #e8f0fa;
+        border-color: #005ca9;
       }
       .tam-plm-zone-dialog .tam-plm-color-row {
         margin: 0 0 6px;
@@ -690,7 +712,6 @@
       }
       .tam-plm-zone-map-label__text {
         display: block;
-        width: 100%;
         font-size: inherit;
         font-weight: 700;
         line-height: inherit;
@@ -4239,7 +4260,7 @@
             <div
               id="appPersonalLandmarkDialogDescPanel"
               class="tam-plm-struct-panel"
-              aria-label="Vitesse, lignes INDES et zones M."
+              aria-label="Vitesse et lignes INDES."
             ></div>
             <textarea
               id="appPersonalLandmarkDialogDesc"
@@ -4296,6 +4317,11 @@
             autocomplete="off"
             spellcheck="true"
           />
+          <div
+            id="appPersonalZoneDialogNamePanel"
+            class="tam-plm-struct-panel"
+            aria-label="Nom : zones enregistrées"
+          ></div>
           <p
             class="app-personal-landmark-dialog__label tam-plm-pickers__section"
             id="appPersonalZoneDialogColorHeading"

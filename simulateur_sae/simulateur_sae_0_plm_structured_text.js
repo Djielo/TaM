@@ -1,5 +1,5 @@
 /**
- * Repères personnels : description structurée (V / L / ZM) et noms enregistrés.
+ * Repères personnels : description structurée (V / L) et noms enregistrés.
  * Chargé avant simulateur_sae_1_state_mission.js
  */
 (function () {
@@ -178,7 +178,16 @@
   }
 
   function emptyDescState() {
-    return { v: null, lines: {}, zm: null };
+    return { v: null, lines: {} };
+  }
+
+  /** Retire les lignes ZM: héritées (zones gérées dans la modale zone). */
+  function stripStructuredZmLines(text) {
+    return String(text ?? "")
+      .split(/\r?\n/)
+      .filter((line) => !/^ZM\s*:/i.test(line.trim()))
+      .join("\n")
+      .trim();
   }
 
   function parseDescription(text) {
@@ -192,7 +201,6 @@
         continue;
       }
       if (/^ZM\s*:/i.test(line)) {
-        state.zm = line.replace(/^ZM\s*:/i, "").trim() || null;
         continue;
       }
       if (/^L\s*:/i.test(line)) {
@@ -224,7 +232,6 @@
       })
       .map((n) => `${n}-${state.lines[n]}`);
     if (lineParts.length) out.push(`L: ${lineParts.join(", ")}`);
-    if (state.zm) out.push(`ZM: ${state.zm}`);
     return out.join("\n");
   }
 
@@ -660,32 +667,6 @@
       }
       descPanel.appendChild(secL);
 
-      const secZ = document.createElement("section");
-      secZ.className = "tam-plm-struct-section";
-      secZ.appendChild(
-        sectionHead("Zones M :", {
-          a: addZone,
-          s: delZone,
-          m: modZone,
-          d: dupZone,
-        }),
-      );
-      const boxZ = document.createElement("div");
-      boxZ.className = "tam-plm-struct-box tam-plm-struct-box--chips";
-      renderRadioGroup({
-        container: boxZ,
-        groupName: "plm-zm",
-        items: config.zones,
-        selected: descState.zm,
-        onSelect: (item) => {
-          clearLegacyDesc();
-          descState.zm = item || null;
-          syncDescField();
-        },
-      });
-      secZ.appendChild(boxZ);
-      descPanel.appendChild(secZ);
-
       syncDescField();
     }
 
@@ -885,75 +866,6 @@
       renderDescPanel();
     }
 
-    async function addZone() {
-      const raw = await promptFn(
-        "Zones à ajouter (séparées par des virgules) :",
-        "",
-      );
-      if (raw == null) return;
-      const batch = splitBatchInput(raw);
-      if (!batch.length) return;
-      config.zones = sortAlpha([
-        ...new Set(
-          [...config.zones, ...batch].map((z) => plmNormalizeZoneLabel(z)),
-        ),
-      ]);
-      saveConfig(config);
-      renderDescPanel();
-    }
-
-    async function dupZone() {
-      if (!descState.zm) {
-        alertFn(MSG_COCHER);
-        return;
-      }
-      const src = descState.zm;
-      const newV = await promptFn("Libellé du doublon :", src);
-      if (newV == null || !String(newV).trim()) return;
-      const newT = plmNormalizeZoneLabel(newV);
-      config.zones = sortAlpha([...new Set([...config.zones, newT])]);
-      descState.zm = newT;
-      saveConfig(config);
-      renderDescPanel();
-    }
-
-    async function delZone() {
-      if (!config.zones.length) return;
-      if (!descState.zm) {
-        alertFn(MSG_COCHER);
-        return;
-      }
-      const t = descState.zm;
-      if (!(await confirmEffacer(t))) return;
-      config.zones = config.zones.filter((x) => x !== t);
-      descState.zm = null;
-      saveConfig(config);
-      renderDescPanel();
-    }
-
-    async function modZone() {
-      if (!config.zones.length) return;
-      if (!descState.zm) {
-        alertFn(MSG_COCHER);
-        return;
-      }
-      const oldT = descState.zm;
-      if (!(await confirmModifier(oldT))) return;
-      const newV = await promptFn("Nouveau nom :", oldT);
-      if (newV == null || !String(newV).trim()) return;
-      const newT = plmNormalizeZoneLabel(newV);
-      config.zones = sortAlpha(
-        config.zones.map((x) => (x === oldT ? newT : x)),
-      );
-      descState.zm = newT;
-      saveConfig(config);
-      renderDescPanel();
-    }
-
-    function migrateZoneLabelsInState() {
-      if (descState.zm === "Moulares") descState.zm = "Moularès";
-    }
-
     nameEl.addEventListener("input", onNameInput);
 
     return {
@@ -964,9 +876,8 @@
         } else namePick = { kind: "manual" };
         nameEl.value = n;
         legacyDescRaw = null;
-        const raw = String(description ?? "").trim();
+        const raw = stripStructuredZmLines(String(description ?? "").trim());
         descState = parseDescription(raw);
-        migrateZoneLabelsInState();
         if (raw && !formatDescription(descState)) {
           legacyDescRaw = raw;
           descEl.value = raw;
@@ -995,7 +906,229 @@
     };
   }
 
+  /**
+   * Cases à cocher « Zones M » pour la modale zone (liste partagée avec la config locale).
+   * @param {{
+   *   nameEl: HTMLInputElement,
+   *   panelEl: HTMLElement,
+   *   prompt?: (message: string, defaultValue?: string) => Promise<string|null>,
+   *   confirm?: (message: string) => Promise<boolean>,
+   *   alert?: (message: string) => void,
+   * }} opts
+   */
+  function createZoneNamePickerUi(opts) {
+    const nameEl = opts.nameEl;
+    const panelEl = opts.panelEl;
+    const promptFn =
+      opts.prompt ||
+      (async (msg, def) => {
+        const v = window.prompt(msg, def ?? "");
+        return v == null ? null : v;
+      });
+    const confirmFn = opts.confirm || (async (msg) => window.confirm(msg));
+    const alertFn =
+      opts.alert ||
+      ((msg) => {
+        window.alert(msg);
+      });
+
+    const MSG_COCHER =
+      "Cochez l’élément concerné, puis utilisez S, M ou D.";
+
+    async function confirmEffacer(label) {
+      return confirmFn(`Êtes-vous sûr de vouloir effacer « ${label} » ?`);
+    }
+
+    async function confirmModifier(label) {
+      return confirmFn(`Êtes-vous sûr de vouloir modifier « ${label} » ?`);
+    }
+
+    let config = loadConfig();
+    let zonePick = null;
+
+    function syncNameFromPick() {
+      if (zonePick) nameEl.value = zonePick;
+    }
+
+    function onNameInput() {
+      const v = plmNormalizeZoneLabel(nameEl.value);
+      zonePick = config.zones.includes(v) ? v : null;
+      renderPanel();
+    }
+
+    function asmTools(handlers) {
+      const tools = document.createElement("div");
+      tools.className = "tam-plm-struct-tools tam-plm-struct-tools--asm";
+      const mk = (letter, fn, title) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "tam-plm-asm-btn";
+        b.textContent = letter;
+        b.title = title;
+        b.setAttribute("aria-label", title);
+        b.addEventListener("click", () => void fn());
+        return b;
+      };
+      tools.append(
+        mk("A", handlers.a, "Ajouter"),
+        mk("S", handlers.s, "Supprimer"),
+        mk("M", handlers.m, "Modifier"),
+        mk("D", handlers.d, "Dupliquer"),
+      );
+      return tools;
+    }
+
+    function sectionHead(title, handlers) {
+      const head = document.createElement("div");
+      head.className = "tam-plm-struct-section__head";
+      const titleEl = document.createElement("span");
+      titleEl.className = "tam-plm-struct-section__title";
+      titleEl.textContent = title;
+      head.appendChild(titleEl);
+      head.appendChild(asmTools(handlers));
+      return head;
+    }
+
+    function renderChipCheckbox(container, { id, groupName, labelText, checked, onChange }) {
+      const row = document.createElement("div");
+      row.className = "tam-plm-struct-chip";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      if (groupName) cb.name = groupName;
+      cb.id = id;
+      cb.checked = !!checked;
+      cb.addEventListener("change", () => onChange(cb));
+      const lbl = document.createElement("label");
+      lbl.htmlFor = id;
+      lbl.textContent = labelText;
+      row.append(cb, lbl);
+      container.appendChild(row);
+    }
+
+    function renderPanel() {
+      panelEl.innerHTML = "";
+      panelEl.appendChild(
+        sectionHead("Zones M :", {
+          a: addZone,
+          s: delZone,
+          m: modZone,
+          d: dupZone,
+        }),
+      );
+      const boxZ = document.createElement("div");
+      boxZ.className = "tam-plm-struct-box tam-plm-struct-box--chips";
+      for (const item of config.zones) {
+        const labelText = String(item);
+        const id = `plm-zone-name-${labelText.replace(/\W/g, "_")}`;
+        renderChipCheckbox(boxZ, {
+          id,
+          groupName: "plm-zone-name",
+          labelText,
+          checked: zonePick === item,
+          onChange: (cb) => {
+            if (cb.checked) {
+              zonePick = item;
+              syncNameFromPick();
+            } else if (zonePick === item) {
+              zonePick = null;
+              nameEl.value = "";
+            }
+            renderPanel();
+          },
+        });
+      }
+      panelEl.appendChild(boxZ);
+    }
+
+    async function addZone() {
+      const raw = await promptFn(
+        "Zones à ajouter (séparées par des virgules) :",
+        "",
+      );
+      if (raw == null) return;
+      const batch = splitBatchInput(raw);
+      if (!batch.length) return;
+      config.zones = sortAlpha([
+        ...new Set(
+          [...config.zones, ...batch].map((z) => plmNormalizeZoneLabel(z)),
+        ),
+      ]);
+      saveConfig(config);
+      renderPanel();
+    }
+
+    async function dupZone() {
+      if (!zonePick) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const src = zonePick;
+      const newV = await promptFn("Libellé du doublon :", src);
+      if (newV == null || !String(newV).trim()) return;
+      const newT = plmNormalizeZoneLabel(newV);
+      config.zones = sortAlpha([...new Set([...config.zones, newT])]);
+      zonePick = newT;
+      syncNameFromPick();
+      saveConfig(config);
+      renderPanel();
+    }
+
+    async function delZone() {
+      if (!config.zones.length) return;
+      if (!zonePick) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const t = zonePick;
+      if (!(await confirmEffacer(t))) return;
+      config.zones = config.zones.filter((x) => x !== t);
+      zonePick = null;
+      nameEl.value = "";
+      saveConfig(config);
+      renderPanel();
+    }
+
+    async function modZone() {
+      if (!config.zones.length) return;
+      if (!zonePick) {
+        alertFn(MSG_COCHER);
+        return;
+      }
+      const oldT = zonePick;
+      if (!(await confirmModifier(oldT))) return;
+      const newV = await promptFn("Nouveau nom :", oldT);
+      if (newV == null || !String(newV).trim()) return;
+      const newT = plmNormalizeZoneLabel(newV);
+      config.zones = sortAlpha(
+        config.zones.map((x) => (x === oldT ? newT : x)),
+      );
+      zonePick = newT;
+      syncNameFromPick();
+      saveConfig(config);
+      renderPanel();
+    }
+
+    nameEl.addEventListener("input", onNameInput);
+
+    return {
+      setInitial(name) {
+        const n = plmNormalizeZoneLabel(name);
+        nameEl.value = n;
+        zonePick = config.zones.includes(n) ? n : null;
+        renderPanel();
+      },
+      flush() {
+        if (zonePick) nameEl.value = zonePick;
+      },
+      destroy() {
+        nameEl.removeEventListener("input", onNameInput);
+        panelEl.innerHTML = "";
+      },
+    };
+  }
+
   window.plmParseStructuredDescription = parseDescription;
   window.plmFormatStructuredDescription = formatDescription;
   window.plmCreateStructuredTextUi = createStructuredTextUi;
+  window.plmCreateZoneNamePickerUi = createZoneNamePickerUi;
 })();
