@@ -66,6 +66,24 @@ const PLM_LABEL_GAP_BELOW_PX = 4;
 const PLM_ZONE_LABEL_GAP_ABOVE_PX = 6;
 const PLM_ZONE_LABEL_MIN_WIDTH_PX = 56;
 const PLM_ZONE_LABEL_MAX_WIDTH_PX = 420;
+const PLM_ZONE_LABEL_BAR_PAD_X_PX = 16;
+const PLM_ZONE_LABEL_BAR_BORDER_PX = 2;
+const PLM_ZONE_LABEL_FONT = "700 12px Arial, sans-serif";
+let plmZoneLabelMeasureCtx = null;
+
+function plmMeasureZoneLabelBarWidthPx(name) {
+  const text = String(name ?? "").trim();
+  if (!text) return PLM_ZONE_LABEL_MIN_WIDTH_PX;
+  if (!plmZoneLabelMeasureCtx) {
+    plmZoneLabelMeasureCtx = document.createElement("canvas").getContext("2d");
+  }
+  plmZoneLabelMeasureCtx.font = PLM_ZONE_LABEL_FONT;
+  const textW = plmZoneLabelMeasureCtx.measureText(text).width;
+  const raw = Math.ceil(
+    textW + PLM_ZONE_LABEL_BAR_PAD_X_PX + PLM_ZONE_LABEL_BAR_BORDER_PX,
+  );
+  return Math.min(PLM_ZONE_LABEL_MAX_WIDTH_PX, Math.max(1, raw));
+}
 const PLM_SLOT_DELTA = {
   n: [PLM_SLOT_SPACING_LAT, 0],
   ne: [PLM_SLOT_SPACING_LAT, PLM_SLOT_SPACING_LNG],
@@ -1319,8 +1337,8 @@ function plmZoneEllipseRingLatLngs(z, segments = 64) {
   return pts;
 }
 
-/** Cadre écran de la zone + point d’ancrage sous la barre de nom (au-dessus du contour). */
-function plmZoneLabelLayout(zone) {
+/** Point d’ancrage au-dessus de la zone ; largeur du cadre = longueur du nom (écran). */
+function plmZoneLabelLayout(zone, name) {
   if (!map || !zone) return null;
   const pts = plmZoneLatLngsFromShape(zone);
   if (!pts.length) return null;
@@ -1334,10 +1352,7 @@ function plmZoneLabelLayout(zone) {
     minY = Math.min(minY, p.y);
   }
   if (!Number.isFinite(minX)) return null;
-  const widthPx = Math.min(
-    PLM_ZONE_LABEL_MAX_WIDTH_PX,
-    Math.max(PLM_ZONE_LABEL_MIN_WIDTH_PX, maxX - minX),
-  );
+  const widthPx = plmMeasureZoneLabelBarWidthPx(name);
   const centerX = (minX + maxX) / 2;
   const anchorY = minY - PLM_ZONE_LABEL_GAP_ABOVE_PX;
   const anchorLatLng = map.containerPointToLatLng(L.point(centerX, anchorY));
@@ -4462,6 +4477,7 @@ function setPlmLandmarksLayerVisible(on) {
     }
     redrawPersonalLandmarksLayer();
   } else {
+    setPlmLabelsVisible(false);
     personalLandmarksLayer.clearLayers();
     plmMarkerById = new Map();
     if (map.hasLayer(personalLandmarksLayer)) {
@@ -4481,13 +4497,13 @@ function setPlmZonesLayerVisible(on) {
     }
     plmRedrawZonesLayer();
   } else {
+    setPlmZoneLabelsVisible(false);
     plmClearZoneSelection();
     plmClearZoneEditHandles();
     personalZonesLayer.clearLayers();
     if (map.hasLayer(personalZonesLayer)) {
       map.removeLayer(personalZonesLayer);
     }
-    plmRefreshZoneLabels();
   }
   syncPlmZonesLayerToggleUi();
 }
@@ -4646,7 +4662,7 @@ function plmScheduleLabelsRefresh() {
 }
 
 function plmRefreshLabelsLayer() {
-  if (!plmLabelsVisible) return;
+  if (!plmLabelsVisible || !plmLandmarksLayerVisible) return;
   personalLandmarkLabelsLayer.clearLayers();
   plmGroupCapFilterCache.clear();
   const labeledGroups = new Set();
@@ -4695,7 +4711,9 @@ function syncPlmLabelsToggleUi() {
 }
 
 function setPlmLabelsVisible(on) {
-  plmLabelsVisible = !!on;
+  const want = !!on;
+  if (want && !plmLandmarksLayerVisible) return;
+  plmLabelsVisible = want;
   if (plmLabelsVisible) {
     if (!map.hasLayer(personalLandmarkLabelsLayer)) {
       personalLandmarkLabelsLayer.addTo(map);
@@ -4712,13 +4730,13 @@ function setPlmLabelsVisible(on) {
 function plmRefreshZoneLabels() {
   if (!personalZoneLabelsLayer) return;
   personalZoneLabelsLayer.clearLayers();
-  if (!plmZoneLabelsVisible) return;
+  if (!plmZoneLabelsVisible || !plmZonesLayerVisible) return;
   for (const row of personalZonesList) {
     const name = String(row.name ?? "").trim();
     if (!name) continue;
     const zone = plmZoneRowToPayload(row);
     if (!zone) continue;
-    const layout = plmZoneLabelLayout(zone);
+    const layout = plmZoneLabelLayout(zone, name);
     if (!layout) continue;
     L.marker([layout.anchorLatLng.lat, layout.anchorLatLng.lng], {
       icon: plmCreateZoneMapLabelIcon(name, layout.widthPx, zone.strokeColor),
@@ -4746,7 +4764,9 @@ function syncPlmZoneLabelsToggleUi() {
 }
 
 function setPlmZoneLabelsVisible(on) {
-  plmZoneLabelsVisible = !!on;
+  const want = !!on;
+  if (want && !plmZonesLayerVisible) return;
+  plmZoneLabelsVisible = want;
   if (plmZoneLabelsVisible) {
     if (!map.hasLayer(personalZoneLabelsLayer)) {
       personalZoneLabelsLayer.addTo(map);
@@ -4806,6 +4826,7 @@ function openPersonalZoneDialog(spec) {
     plmCloseZoneContextMenu();
     const titleEl = document.getElementById("appPersonalZoneDialogTitle");
     const nameIn = document.getElementById("appPersonalZoneDialogName");
+    const namePanel = document.getElementById("appPersonalZoneDialogNamePanel");
     const colorsEl = document.getElementById("appPersonalZoneDialogColors");
     const weightEl = document.getElementById("appPersonalZoneDialogWeight");
     const weightValEl = document.getElementById("appPersonalZoneDialogWeightVal");
@@ -4816,6 +4837,7 @@ function openPersonalZoneDialog(spec) {
     if (
       !titleEl ||
       !nameIn ||
+      !namePanel ||
       !colorsEl ||
       !weightEl ||
       !weightValEl ||
@@ -4848,6 +4870,19 @@ function openPersonalZoneDialog(spec) {
     let plmDialogCloseSuspended = false;
     nameIn.value =
       existingRow && existingRow.name != null ? String(existingRow.name) : "";
+    let plmZoneNameUi = null;
+    if (typeof window.plmCreateZoneNamePickerUi === "function") {
+      plmZoneNameUi = window.plmCreateZoneNamePickerUi({
+        nameEl: nameIn,
+        panelEl: namePanel,
+        prompt: (message, defaultValue) =>
+          showAppPromptDialog(TAM_APP_DIALOG_TITLE, message, defaultValue ?? ""),
+        confirm: (message) =>
+          showAppConfirmDialog(TAM_APP_DIALOG_TITLE, message),
+        alert: (message) => tamAppAlert(message),
+      });
+      plmZoneNameUi.setInitial(nameIn.value);
+    }
     titleEl.textContent =
       mode === "edit" ? "Modifier la zone" : "Nouvelle zone";
 
@@ -4976,6 +5011,7 @@ function openPersonalZoneDialog(spec) {
       )) {
         inp.removeEventListener("change", onShapeChange);
       }
+      if (plmZoneNameUi) plmZoneNameUi.destroy();
     }
 
     const finish = (payload) => {
@@ -5014,6 +5050,7 @@ function openPersonalZoneDialog(spec) {
         tamAppAlert("Tracez d’abord la zone sur la carte.");
         return;
       }
+      if (plmZoneNameUi) plmZoneNameUi.flush();
       const payload = plmZonePayloadForSave();
       if (!payload) return;
       const zoneName = String(nameIn.value || "").trim();
