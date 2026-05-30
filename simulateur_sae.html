@@ -926,6 +926,25 @@
         background: #005ca9;
         box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
       }
+      .tam-plm-rotation-handle {
+        width: 30px;
+        height: 30px;
+        margin: -15px 0 0 -15px;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: #005ca9;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 26px;
+        text-align: center;
+        cursor: grab;
+        user-select: none;
+      }
+      .tam-plm-rotation-handle:active {
+        cursor: grabbing;
+      }
       .tam-plm-zone-intro {
         margin: 0 0 8px;
         font-size: 12px;
@@ -4667,6 +4686,14 @@
         hidden
       >
         Détacher du groupe
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item"
+        data-plm-ctx="rotate-landmark"
+        role="menuitem"
+      >
+        Rotation…
       </button>
       <button
         type="button"
