@@ -60,6 +60,8 @@ const PLM_SLOT_MATCH_THRESHOLD = 8e-11;
 const PLM_MAP_MAX_ZOOM = 19;
 const PLM_MAGNETIC_ZOOM_FROM_MAX = 2;
 const PLM_MAGNETIC_SPACING_PX = 30;
+/** Seuil d’aimantation à la pose / au drag : moitié de la taille repère (30 px). */
+const PLM_PLACEMENT_SNAP_THRESHOLD_PX = PLM_MAGNETIC_SPACING_PX / 2;
 const PLM_MARKER_ICON_W = 30;
 const PLM_MARKER_ICON_H = 30;
 const PLM_MARKER_ICON_ANCHOR_X = 15;
@@ -145,6 +147,9 @@ let plmMarkerById = new Map();
 let plmGroupDragSnapshot = null;
 let plmZoomLayoutRaf = 0;
 let plmLabelsLayoutRaf = 0;
+let plmRotationSession = null;
+let plmRotationHandleMarker = null;
+let plmRotationLayer = null;
 
 function plmNewLandmarkId() {
   return `plm_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -638,6 +643,288 @@ function plmRenderSlotGrid(container, centerLat, centerLng, groupId, landmarkId)
     Object.keys(slotActive).filter((k) => slotActive[k]);
 }
 
+function plmLandmarkScreenPoint(item) {
+  const disp = plmDisplayLatLngForLandmark(item);
+  if (!map || !plmIsValidPlmLatLng(disp.lat, disp.lng)) return null;
+  return map.latLngToContainerPoint(L.latLng(disp.lat, disp.lng));
+}
+
+function plmIsScreenPointOccupiedByLandmark(p, excludeIds) {
+  const tol = PLM_PLACEMENT_SNAP_THRESHOLD_PX;
+  for (const item of personalLandmarksList) {
+    if (excludeIds?.has(item.id)) continue;
+    const p0 = plmLandmarkScreenPoint(item);
+    if (!p0) continue;
+    if (Math.hypot(p.x - p0.x, p.y - p0.y) <= tol) return true;
+  }
+  return false;
+}
+
+function plmIsSoloLandmarkItem(item) {
+  return !!item && !String(item.groupId ?? "").trim();
+}
+
+function plmSnapDirectionFromPixelDelta(dx, dy) {
+  const adx = Math.abs(dx);
+  const ady = Math.abs(dy);
+  if (adx < PLM_MAGNETIC_SPACING_PX * 0.2 && ady < PLM_MAGNETIC_SPACING_PX * 0.2) {
+    return { qx: 0, qy: 0 };
+  }
+  if (adx >= ady * 0.55 && ady >= adx * 0.55) {
+    return { qx: dx > 0 ? 1 : -1, qy: dy > 0 ? 1 : -1 };
+  }
+  if (adx >= ady) {
+    return { qx: dx > 0 ? 1 : -1, qy: 0 };
+  }
+  return { qx: 0, qy: dy > 0 ? 1 : -1 };
+}
+
+function plmLandmarkIconBearingForAlign(item) {
+  if (!item) return 0;
+  if (plmLandmarkHasIconBearing(item)) {
+    return plmNormalizeBearingDeg(Number(item.iconBearingDeg));
+  }
+  return plmCaptureLandmarkIconBearingDeg();
+}
+
+/** À l’aimantation : reprendre la rotation du repère voisin (icône « droite » sur l’écran). */
+function plmApplySnapAlignBearingToAnchor(row, anchorLandmarkId) {
+  if (!row || !anchorLandmarkId) return row;
+  const anchor = personalLandmarksList.find((x) => x.id === anchorLandmarkId);
+  if (!anchor) return row;
+  return {
+    ...row,
+    iconBearingDeg: plmLandmarkIconBearingForAlign(anchor),
+  };
+}
+
+/**
+ * Repères individuels : si la pose est proche d’une case voisine (grille 30 px),
+ * aimanter bord à bord sans créer de groupe (8 directions, chaînage illimité).
+ */
+function plmSnapLandmarkLatLngNearNeighbors(lat, lng, excludeId) {
+  if (!map || !plmIsValidPlmLatLng(lat, lng)) {
+    return { lat, lng, snapped: false, anchorLandmarkId: null };
+  }
+  const spacing = PLM_MAGNETIC_SPACING_PX;
+  const pClick = map.latLngToContainerPoint(L.latLng(lat, lng));
+  const excludeIds = new Set();
+  if (excludeId) excludeIds.add(excludeId);
+  const dirs = [
+    [0, -1],
+    [1, -1],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [-1, 1],
+    [-1, 0],
+    [-1, -1],
+  ];
+
+  const trySnapPoint = (pSnap) => {
+    const dist = Math.hypot(pClick.x - pSnap.x, pClick.y - pSnap.y);
+    if (dist > PLM_PLACEMENT_SNAP_THRESHOLD_PX) return null;
+    if (plmIsScreenPointOccupiedByLandmark(pSnap, excludeIds)) return null;
+    return { dist, ll: map.containerPointToLatLng(pSnap) };
+  };
+
+  let nearest = null;
+  let nearestDist = spacing * 1.75 + 1;
+  for (const item of personalLandmarksList) {
+    if (excludeId && item.id === excludeId) continue;
+    const p0 = plmLandmarkScreenPoint(item);
+    if (!p0) continue;
+    const d = Math.hypot(pClick.x - p0.x, pClick.y - p0.y);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = { item, p0 };
+    }
+  }
+  if (nearest) {
+    const { qx, qy } = plmSnapDirectionFromPixelDelta(
+      pClick.x - nearest.p0.x,
+      pClick.y - nearest.p0.y,
+    );
+    if (qx !== 0 || qy !== 0) {
+      const hit = trySnapPoint(
+        L.point(
+          nearest.p0.x + qx * spacing,
+          nearest.p0.y + qy * spacing,
+        ),
+      );
+      if (hit) {
+        return {
+          lat: hit.ll.lat,
+          lng: hit.ll.lng,
+          snapped: true,
+          anchorLandmarkId: nearest.item.id,
+        };
+      }
+    }
+  }
+
+  let best = null;
+  let bestDist = PLM_PLACEMENT_SNAP_THRESHOLD_PX + 1;
+  let bestAnchorId = null;
+  for (const item of personalLandmarksList) {
+    if (excludeId && item.id === excludeId) continue;
+    const p0 = plmLandmarkScreenPoint(item);
+    if (!p0) continue;
+    for (const [qx, qy] of dirs) {
+      const hit = trySnapPoint(
+        L.point(p0.x + qx * spacing, p0.y + qy * spacing),
+      );
+      if (!hit || hit.dist >= bestDist) continue;
+      bestDist = hit.dist;
+      best = hit.ll;
+      bestAnchorId = item.id;
+    }
+  }
+  if (best) {
+    return {
+      lat: best.lat,
+      lng: best.lng,
+      snapped: true,
+      anchorLandmarkId: bestAnchorId,
+    };
+  }
+  return { lat, lng, snapped: false, anchorLandmarkId: null };
+}
+
+function plmFindNearestFreeGridCell(qx, qy, usedCells) {
+  const key0 = `${qx},${qy}`;
+  if (!usedCells.has(key0)) return { qx, qy };
+  for (let r = 1; r < 16; r += 1) {
+    for (let dx = -r; dx <= r; dx += 1) {
+      for (let dy = -r; dy <= r; dy += 1) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const nx = qx + dx;
+        const ny = qy + dy;
+        const key = `${nx},${ny}`;
+        if (!usedCells.has(key)) return { qx: nx, qy: ny };
+      }
+    }
+  }
+  return { qx, qy };
+}
+
+/**
+ * Aux zooms magnétiques : recale les repères solo proches sur la grille 30 px
+ * (sans groupe), pour conserver l’aimantation après zoom arrière / avant.
+ */
+function plmBakeSoloLandmarksMagneticClusters() {
+  if (!plmMapUsesMagneticLayout() || !map || plmMapHeadingUpActive()) {
+    return false;
+  }
+  const spacing = PLM_MAGNETIC_SPACING_PX;
+  const joinMax = spacing + PLM_PLACEMENT_SNAP_THRESHOLD_PX;
+  const entries = [];
+  for (const item of personalLandmarksList) {
+    if (!plmIsSoloLandmarkItem(item) || !plmIsValidPlmLatLng(item.lat, item.lng)) {
+      continue;
+    }
+    const p = plmLandmarkScreenPoint(item);
+    if (!p) continue;
+    entries.push({ id: item.id, p, item });
+  }
+  if (entries.length === 0) return false;
+
+  const parent = new Map();
+  function find(id) {
+    if (!parent.has(id)) parent.set(id, id);
+    if (parent.get(id) !== id) parent.set(id, find(parent.get(id)));
+    return parent.get(id);
+  }
+  function unite(a, b) {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(rb, ra);
+  }
+  for (let i = 0; i < entries.length; i += 1) {
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const d = Math.hypot(
+        entries[i].p.x - entries[j].p.x,
+        entries[i].p.y - entries[j].p.y,
+      );
+      if (d <= joinMax) unite(entries[i].id, entries[j].id);
+    }
+  }
+
+  const clusters = new Map();
+  for (const ent of entries) {
+    const root = find(ent.id);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(ent);
+  }
+
+  let changed = false;
+  for (const cluster of clusters.values()) {
+    if (cluster.length === 0) continue;
+    cluster.sort((a, b) => a.p.x - b.p.x || a.p.y - b.p.y || a.id.localeCompare(b.id));
+    const pivotEnt = cluster[0];
+    const pivotIdx = personalLandmarksList.findIndex((x) => x.id === pivotEnt.id);
+    if (pivotIdx < 0) continue;
+    const pivotRow = personalLandmarksList[pivotIdx];
+    const pivotLat = pivotRow.lat;
+    const pivotLng = pivotRow.lng;
+    const pivotP = pivotEnt.p;
+    const usedCells = new Set(["0,0"]);
+
+    const pivotCur = personalLandmarksList[pivotIdx];
+    const pivotNext = { ...pivotCur, lat: pivotLat, lng: pivotLng };
+    delete pivotNext.parentId;
+    delete pivotNext.slot;
+    delete pivotNext.gridQx;
+    delete pivotNext.gridQy;
+    if (
+      pivotCur.lat !== pivotNext.lat ||
+      pivotCur.lng !== pivotNext.lng ||
+      pivotCur.parentId ||
+      pivotCur.slot ||
+      pivotCur.gridQx != null ||
+      pivotCur.gridQy != null
+    ) {
+      personalLandmarksList[pivotIdx] = pivotNext;
+      changed = true;
+    }
+
+    for (const ent of cluster) {
+      if (ent.id === pivotEnt.id) continue;
+      const idx = personalLandmarksList.findIndex((x) => x.id === ent.id);
+      if (idx < 0) continue;
+      let qx = Math.round((ent.p.x - pivotP.x) / spacing);
+      let qy = Math.round((ent.p.y - pivotP.y) / spacing);
+      const cellKey = `${qx},${qy}`;
+      if (usedCells.has(cellKey)) {
+        const free = plmFindNearestFreeGridCell(qx, qy, usedCells);
+        qx = free.qx;
+        qy = free.qy;
+      }
+      usedCells.add(`${qx},${qy}`);
+      const pos = plmLatLngFromGridOffset(pivotLat, pivotLng, qx, qy);
+      if (!pos || !plmIsValidPlmLatLng(pos[0], pos[1])) continue;
+      const cur = personalLandmarksList[idx];
+      const next = { ...cur, lat: pos[0], lng: pos[1] };
+      delete next.parentId;
+      delete next.slot;
+      delete next.gridQx;
+      delete next.gridQy;
+      if (
+        cur.lat !== next.lat ||
+        cur.lng !== next.lng ||
+        cur.parentId ||
+        cur.slot ||
+        cur.gridQx != null ||
+        cur.gridQy != null
+      ) {
+        personalLandmarksList[idx] = next;
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 function plmLatLngFromGridOffset(pivotLat, pivotLng, qx, qy) {
   if (!plmIsValidPlmLatLng(pivotLat, pivotLng)) return null;
   if (plmMapUsesMagneticLayout() && map) {
@@ -1119,37 +1406,28 @@ function plmCommitDialogSave(r) {
   }
 
   const newId = plmNewLandmarkId();
-  const row = {
+  const snapped = plmSnapLandmarkLatLngNearNeighbors(
+    Number(r.lat),
+    Number(r.lng),
+  );
+  let row = {
     id: newId,
-    lat: Number(r.lat),
-    lng: Number(r.lng),
+    lat: snapped.lat,
+    lng: snapped.lng,
     name: r.name,
-    description: groupId ? "" : String(r.description ?? "").trim(),
+    description: String(r.description ?? "").trim(),
     iconId: normalizePlmIconId(r.iconId),
     colorHex: normalizePlmColorHex(r.colorHex),
   };
-  if (groupId) row.groupId = groupId;
   row.iconBearingDeg = plmCaptureLandmarkIconBearingDeg();
+  if (snapped.snapped && snapped.anchorLandmarkId) {
+    row = plmApplySnapAlignBearingToAnchor(row, snapped.anchorLandmarkId);
+  }
   personalLandmarksList.push(row);
-  if (groupId) {
-    plmSetGroupDescription(groupId, r.description);
-    plmSyncGroupMemberNames(groupId, r.name);
+  if (plmMapUsesMagneticLayout()) {
+    plmBakeSoloLandmarksMagneticClusters();
   }
-  const cpos = plmDisplayLatLngForLandmark(row);
-  const added = plmAddChildrenFromSlots(
-    newId,
-    cpos.lat,
-    cpos.lng,
-    groupId,
-    slots,
-    r.name,
-    r.iconId,
-    r.colorHex,
-  );
-  if (groupId) {
-    plmRefreshGroupGridOffsets(groupId);
-  }
-  return { ok: true, added };
+  return { ok: true, added: 0, snapped: snapped.snapped };
 }
 
 function plmNewZoneId() {
@@ -1248,6 +1526,239 @@ function plmSyncLandmarkMarkerRotations() {
     }
     m.update();
   }
+}
+
+function plmEnsureRotationLayer() {
+  if (!map) return null;
+  if (!plmRotationLayer) {
+    plmRotationLayer = L.layerGroup().addTo(map);
+  }
+  return plmRotationLayer;
+}
+
+function plmRotationPivotLatLng(item) {
+  const disp = plmDisplayLatLngForLandmark(item);
+  if (!plmIsValidPlmLatLng(disp.lat, disp.lng)) return null;
+  return L.latLng(disp.lat, disp.lng);
+}
+
+function plmRotationHandleAngleDegFromLatLng(pivotLl, handleLl) {
+  const p0 = map.latLngToContainerPoint(pivotLl);
+  const p1 = map.latLngToContainerPoint(handleLl);
+  return plmNormalizeBearingDeg((Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180) / Math.PI);
+}
+
+function plmRotationHandleLatLngForItem(item) {
+  if (!map || !item) return null;
+  const pivot = plmRotationPivotLatLng(item);
+  if (!pivot) return null;
+  const bearing = plmLandmarkHasIconBearing(item)
+    ? plmNormalizeBearingDeg(Number(item.iconBearingDeg))
+    : 0;
+  const dist = 44;
+  const rad = ((-bearing + 90) * Math.PI) / 180;
+  const p0 = map.latLngToContainerPoint(pivot);
+  const p1 = L.point(
+    p0.x + Math.cos(rad) * dist,
+    p0.y + Math.sin(rad) * dist,
+  );
+  return map.containerPointToLatLng(p1);
+}
+
+function plmSetRotationTargetsDraggable(on) {
+  const s = plmRotationSession;
+  if (!s) return;
+  for (const id of s.ids) {
+    const m = plmMarkerById.get(id);
+    if (!m?.dragging) continue;
+    if (on) {
+      if (s.dragWasEnabled?.get(id)) m.dragging.enable();
+    } else {
+      if (!s.dragWasEnabled) s.dragWasEnabled = new Map();
+      const was =
+        typeof m.dragging.enabled === "function" && m.dragging.enabled();
+      s.dragWasEnabled.set(id, was);
+      m.dragging.disable();
+    }
+  }
+}
+
+function plmApplyRotationSessionToStorage() {
+  const s = plmRotationSession;
+  if (!s) return;
+  for (const id of s.ids) {
+    const idx = personalLandmarksList.findIndex((x) => x.id === id);
+    const live = s.liveBearings?.get(id);
+    if (idx < 0 || live == null) continue;
+    personalLandmarksList[idx] = {
+      ...personalLandmarksList[idx],
+      iconBearingDeg: plmNormalizeBearingDeg(live),
+    };
+  }
+}
+
+function plmClearRotationHandle() {
+  if (plmRotationHandleMarker) {
+    plmRotationHandleMarker.remove();
+    plmRotationHandleMarker = null;
+  }
+  if (plmRotationLayer) plmRotationLayer.clearLayers();
+}
+
+function plmCancelLandmarkRotation() {
+  if (!plmRotationSession) return;
+  const s = plmRotationSession;
+  plmRotationSession = null;
+  if (s.onKeyDown) {
+    document.removeEventListener("keydown", s.onKeyDown);
+  }
+  plmSetRotationTargetsDraggable(true);
+  plmClearRotationHandle();
+  plmSyncLandmarkMarkerRotations();
+}
+
+function plmCommitLandmarkRotation() {
+  if (!plmRotationSession) return;
+  plmApplyRotationSessionToStorage();
+  plmCancelLandmarkRotation();
+  savePersonalLandmarksToStorage();
+  redrawPersonalLandmarksLayer();
+  setGpsStatus("Rotation du repère enregistrée.");
+}
+
+function plmRefreshRotationHandlePosition() {
+  const s = plmRotationSession;
+  if (!s || !plmRotationHandleMarker) return;
+  const item = personalLandmarksList.find((x) => x.id === s.pivotLandmarkId);
+  if (!item) return;
+  const ll = plmRotationHandleLatLngForItem(item);
+  if (ll) plmRotationHandleMarker.setLatLng(ll);
+}
+
+function plmUpdateLandmarkRotationFromHandle(handleLl) {
+  const s = plmRotationSession;
+  if (!s?.pivot) return;
+  const angleNow = plmRotationHandleAngleDegFromLatLng(s.pivot, handleLl);
+  if (s.handleAngle0 == null) {
+    s.handleAngle0 = angleNow;
+    return;
+  }
+  const delta = angleNow - s.handleAngle0;
+  if (!s.liveBearings) s.liveBearings = new Map();
+  for (const id of s.ids) {
+    const start = s.startBearings.get(id) ?? 0;
+    const live = plmNormalizeBearingDeg(start - delta);
+    s.liveBearings.set(id, live);
+    const idx = personalLandmarksList.findIndex((x) => x.id === id);
+    if (idx < 0) continue;
+    personalLandmarksList[idx] = {
+      ...personalLandmarksList[idx],
+      iconBearingDeg: live,
+    };
+    const m = plmMarkerById.get(id);
+    if (m && typeof m.setRotation === "function") {
+      m.setRotation(plmLandmarkIconRotationRad(personalLandmarksList[idx]));
+      m.update();
+    }
+  }
+}
+
+function plmStartLandmarkRotation(landmarkId) {
+  if (
+    typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
+    tamCloudBlocksLandmarkZoneEdits()
+  ) {
+    return;
+  }
+  const item = personalLandmarksList.find((x) => x.id === landmarkId);
+  if (!item || !map) return;
+  plmCancelLandmarkRotation();
+
+  const ids = item.groupId
+    ? plmMembersOfGroup(item.groupId).map((m) => m.id)
+    : [landmarkId];
+  const startBearings = new Map();
+  for (const id of ids) {
+    const row = personalLandmarksList.find((x) => x.id === id);
+    if (!row) continue;
+    const bearing = plmLandmarkHasIconBearing(row)
+      ? plmNormalizeBearingDeg(Number(row.iconBearingDeg))
+      : plmCaptureLandmarkIconBearingDeg();
+    startBearings.set(id, bearing);
+    const idx = personalLandmarksList.findIndex((x) => x.id === id);
+    if (idx >= 0) {
+      personalLandmarksList[idx] = { ...row, iconBearingDeg: bearing };
+    }
+  }
+
+  const pivot = plmRotationPivotLatLng(item);
+  if (!pivot) return;
+
+  plmRotationSession = {
+    ids,
+    pivotLandmarkId: landmarkId,
+    pivot,
+    startBearings,
+    liveBearings: new Map(startBearings),
+    handleAngle0: null,
+    dragWasEnabled: null,
+  };
+
+  plmSetRotationTargetsDraggable(false);
+  const layer = plmEnsureRotationLayer();
+  if (!layer) return;
+  layer.clearLayers();
+
+  const handleLl = plmRotationHandleLatLngForItem(item);
+  if (!handleLl) return;
+
+  plmRotationHandleMarker = L.marker(handleLl, {
+    draggable: true,
+    bubblingMouseEvents: false,
+    zIndexOffset: 1300,
+    icon: L.divIcon({
+      className: "tam-plm-rotation-handle",
+      html: "↻",
+      iconSize: [30, 30],
+      iconAnchor: [15, 15],
+    }),
+  });
+  plmRotationHandleMarker.on("mousedown touchstart", (e) => {
+    L.DomEvent.stopPropagation(e);
+  });
+  plmRotationHandleMarker.on("drag", () => {
+    plmUpdateLandmarkRotationFromHandle(plmRotationHandleMarker.getLatLng());
+  });
+  plmRotationHandleMarker.on("dragend", () => {
+    plmCommitLandmarkRotation();
+  });
+  plmRotationHandleMarker.addTo(layer);
+
+  plmRotationSession.onKeyDown = (ev) => {
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      const s = plmRotationSession;
+      if (!s) return;
+      for (const id of s.ids) {
+        const idx = personalLandmarksList.findIndex((x) => x.id === id);
+        if (idx < 0) continue;
+        personalLandmarksList[idx] = {
+          ...personalLandmarksList[idx],
+          iconBearingDeg: s.startBearings.get(id) ?? 0,
+        };
+      }
+      plmCancelLandmarkRotation();
+      redrawPersonalLandmarksLayer();
+      setGpsStatus("Rotation annulée.");
+    }
+  };
+  document.addEventListener("keydown", plmRotationSession.onKeyDown);
+
+  setGpsStatus(
+    item.groupId
+      ? "Rotation du groupe : faites pivoter la poignée ↻, relâchez pour valider. Échap : annuler."
+      : "Rotation : faites pivoter la poignée ↻, relâchez pour valider. Échap : annuler.",
+  );
 }
 
 function plmZoneLatLngsToCornerTuples(latlngs) {
@@ -4378,6 +4889,8 @@ async function plmDetachLandmarkFromGroup(landmarkId) {
   delete next.groupId;
   delete next.parentId;
   delete next.slot;
+  delete next.gridQx;
+  delete next.gridQy;
   if (groupDesc && !String(next.description ?? "").trim()) {
     next.description = groupDesc;
   }
@@ -4394,6 +4907,9 @@ async function plmDetachLandmarkFromGroup(landmarkId) {
     plmApplyMagneticLayoutForGroup(groupId);
   }
   plmRemoveGroupIfEmpty(groupId);
+  if (plmMapUsesMagneticLayout()) {
+    plmBakeSoloLandmarksMagneticClusters();
+  }
   savePersonalLandmarksToStorage();
   savePlmGroupsToStorage();
   redrawPersonalLandmarksLayer();
@@ -4423,6 +4939,12 @@ function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   }
   const delGroupBtn = menu.querySelector('[data-plm-ctx="del-group"]');
   if (delGroupBtn) delGroupBtn.hidden = !item.groupId;
+  const rotateBtn = menu.querySelector('[data-plm-ctx="rotate-landmark"]');
+  if (rotateBtn) {
+    rotateBtn.textContent = item.groupId
+      ? "Rotation du groupe…"
+      : "Rotation…";
+  }
   menu.hidden = false;
   menu.style.left = "0px";
   menu.style.top = "0px";
@@ -4480,6 +5002,10 @@ function plmInitLandmarkContextMenu() {
     }
     if (action === "detach-group") {
       void plmDetachLandmarkFromGroup(id);
+      return;
+    }
+    if (action === "rotate-landmark") {
+      plmStartLandmarkRotation(id);
       return;
     }
     if (action === "del-landmark") {
@@ -4693,23 +5219,30 @@ function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
   const idx = personalLandmarksList.findIndex((x) => x.id === landmarkId);
   if (idx < 0) return;
   const row = personalLandmarksList[idx];
-  const next = { ...row, lat: ll.lat, lng: ll.lng };
+  const snapped = plmSnapLandmarkLatLngNearNeighbors(
+    ll.lat,
+    ll.lng,
+    landmarkId,
+  );
+  let next = { ...row, lat: snapped.lat, lng: snapped.lng };
   if (row.parentId) {
     delete next.parentId;
     delete next.slot;
   }
-  personalLandmarksList[idx] = next;
-  savePersonalLandmarksToStorage();
-  if (!plmLabelsVisible) {
-    m.unbindTooltip();
-    m.bindTooltip(personalLandmarksList[idx].name, {
-      sticky: false,
-      direction: "top",
-      offset: [0, -34],
-    });
+  if (snapped.snapped && snapped.anchorLandmarkId) {
+    next = plmApplySnapAlignBearingToAnchor(next, snapped.anchorLandmarkId);
   }
-  plmRefreshLabelsLayer();
-  setGpsStatus("Repère déplacé.");
+  personalLandmarksList[idx] = next;
+  if (plmMapUsesMagneticLayout()) {
+    plmBakeSoloLandmarksMagneticClusters();
+  }
+  savePersonalLandmarksToStorage();
+  redrawPersonalLandmarksLayer();
+  setGpsStatus(
+    snapped.snapped
+      ? "Repère déplacé (aimanté et aligné)."
+      : "Repère déplacé.",
+  );
 }
 
 /**
@@ -4721,6 +5254,7 @@ function plmSyncGroupsLayoutToZoom(persist) {
   if (plmMapUsesMagneticLayout()) {
     plmApplyMagneticLayoutForAllGroups(false);
     plmBakeAllGroupsLatLngFromGrid();
+    plmBakeSoloLandmarksMagneticClusters();
     if (persist !== false) {
       savePersonalLandmarksToStorage(true);
     }
@@ -4905,18 +5439,46 @@ function redrawPersonalLandmarksLayer() {
     });
     m.on("drag", () => {
       const snap = plmGroupDragSnapshot;
-      if (!snap || snap.draggedId !== item.id) return;
+      if (snap && snap.draggedId === item.id) {
+        const ll = m.getLatLng();
+        const dLat = ll.lat - snap.startLat;
+        const dLng = ll.lng - snap.startLng;
+        for (const [mid, pos] of snap.positions) {
+          if (mid === item.id) continue;
+          const other = plmMarkerById.get(mid);
+          if (other) {
+            other.setLatLng([pos.lat + dLat, pos.lng + dLng]);
+          }
+        }
+        plmScheduleLabelsRefresh();
+        return;
+      }
+      const row = personalLandmarksList.find((x) => x.id === item.id);
+      if (row?.groupId) return;
       const ll = m.getLatLng();
-      const dLat = ll.lat - snap.startLat;
-      const dLng = ll.lng - snap.startLng;
-      for (const [mid, pos] of snap.positions) {
-        if (mid === item.id) continue;
-        const other = plmMarkerById.get(mid);
-        if (other) {
-          other.setLatLng([pos.lat + dLat, pos.lng + dLng]);
+      const magnetic = plmSnapLandmarkLatLngNearNeighbors(
+        ll.lat,
+        ll.lng,
+        item.id,
+      );
+      if (!magnetic.snapped) {
+        if (typeof m.setRotation === "function") {
+          m.setRotation(plmLandmarkIconRotationRad(row));
+          m.update();
+        }
+        return;
+      }
+      m.setLatLng([magnetic.lat, magnetic.lng]);
+      if (magnetic.anchorLandmarkId) {
+        const preview = plmApplySnapAlignBearingToAnchor(
+          row,
+          magnetic.anchorLandmarkId,
+        );
+        if (typeof m.setRotation === "function") {
+          m.setRotation(plmLandmarkIconRotationRad(preview));
+          m.update();
         }
       }
-      plmScheduleLabelsRefresh();
     });
     m.on("dragend", () => {
       plmSuppressLandmarkClickUntil = Date.now() + 450;
@@ -4986,6 +5548,10 @@ function redrawPersonalLandmarksLayer() {
     m.addTo(personalLandmarksLayer);
   }
   plmRefreshLabelsLayer();
+  if (plmRotationSession) {
+    plmSetRotationTargetsDraggable(false);
+    plmRefreshRotationHandlePosition();
+  }
   plmRedrawZonesLayer();
 }
 
@@ -5715,7 +6281,7 @@ function openPersonalLandmarkDialog(spec) {
     const editGroupId = spec.groupId || null;
     let initialName = spec.name != null ? String(spec.name) : "";
     if (mode === "create" && !String(initialName).trim()) {
-      initialName = "Groupe";
+      initialName = "Repère";
     }
     const initialDesc = editGroupId
       ? plmGetGroupDescription(editGroupId)
@@ -5740,24 +6306,14 @@ function openPersonalLandmarkDialog(spec) {
       });
       plmTextUi.setInitial(initialName, initialDesc);
     }
-    let gridLat = Number(spec.lat);
-    let gridLng = Number(spec.lng);
-    if (mode === "edit" && spec.id) {
-      const pivotItem = personalLandmarksList.find((x) => x.id === spec.id);
-      if (pivotItem) {
-        const gp = plmDisplayLatLngForLandmark(pivotItem);
-        gridLat = gp.lat;
-        gridLng = gp.lng;
-      }
-    }
-    if (plmIsValidPlmLatLng(gridLat, gridLng)) {
-      plmRenderSlotGrid(
-        slotGridEl,
-        gridLat,
-        gridLng,
-        editGroupId,
-        mode === "edit" ? spec.id : null,
-      );
+    const gridHeading = document.getElementById(
+      "appPersonalLandmarkDialogGridHeading",
+    );
+    if (gridHeading) gridHeading.hidden = true;
+    if (slotGridEl) {
+      slotGridEl.hidden = true;
+      slotGridEl.innerHTML = "";
+      slotGridEl._plmGetSlots = () => [];
     }
     let settled = false;
     function cleanupListeners() {
@@ -5806,25 +6362,17 @@ function openPersonalLandmarkDialog(spec) {
         return;
       }
       touchPlmIconRecent(plmPick.iconId);
-      const slots =
-        typeof slotGridEl._plmGetSlots === "function"
-          ? slotGridEl._plmGetSlots()
-          : [];
-      let outGroupId = editGroupId;
-      if (slots.length > 0 && !outGroupId) {
-        outGroupId = plmGenerateGroupId();
-      }
       finish({
         action: "save",
         id: mode === "edit" ? spec.id : undefined,
-        groupId: outGroupId || undefined,
+        groupId: editGroupId || undefined,
         lat: spec.lat,
         lng: spec.lng,
         name,
         description: String(descIn.value || "").trim(),
         iconId: plmPick.iconId,
         colorHex: plmPick.colorHex,
-        slots,
+        slots: [],
       });
     }
     function onCancel() {
@@ -5960,10 +6508,14 @@ function openProvisionalStopNameDialog() {
 map.on("click", async (ev) => {
   if (personalLandmarkPlacementActive && ev?.latlng) {
     setPersonalLandmarkPlacementActive(false);
+    const snapped = plmSnapLandmarkLatLngNearNeighbors(
+      ev.latlng.lat,
+      ev.latlng.lng,
+    );
     const r = await openPersonalLandmarkDialog({
       mode: "create",
-      lat: ev.latlng.lat,
-      lng: ev.latlng.lng,
+      lat: snapped.lat,
+      lng: snapped.lng,
       name: "",
       description: "",
     });
@@ -5983,8 +6535,8 @@ map.on("click", async (ev) => {
         savePersonalLandmarksToStorage();
         redrawPersonalLandmarksLayer();
         setGpsStatus(
-          result.added > 0
-            ? `Repère ajouté : ${r.name} (${result.added} voisin(s)).`
+          result.snapped
+            ? `Repère ajouté : ${r.name} (aimanté et aligné).`
             : `Repère ajouté : ${r.name}`,
         );
       }
