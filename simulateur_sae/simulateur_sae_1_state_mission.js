@@ -4679,21 +4679,15 @@ function plmIsGroupVisibleCapFilter(groupId) {
   return vis;
 }
 
-/** Masquage affichage (stockage inchangé) : Nord sur mission = rien ; Cap = à droite du tracé, proche du tracé. */
+/**
+ * Affichage uniquement (stockage inchangé) :
+ * mission en Nord = pas de repères ; en Cap = tous les repères (droite et gauche du tracé).
+ */
 function plmIsLandmarkVisibleOnMap(item) {
   if (plmIsLiveMissionForLandmarkDisplay() && !plmMapHeadingUpActive()) {
     return false;
   }
-  if (!plmIsCapSideFilterActive()) return true;
-  if (item.groupId) {
-    return plmIsGroupVisibleCapFilter(item.groupId);
-  }
-  const pr = plmProjectLandmarkForCapFilter(item);
-  if (pr.crossTrackMeters > getPlmCapFilterBandM()) return false;
-  if (plmIsNearMissionDeparture()) {
-    return true;
-  }
-  return pr.signedCrossTrackMeters > 0;
+  return true;
 }
 
 function plmIsEditorDialogOpen() {
