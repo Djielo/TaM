@@ -120,7 +120,7 @@
       }
       /*
        * Rail arrêts : pastilles sur la piste (remplissage = % parcours).
-       * z-index > HUD (1100) pour le tactile.
+       * Sous le HUD mission (~1235) : le bandeau pause/vitesse reste cliquable au-dessus.
        * Même « right » que .map-mission-hud__nextStrip / __rail (marge bord appareil).
        * Marge verticale haut = marge entre bas du rail et haut de la pastille « Prochain arrêt »
        * (aligné sur le stack HUD : safe-bottom + 30 + 44 + 8 + hauteur pastille estimée + même inset que le haut).
@@ -133,7 +133,7 @@
           max(6px, env(safe-area-inset-bottom, 0px)) + 30px + 44px + 8px +
             56px + max(6px, env(safe-area-inset-top, 0px))
         );
-        z-index: 1220;
+        z-index: 1210;
         width: 34px;
         max-height: 100%;
         pointer-events: auto;
@@ -2229,7 +2229,7 @@
       .map-recap.show {
         display: block;
       }
-      /* Commandes mission sur la carte — au-dessus des couches Leaflet (contrôle ~1000). */
+      /* Commandes mission sur la carte — au-dessus des couches Leaflet (~1000) et du rail arrêts (~1210). */
       .map-mission-hud {
         /* Hauteur commune rail + bouton replier (carré) ; boutons internes carrés plus compacts */
         --map-hud-h: 44px;
@@ -2237,7 +2237,7 @@
         --map-hud-clear-attrib: 30px;
         position: absolute;
         inset: 0;
-        z-index: 1100;
+        z-index: 1235;
         pointer-events: none;
       }
       .map-mission-hud.map-mission-hud--inactive {
@@ -2418,10 +2418,28 @@
         width: 20px;
         height: 20px;
       }
-      .map-mission-hud__btn svg {
+      .map-mission-hud__btn svg,
+      .map-mission-hud__toggle svg {
         display: block;
         width: 18px;
         height: 18px;
+        /* Clics sur le glyphe ou le fond du bouton : une seule cible (le <button>). */
+        pointer-events: none;
+      }
+      .map-mission-hud__voice-icon svg {
+        pointer-events: none;
+      }
+      .map-mission-hud__btn,
+      .map-mission-hud__voice-icon,
+      .map-mission-hud__toggle {
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        position: relative;
+        z-index: 1;
+      }
+      #mapHudPauseBtn.map-mission-hud__btn--primary,
+      #mapRouteHudPauseBtn.map-mission-hud__btn--primary {
+        z-index: 2;
       }
       .map-mission-hud__heading {
         display: inline-flex;
@@ -2880,6 +2898,17 @@
           font-size: 13px;
           width: calc(100% - 44px);
           max-height: calc(100% - 44px);
+        }
+        /*
+         * Bandeau HUD : en vue étroite, centrage + overflow rogne les bords des boutons
+         * (zone visible ≠ zone cliquable). Pause/voix restent à gauche, défilement vers la droite.
+         */
+        .map-mission-hud__stripWrap {
+          justify-content: flex-start;
+        }
+        .map-mission-hud__inner {
+          justify-content: flex-start;
+          scroll-padding-inline: 8px;
         }
       }
       .line-select-dual {
