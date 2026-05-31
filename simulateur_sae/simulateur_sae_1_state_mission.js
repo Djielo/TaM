@@ -486,6 +486,23 @@ function plmDisplayLatLngForLandmark(item, visiting) {
   if (!item || !plmIsValidPlmLatLng(item.lat, item.lng)) {
     return { lat: item?.lat, lng: item?.lng };
   }
+  const parentId = String(item.parentId ?? "").trim();
+  const slot = String(item.slot ?? "").trim();
+  if (parentId && slot) {
+    const seen = visiting || new Set();
+    if (seen.has(item.id)) {
+      return { lat: item.lat, lng: item.lng };
+    }
+    seen.add(item.id);
+    const parent = personalLandmarksList.find((x) => x.id === parentId);
+    if (parent) {
+      const pp = plmDisplayLatLngForLandmark(parent, seen);
+      const pos = plmLatLngFromSlot(pp.lat, pp.lng, slot);
+      if (pos && plmIsValidPlmLatLng(pos[0], pos[1])) {
+        return { lat: pos[0], lng: pos[1] };
+      }
+    }
+  }
   if (plmMapHeadingUpActive()) {
     return { lat: item.lat, lng: item.lng };
   }
@@ -503,26 +520,7 @@ function plmDisplayLatLngForLandmark(item, visiting) {
       }
     }
   }
-  const parentId = String(item.parentId ?? "").trim();
-  const slot = String(item.slot ?? "").trim();
-  if (!plmMapUsesMagneticLayout() || !parentId || !slot) {
-    return { lat: item.lat, lng: item.lng };
-  }
-  const seen = visiting || new Set();
-  if (seen.has(item.id)) {
-    return { lat: item.lat, lng: item.lng };
-  }
-  seen.add(item.id);
-  const parent = personalLandmarksList.find((x) => x.id === parentId);
-  if (!parent) {
-    return { lat: item.lat, lng: item.lng };
-  }
-  const pp = plmDisplayLatLngForLandmark(parent, seen);
-  const pos = plmLatLngFromSlot(pp.lat, pp.lng, slot);
-  if (!pos || !plmIsValidPlmLatLng(pos[0], pos[1])) {
-    return { lat: item.lat, lng: item.lng };
-  }
-  return { lat: pos[0], lng: pos[1] };
+  return { lat: item.lat, lng: item.lng };
 }
 
 function plmApplyMagneticLayoutForGroup(groupId, force) {
@@ -791,9 +789,11 @@ function plmSnapLandmarkLatLngNearNeighbors(lat, lng, excludeId) {
   return { lat, lng, snapped: false, anchorLandmarkId: null };
 }
 
-function plmFindNearestFreeGridCell(qx, qy, usedCells) {
+function plmFindNearestFreeGridCell(qx, qy, usedCells, pivotP, preferredP) {
+  const spacing = PLM_MAGNETIC_SPACING_PX;
   const key0 = `${qx},${qy}`;
   if (!usedCells.has(key0)) return { qx, qy };
+  const candidates = [];
   for (let r = 1; r < 16; r += 1) {
     for (let dx = -r; dx <= r; dx += 1) {
       for (let dy = -r; dy <= r; dy += 1) {
@@ -801,8 +801,20 @@ function plmFindNearestFreeGridCell(qx, qy, usedCells) {
         const nx = qx + dx;
         const ny = qy + dy;
         const key = `${nx},${ny}`;
-        if (!usedCells.has(key)) return { qx: nx, qy: ny };
+        if (usedCells.has(key)) continue;
+        const pSnap = L.point(
+          pivotP.x + nx * spacing,
+          pivotP.y + ny * spacing,
+        );
+        const dist = preferredP
+          ? Math.hypot(pSnap.x - preferredP.x, pSnap.y - preferredP.y)
+          : Math.hypot(nx - qx, ny - qy);
+        candidates.push({ qx: nx, qy: ny, dist });
       }
+    }
+    if (candidates.length) {
+      candidates.sort((a, b) => a.dist - b.dist);
+      return { qx: candidates[0].qx, qy: candidates[0].qy };
     }
   }
   return { qx, qy };
@@ -813,7 +825,12 @@ function plmFindNearestFreeGridCell(qx, qy, usedCells) {
  * (sans groupe), pour conserver l’aimantation après zoom arrière / avant.
  */
 function plmBakeSoloLandmarksMagneticClusters() {
-  if (!plmMapUsesMagneticLayout() || !map || plmMapHeadingUpActive()) {
+  if (
+    !plmMapUsesMagneticLayout() ||
+    !map ||
+    plmMapHeadingUpActive() ||
+    plmIsLiveMissionForLandmarkDisplay()
+  ) {
     return false;
   }
   const spacing = PLM_MAGNETIC_SPACING_PX;
@@ -896,7 +913,13 @@ function plmBakeSoloLandmarksMagneticClusters() {
       let qy = Math.round((ent.p.y - pivotP.y) / spacing);
       const cellKey = `${qx},${qy}`;
       if (usedCells.has(cellKey)) {
-        const free = plmFindNearestFreeGridCell(qx, qy, usedCells);
+        const free = plmFindNearestFreeGridCell(
+          qx,
+          qy,
+          usedCells,
+          pivotP,
+          ent.p,
+        );
         qx = free.qx;
         qy = free.qy;
       }
@@ -3441,6 +3464,9 @@ function tamApplyBackupFromObject(backup, opts) {
   loadPlmGroupsFromStorage();
   loadPersonalLandmarksFromStorage();
   loadPersonalZonesFromStorage();
+  if (typeof plmApplyMapLayersVisibilityFromPrefs === "function") {
+    plmApplyMapLayersVisibilityFromPrefs();
+  }
   if (plmSanitizeParentLinks()) {
     savePersonalLandmarksToStorage(true);
   }
@@ -4370,12 +4396,35 @@ let plmPathTravelSign = 1;
 let plmLastAlongForTravelSign = null;
 let plmGroupCapFilterCache = new Map();
 let plmCapFilterRefreshRaf = 0;
+/** Au départ de mission (Cap) : montrer les repères proches des deux côtés pour les consignes. */
+const PLM_DEPARTURE_PREVIEW_ALONG_M = 80;
+let plmWasNearMissionDeparture = false;
 
 function plmResetPathTravelSign() {
   plmPathTravelSign = 1;
   plmLastAlongForTravelSign = null;
+  plmWasNearMissionDeparture = false;
   plmGroupCapFilterCache.clear();
   plmResetZoneMissionTracking();
+}
+
+function plmIsNearMissionDeparture() {
+  if (!plmIsLiveMissionForLandmarkDisplay()) return false;
+  const d = Number(distanceAlongPathMeters);
+  if (!Number.isFinite(d)) return false;
+  return d <= PLM_DEPARTURE_PREVIEW_ALONG_M;
+}
+
+function plmUpdateDepartureLandmarkFilter() {
+  if (!plmIsCapSideFilterActive()) {
+    plmWasNearMissionDeparture = false;
+    return;
+  }
+  const near = plmIsNearMissionDeparture();
+  if (near !== plmWasNearMissionDeparture) {
+    plmWasNearMissionDeparture = near;
+    plmScheduleLandmarkCapFilterRefresh();
+  }
 }
 
 function getPlmZoneVoiceAnnounceEnabled() {
@@ -4563,8 +4612,10 @@ function plmOnMissionPositionUpdate(alongM, lat, lng) {
 
 function plmNotifyAlongPathMeters(along) {
   if (!Number.isFinite(along)) return;
+  plmUpdateDepartureLandmarkFilter();
   if (plmLastAlongForTravelSign == null) {
     plmLastAlongForTravelSign = along;
+    plmScheduleLandmarkCapFilterRefresh();
     return;
   }
   const delta = along - plmLastAlongForTravelSign;
@@ -4639,6 +4690,9 @@ function plmIsLandmarkVisibleOnMap(item) {
   }
   const pr = plmProjectLandmarkForCapFilter(item);
   if (pr.crossTrackMeters > getPlmCapFilterBandM()) return false;
+  if (plmIsNearMissionDeparture()) {
+    return true;
+  }
   return pr.signedCrossTrackMeters > 0;
 }
 
@@ -5251,6 +5305,10 @@ function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
  * souris / tactile / carte et un comportement alterné.)
  */
 function plmSyncGroupsLayoutToZoom(persist) {
+  if (plmIsLiveMissionForLandmarkDisplay() && plmMapHeadingUpActive()) {
+    redrawPersonalLandmarksLayer();
+    return;
+  }
   if (plmMapUsesMagneticLayout()) {
     plmApplyMagneticLayoutForAllGroups(false);
     plmBakeAllGroupsLatLngFromGrid();

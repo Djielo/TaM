@@ -493,6 +493,9 @@ async function applyTraceForOpsMode(mode, opts) {
   activeCoordinates = coords;
   rebuildPathMetrics(activeCoordinates);
   trimActivePathToPatternStops(currentPattern);
+  if (typeof plmResetPathTravelSign === "function") {
+    plmResetPathTravelSign();
+  }
   stopMetersAlong = buildStopMetersAlong(currentPattern);
   rebuildActiveGuideStops();
   fullLine.setLatLngs(activeCoordinates);
@@ -507,6 +510,9 @@ async function applyTraceForOpsMode(mode, opts) {
   drawProvisionalStopsOverlay();
   updateManualDeviationVisual(mode);
   updateStats();
+  if (typeof plmScheduleLandmarkCapFilterRefresh === "function") {
+    plmScheduleLandmarkCapFilterRefresh();
+  }
 }
 
 function fillSelect(selectEl, values, labelFn) {
@@ -4868,9 +4874,6 @@ async function setMission(pattern, opts) {
   stopManualDrawMode();
   currentPattern = pattern;
   distanceAlongPathMeters = 0;
-  if (typeof plmResetPathTravelSign === "function") {
-    plmResetPathTravelSign();
-  }
   lastRafTime = 0;
   lastVoiceDistance = 0;
   voixAnnounced = new Set();
@@ -4922,6 +4925,9 @@ async function setMission(pattern, opts) {
 
   rebuildPathMetrics(activeCoordinates);
   trimActivePathToPatternStops(pattern);
+  if (typeof plmResetPathTravelSign === "function") {
+    plmResetPathTravelSign();
+  }
   stopMetersAlong = buildStopMetersAlong(pattern);
   recomputeSkippedAndRedrawStopLayers();
 
@@ -4957,6 +4963,9 @@ async function setMission(pattern, opts) {
   refreshRecapDeviationMeta();
   if (!o.skipPlannedBaselineSync) {
     syncPlannedSaveBaselineFromLive();
+  }
+  if (typeof plmUpdateDepartureLandmarkFilter === "function") {
+    plmUpdateDepartureLandmarkFilter();
   }
   if (typeof redrawPersonalLandmarksLayer === "function") {
     redrawPersonalLandmarksLayer();
