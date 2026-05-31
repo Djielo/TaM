@@ -3766,6 +3766,211 @@ function pointDistance(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+/** Comparaisons libellés Open Data ↔ GTFS (accents ignorés). */
+function foldNetworkLabel(text) {
+  return String(text ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Ex. « Aller - V2 » → { way: « Aller », track: « V2 » }. */
+function parseTamNetworkSens(sensRaw) {
+  const raw = String(sensRaw ?? "").trim();
+  if (!raw) return { way: null, track: null, raw: "" };
+  const way = /^Retour/i.test(raw)
+    ? "Retour"
+    : /^Aller/i.test(raw)
+      ? "Aller"
+      : null;
+  const trackMatch = raw.match(/\bV([12])\b/i);
+  const track = trackMatch ? `V${trackMatch[1]}` : null;
+  return { way, track, raw };
+}
+
+/** GTFS TAM tram : repli si le terminus GTFS ne permet pas de déduire le sens. */
+function expectedNetworkWayFromPattern(pattern) {
+  const d = String(pattern?.direction_id ?? "").trim();
+  if (d === "0") return "Aller";
+  if (d === "1") return "Retour";
+  return null;
+}
+
+/** Sens Open Data le plus cohérent avec le terminus GTFS (headsign / dernier arrêt). */
+function inferNetworkWayFromPattern(candidates, pattern) {
+  const head = foldNetworkLabel(pattern?.headsign);
+  const end = foldNetworkLabel(pattern?.end_stop);
+  if (!head && !end) return null;
+  for (const candidate of candidates) {
+    const label = foldNetworkLabel(candidate?.nom_ligne);
+    if (!label) continue;
+    const chunks = String(candidate?.nom_ligne ?? "").split(/\s*[>–-]\s*/);
+    const dest =
+      chunks.length >= 2
+        ? foldNetworkLabel(chunks[chunks.length - 1])
+        : label;
+    const destMatches =
+      (head && dest.includes(head)) || (end && dest.includes(end));
+    if (!destMatches) continue;
+    const way = parseTamNetworkSens(candidate.sens).way;
+    if (way) return way;
+  }
+  return null;
+}
+
+function scoreNetworkFeatureLabelMatch(feature, pattern) {
+  const label = foldNetworkLabel(feature?.nom_ligne);
+  if (!label) return 0;
+  const head = foldNetworkLabel(pattern?.headsign);
+  const start = foldNetworkLabel(pattern?.start_stop);
+  const end = foldNetworkLabel(pattern?.end_stop);
+  let score = 0;
+  if (head && label.includes(head)) score += 4;
+  if (end && label.includes(end)) score += 3;
+  if (start && label.includes(start)) score += 2;
+  const chunks = String(feature?.nom_ligne ?? "").split(/\s*[>–-]\s*/);
+  if (chunks.length >= 2) {
+    const dest = foldNetworkLabel(chunks[chunks.length - 1]);
+    const orig = foldNetworkLabel(chunks[0]);
+    if (head && dest.includes(head)) score += 5;
+    if (end && dest.includes(end)) score += 4;
+    if (start && orig.includes(start)) score += 2;
+    const terminus = head || end;
+    if (
+      terminus &&
+      orig.includes(terminus) &&
+      !dest.includes(terminus)
+    ) {
+      score -= 6;
+    }
+  }
+  return score;
+}
+
+/** Somme des écarts (m) arrêts GTFS ↔ tracé réseau (tie-breaker entre branches proches). */
+function patternStopsAlignmentScore(coords, pattern) {
+  const stops = pattern?.stops;
+  if (!stops?.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let sumDeg = 0;
+  for (const stop of stops) {
+    sumDeg += minDistPointToPolyline([stop.lat, stop.lon], coords);
+  }
+  return sumDeg * 111000;
+}
+
+/** Distance lat/lon (deg) d’un point à une polyligne. */
+function minDistPointToPolyline(point, coords) {
+  if (!coords || coords.length < 2) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let best = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i];
+    const b = coords[i + 1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    if (Math.abs(dx) < 1e-12 && Math.abs(dy) < 1e-12) {
+      best = Math.min(best, pointDistance(point, a));
+      continue;
+    }
+    const t = Math.max(
+      0,
+      Math.min(
+        1,
+        ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) /
+          (dx * dx + dy * dy),
+      ),
+    );
+    const q = [a[0] + t * dx, a[1] + t * dy];
+    best = Math.min(best, pointDistance(point, q));
+  }
+  return best;
+}
+
+function endpointGeometryScore(coords, start, end) {
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  const directScore = pointDistance(start, first) + pointDistance(end, last);
+  const reverseScore = pointDistance(start, last) + pointDistance(end, first);
+  if (directScore <= reverseScore) {
+    return { score: directScore, coords, reversed: false };
+  }
+  return {
+    score: reverseScore,
+    coords: reverseCoordinates(coords),
+    reversed: true,
+  };
+}
+
+function getNetworkGeometryByLine(features, pattern) {
+  if (!features.length) return null;
+
+  const line = String(pattern.route_short_name);
+  const start = pattern.coordinates[0];
+  const end = pattern.coordinates[pattern.coordinates.length - 1];
+
+  const candidates = features.filter(
+    (f) => String(f.line_code) === line && f.coordinates?.length > 1,
+  );
+  if (!candidates.length) return null;
+
+  const expectedWay =
+    inferNetworkWayFromPattern(candidates, pattern) ||
+    expectedNetworkWayFromPattern(pattern);
+  const labelScores = candidates.map((c) =>
+    scoreNetworkFeatureLabelMatch(c, pattern),
+  );
+  const maxLabel = Math.max(...labelScores);
+  let pool = candidates;
+  if (maxLabel >= 4) {
+    pool = candidates.filter(
+      (c, i) => labelScores[i] >= maxLabel - 1,
+    );
+  } else if (expectedWay) {
+    const byWay = candidates.filter((c) => {
+      const w = parseTamNetworkSens(c.sens).way;
+      return !w || w === expectedWay;
+    });
+    if (byWay.length) pool = byWay;
+  }
+
+  let best = null;
+  let bestEndpoint = Number.POSITIVE_INFINITY;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const candidate of pool) {
+    const sens = parseTamNetworkSens(candidate.sens);
+    const geom = endpointGeometryScore(
+      candidate.coordinates,
+      start,
+      end,
+    );
+    if (expectedWay && sens.way && sens.way !== expectedWay) {
+      continue;
+    }
+    const stopsScore = patternStopsAlignmentScore(geom.coords, pattern);
+    const total = geom.score + stopsScore * 1e-8;
+    if (total < bestScore) {
+      bestScore = total;
+      bestEndpoint = geom.score;
+      best = {
+        coords: geom.coords,
+        nom_ligne: candidate.nom_ligne,
+        sens: sens.raw || candidate.sens || "",
+        reversed: geom.reversed,
+      };
+    }
+  }
+
+  if (!best || bestEndpoint > 0.08) {
+    return null;
+  }
+  return best;
+}
+
 function rebuildPathMetrics(coords) {
   pathCumMeters = [];
   pathTotalMeters = 0;
@@ -4788,49 +4993,6 @@ function reverseCoordinates(coords) {
   return copy;
 }
 
-function getNetworkGeometryByLine(features, pattern) {
-  if (!features.length) return null;
-
-  const line = String(pattern.route_short_name);
-  const start = pattern.coordinates[0];
-  const end = pattern.coordinates[pattern.coordinates.length - 1];
-
-  const candidates = features.filter(
-    (f) => String(f.line_code) === line && f.coordinates?.length > 1,
-  );
-  if (!candidates.length) return null;
-
-  let best = null;
-  let bestScore = Number.POSITIVE_INFINITY;
-
-  for (const candidate of candidates) {
-    const coords = candidate.coordinates;
-    const first = coords[0];
-    const last = coords[coords.length - 1];
-
-    const directScore = pointDistance(start, first) + pointDistance(end, last);
-    const reverseScore = pointDistance(start, last) + pointDistance(end, first);
-
-    if (directScore < bestScore) {
-      bestScore = directScore;
-      best = { coords, nom_ligne: candidate.nom_ligne };
-    }
-    if (reverseScore < bestScore) {
-      bestScore = reverseScore;
-      best = {
-        coords: reverseCoordinates(coords),
-        nom_ligne: candidate.nom_ligne,
-      };
-    }
-  }
-
-  // Guard against unrelated branches that are too far from GTFS start/end.
-  if (!best || bestScore > 0.08) {
-    return null;
-  }
-  return best;
-}
-
 function getBusNetworkGeometry(pattern) {
   return getNetworkGeometryByLine(data?.bus_network_features || [], pattern);
 }
@@ -4895,10 +5057,12 @@ async function setMission(pattern, opts) {
   const busGeom = !isTram ? getBusNetworkGeometry(pattern) : null;
   if (tramGeom) {
     activeCoordinates = tramGeom.coords;
-    traceSource = `Réseau tram 3M (${tramGeom.nom_ligne || "ligne"})`;
+    const sensNote = tramGeom.sens ? `, ${tramGeom.sens}` : "";
+    traceSource = `Réseau tram 3M (${tramGeom.nom_ligne || "ligne"}${sensNote})`;
   } else if (busGeom) {
     activeCoordinates = busGeom.coords;
-    traceSource = `Réseau bus 3M (${busGeom.nom_ligne || "ligne"})`;
+    const sensNote = busGeom.sens ? `, ${busGeom.sens}` : "";
+    traceSource = `Réseau bus 3M (${busGeom.nom_ligne || "ligne"}${sensNote})`;
   } else {
     activeCoordinates = await fetchRoadGeometry(pattern);
     if (activeCoordinates.length && activeCoordinates !== pattern.coordinates) {
