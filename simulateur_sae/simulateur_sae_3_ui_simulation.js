@@ -6198,7 +6198,11 @@ function setupMapMissionHud() {
     refreshMapLayout();
   });
 
-  pauseB.addEventListener("click", () => {
+  pauseB.addEventListener("pointerdown", (ev) => {
+    ev.stopPropagation();
+  });
+  pauseB.addEventListener("click", (ev) => {
+    ev.stopPropagation();
     togglePauseResumeMission();
   });
   prevB.addEventListener("click", () => {
@@ -6354,7 +6358,11 @@ function setupMapRouteHud() {
     refreshMapLayout();
   });
 
-  pauseB.addEventListener("click", () => {
+  pauseB.addEventListener("pointerdown", (ev) => {
+    ev.stopPropagation();
+  });
+  pauseB.addEventListener("click", (ev) => {
+    ev.stopPropagation();
     setRouteGuidanceRunning(!routeGuidanceRunning);
   });
 
@@ -6630,8 +6638,11 @@ function tickRaf(now) {
       );
       if (distanceAlongPathMeters >= pathTotalMeters - 0.01) {
         distanceAlongPathMeters = pathTotalMeters;
-        running = false;
-        lastRafTime = 0;
+        if (running) {
+          running = false;
+          lastRafTime = 0;
+          refreshMapMissionHudState();
+        }
       }
       maybeAnnounceProchainArret(prevVoiceD, distanceAlongPathMeters);
       lastVoiceDistance = distanceAlongPathMeters;
