@@ -2234,6 +2234,8 @@
         /* Hauteur commune rail + bouton replier (carré) ; boutons internes carrés plus compacts */
         --map-hud-h: 44px;
         --map-hud-btn: 36px;
+        --map-hud-btn-stop: 12px;
+        --map-hud-btn-scrub: 32px;
         --map-hud-clear-attrib: 30px;
         position: absolute;
         inset: 0;
@@ -2378,12 +2380,49 @@
         border-color: #004a8c;
         color: #fff;
       }
-      .map-mission-hud__btn--speed {
-        flex-basis: var(--map-hud-btn);
-        min-width: var(--map-hud-btn);
-        width: var(--map-hud-btn);
-        font-size: 12px;
-        letter-spacing: -0.03em;
+      .map-mission-hud__btn--stop-jump {
+        flex: 0 0 var(--map-hud-btn-stop);
+        width: var(--map-hud-btn-stop);
+        min-width: var(--map-hud-btn-stop);
+      }
+      .map-mission-hud__btn--stop-jump svg {
+        width: 14px;
+        height: 14px;
+      }
+      .map-mission-hud__btn--scrub {
+        flex: 0 0 var(--map-hud-btn-scrub);
+        width: var(--map-hud-btn-scrub);
+        min-width: var(--map-hud-btn-scrub);
+        flex-direction: column;
+        gap: 0;
+        padding: 2px 0 1px;
+        line-height: 1;
+      }
+      .map-mission-hud__btn--scrub svg {
+        width: 16px;
+        height: 13px;
+      }
+      .map-mission-hud__scrub-speed {
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        margin-top: 1px;
+      }
+      .map-mission-hud__btn--scrub.map-mission-hud__btn--scrub-active {
+        border-color: #005ca9;
+        background: #e8f2fb;
+        color: #004a8c;
+      }
+      .map-mission-hud__btn--scrub.map-mission-hud__btn--scrub-hold {
+        background: #005ca9;
+        border-color: #004a8c;
+        color: #fff;
+      }
+      .map-mission-hud__scrub-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
       }
       /* Voix : glyphe seul (pas de carré plein largeur) pour ne pas élargir la barre */
       .map-mission-hud__voice-icon {
@@ -2437,7 +2476,16 @@
         position: relative;
         z-index: 1;
       }
-      #mapHudPauseBtn.map-mission-hud__btn--primary,
+      #mapHudPauseBtn.map-mission-hud__btn--primary {
+        z-index: 2;
+        margin-right: 2px;
+      }
+      #mapHudPrevBtn {
+        margin-right: -2px;
+      }
+      #mapHudNextBtn {
+        margin-right: 4px;
+      }
       #mapRouteHudPauseBtn.map-mission-hud__btn--primary {
         z-index: 2;
       }
@@ -3270,8 +3318,7 @@
                 <select id="speedSelect">
                   <option value="1">x1</option>
                   <option value="2">x2</option>
-                  <option value="4">x4</option>
-                  <option value="10">x10</option>
+                  <option value="3">x3</option>
                 </select>
               </div>
             </div>
@@ -3604,7 +3651,9 @@
                       </li>
                       <li>
                         En simulation, la liste <strong>Vitesse</strong> permet
-                        d’accélérer le parcours (×1, ×2, ×4 ou ×10). Utilisez
+                        d’accélérer le parcours : tap sur avance ou recul
+                        rapide (×1, ×2, ×3), maintien ×10. Les chevrons
+                        simples sautent d’arrêt en arrêt. Utilisez
                         <strong>Pause / Reprendre</strong> et les boutons
                         d’arrêts si besoin.
                       </li>
@@ -4010,25 +4059,42 @@
                   <button
                     type="button"
                     id="mapHudPrevBtn"
-                    class="map-mission-hud__btn"
+                    class="map-mission-hud__btn map-mission-hud__btn--stop-jump"
                     aria-label="Arrêt précédent"
                     title="Arrêt précédent"
                   ></button>
                   <button
                     type="button"
                     id="mapHudNextBtn"
-                    class="map-mission-hud__btn"
+                    class="map-mission-hud__btn map-mission-hud__btn--stop-jump"
                     aria-label="Arrêt suivant"
                     title="Arrêt suivant"
                   ></button>
                   <button
                     type="button"
-                    id="mapHudSpeedBtn"
-                    class="map-mission-hud__btn map-mission-hud__btn--speed"
-                    aria-label="Vitesse ×1"
-                    title="Vitesse (clic pour ×1, ×2, ×4, ×10)"
+                    id="mapHudRewindBtn"
+                    class="map-mission-hud__btn map-mission-hud__btn--scrub"
+                    aria-label="Recul rapide ×1"
+                    title="Recul rapide — tap ×1/×2/×3, maintien ×10"
                   >
-                    ×1
+                    <span
+                      class="map-mission-hud__scrub-icon"
+                      aria-hidden="true"
+                    ></span>
+                    <span class="map-mission-hud__scrub-speed">×1</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="mapHudFastFwdBtn"
+                    class="map-mission-hud__btn map-mission-hud__btn--scrub"
+                    aria-label="Avance rapide ×1"
+                    title="Avance rapide — tap ×1/×2/×3, maintien ×10"
+                  >
+                    <span
+                      class="map-mission-hud__scrub-icon"
+                      aria-hidden="true"
+                    ></span>
+                    <span class="map-mission-hud__scrub-speed">×1</span>
                   </button>
                   <label class="map-mission-hud__heading">
                     <input type="checkbox" id="mapHudHeadingUp" />

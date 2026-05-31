@@ -3917,58 +3917,59 @@ function getNetworkGeometryByLine(features, pattern) {
   );
   if (!candidates.length) return null;
 
-  const expectedWay =
-    inferNetworkWayFromPattern(candidates, pattern) ||
-    expectedNetworkWayFromPattern(pattern);
-  const labelScores = candidates.map((c) =>
-    scoreNetworkFeatureLabelMatch(c, pattern),
-  );
-  const maxLabel = Math.max(...labelScores);
-  let pool = candidates;
-  if (maxLabel >= 4) {
-    pool = candidates.filter(
-      (c, i) => labelScores[i] >= maxLabel - 1,
-    );
-  } else if (expectedWay) {
-    const byWay = candidates.filter((c) => {
-      const w = parseTamNetworkSens(c.sens).way;
-      return !w || w === expectedWay;
-    });
-    if (byWay.length) pool = byWay;
-  }
+  /** Au-delà de ce cumul (m), les écarts GTFS ne discriminent plus les voies (L3). */
+  const STOP_SUM_LABEL_FALLBACK_M = 500;
+  const STOP_SUM_GEO_TIGHT_M = 15;
 
-  let best = null;
-  let bestEndpoint = Number.POSITIVE_INFINITY;
-  let bestScore = Number.POSITIVE_INFINITY;
-
-  for (const candidate of pool) {
+  const scored = [];
+  for (const candidate of candidates) {
     const sens = parseTamNetworkSens(candidate.sens);
     const geom = endpointGeometryScore(
       candidate.coordinates,
       start,
       end,
     );
-    if (expectedWay && sens.way && sens.way !== expectedWay) {
+    if (geom.score > 0.08) {
       continue;
     }
-    const stopsScore = patternStopsAlignmentScore(geom.coords, pattern);
-    const total = geom.score + stopsScore * 1e-8;
-    if (total < bestScore) {
-      bestScore = total;
-      bestEndpoint = geom.score;
-      best = {
-        coords: geom.coords,
-        nom_ligne: candidate.nom_ligne,
-        sens: sens.raw || candidate.sens || "",
-        reversed: geom.reversed,
-      };
+    scored.push({
+      candidate,
+      sens,
+      geom,
+      stopsScore: patternStopsAlignmentScore(geom.coords, pattern),
+      labelScore: scoreNetworkFeatureLabelMatch(candidate, pattern),
+    });
+  }
+  if (!scored.length) return null;
+
+  const bestStops = Math.min(...scored.map((s) => s.stopsScore));
+  let pool = scored;
+  if (bestStops > STOP_SUM_LABEL_FALLBACK_M) {
+    const maxLabel = Math.max(...scored.map((s) => s.labelScore));
+    if (maxLabel >= 4) {
+      pool = scored.filter((s) => s.labelScore >= maxLabel - 1);
     }
+  } else {
+    pool = scored.filter(
+      (s) => s.stopsScore <= bestStops + STOP_SUM_GEO_TIGHT_M,
+    );
+  }
+  if (!pool.length) {
+    pool = scored;
   }
 
-  if (!best || bestEndpoint > 0.08) {
-    return null;
-  }
-  return best;
+  const best = pool.reduce((a, b) =>
+    a.stopsScore + a.geom.score * 5000 <= b.stopsScore + b.geom.score * 5000
+      ? a
+      : b,
+  );
+
+  return {
+    coords: best.geom.coords,
+    nom_ligne: best.candidate.nom_ligne,
+    sens: best.sens.raw || best.candidate.sens || "",
+    reversed: best.geom.reversed,
+  };
 }
 
 function rebuildPathMetrics(coords) {
@@ -6084,8 +6085,8 @@ function updateStats() {
   const pct =
     pathTotalMeters > 0 ? ((d / pathTotalMeters) * 100).toFixed(1) : "0.0";
   progressPctEl.textContent = `${pct}% (${traceSource}) — ~${Math.round(
-    BASE_METERS_PER_SECOND * speed * 3.6,
-  )} km/h sim.`;
+    BASE_METERS_PER_SECOND * getEffectiveSimSpeedMult() * 3.6,
+  )} km/h sim${simDirection < 0 && running ? " (recul)" : ""}.`;
   refreshStopRail();
   refreshMapMissionHudState();
   refreshMapHudNextStopPeek();
@@ -6104,10 +6105,175 @@ const HUD_ICON_VOICE_ON =
 const HUD_ICON_VOICE_OFF =
   '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>';
 
-/** Vitesses affichées sur la HUD carte — alignées sur `#speedSelect`. */
-const MAP_HUD_SPEED_SEQUENCE = [1, 2, 4, 10];
+const HUD_ICON_SCRUB_BACK =
+  '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 7l-5 5 5 5M18 7l-5 5 5 5" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const HUD_ICON_SCRUB_FWD =
+  '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7l5 5-5 5M13 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-/** Compteur vitesse (haut carte) : simulation ou GPS réel. */
+const MAP_HUD_TAP_SPEED_SEQUENCE = [1, 2, 3];
+const MAP_HUD_SCRUB_HOLD_MS = 380;
+const MAP_HUD_SCRUB_HOLD_SPEED = 10;
+
+function cycleMapHudTapSpeed(current) {
+  const idx = MAP_HUD_TAP_SPEED_SEQUENCE.indexOf(current);
+  const nextIdx =
+    idx === -1 ? 0 : (idx + 1) % MAP_HUD_TAP_SPEED_SEQUENCE.length;
+  return MAP_HUD_TAP_SPEED_SEQUENCE[nextIdx];
+}
+
+function getEffectiveSimSpeedMult() {
+  if (simScrubHold) {
+    return MAP_HUD_SCRUB_HOLD_SPEED;
+  }
+  return simDirection >= 0 ? simSpeedForward : simSpeedBackward;
+}
+
+function syncSimSpeedFromHud() {
+  speed = getEffectiveSimSpeedMult();
+  if (speedSelect && simDirection >= 0 && !simScrubHold) {
+    const v = String(simSpeedForward);
+    if (speedSelect.querySelector(`option[value="${v}"]`)) {
+      speedSelect.value = v;
+    }
+  }
+}
+
+function refreshMapHudScrubLabels() {
+  const revB = document.getElementById("mapHudRewindBtn");
+  const fwdB = document.getElementById("mapHudFastFwdBtn");
+  if (!revB || !fwdB) return;
+
+  const revMult = simScrubHold && simDirection < 0
+    ? MAP_HUD_SCRUB_HOLD_SPEED
+    : simSpeedBackward;
+  const fwdMult = simScrubHold && simDirection > 0
+    ? MAP_HUD_SCRUB_HOLD_SPEED
+    : simSpeedForward;
+
+  const revLabel = revB.querySelector(".map-mission-hud__scrub-speed");
+  const fwdLabel = fwdB.querySelector(".map-mission-hud__scrub-speed");
+  if (revLabel) revLabel.textContent = `×${revMult}`;
+  if (fwdLabel) fwdLabel.textContent = `×${fwdMult}`;
+
+  const revHold = simScrubHold && simDirection < 0;
+  const fwdHold = simScrubHold && simDirection > 0;
+  revB.classList.toggle("map-mission-hud__btn--scrub-hold", revHold);
+  fwdB.classList.toggle("map-mission-hud__btn--scrub-hold", fwdHold);
+  revB.classList.toggle(
+    "map-mission-hud__btn--scrub-active",
+    !revHold && simDirection < 0 && running,
+  );
+  fwdB.classList.toggle(
+    "map-mission-hud__btn--scrub-active",
+    !fwdHold && simDirection > 0 && running,
+  );
+
+  revB.setAttribute("aria-label", `Recul rapide ×${revMult}`);
+  fwdB.setAttribute("aria-label", `Avance rapide ×${fwdMult}`);
+  revB.title = `Recul rapide (×${revMult}) — tap ×1/×2/×3, maintien ×10`;
+  fwdB.title = `Avance rapide (×${fwdMult}) — tap ×1/×2/×3, maintien ×10`;
+}
+
+function setupMapHudScrubButton(btn, direction) {
+  if (!btn) return;
+  let holdTimer = null;
+  let holdActive = false;
+
+  const clearHoldTimer = () => {
+    if (holdTimer != null) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+  };
+
+  const beginHoldScrub = () => {
+    clearHoldTimer();
+    if (holdActive || previewOnlyMode || driveMode === DRIVE_MODE.REAL) {
+      return;
+    }
+    holdActive = true;
+    simScrubHold = true;
+    simDirection = direction;
+    syncSimSpeedFromHud();
+    if (
+      currentPattern &&
+      pathTotalMeters > 0 &&
+      !running &&
+      typeof blockMissionResumeIfUnsavedDeviation === "function" &&
+      blockMissionResumeIfUnsavedDeviation()
+    ) {
+      simScrubHold = false;
+      holdActive = false;
+      return;
+    }
+    if (currentPattern && pathTotalMeters > 0) {
+      running = true;
+    }
+    refreshMapHudScrubLabels();
+    refreshMapMissionHudState();
+  };
+
+  const endHoldScrub = (didTap) => {
+    clearHoldTimer();
+    if (holdActive) {
+      holdActive = false;
+      simScrubHold = false;
+      syncSimSpeedFromHud();
+      refreshMapHudScrubLabels();
+      refreshMapSpeedHud();
+      return;
+    }
+    if (!didTap) return;
+    if (direction > 0) {
+      simSpeedForward = cycleMapHudTapSpeed(simSpeedForward);
+      simDirection = 1;
+    } else {
+      simSpeedBackward = cycleMapHudTapSpeed(simSpeedBackward);
+      simDirection = -1;
+    }
+    syncSimSpeedFromHud();
+    refreshMapHudScrubLabels();
+  };
+
+  btn.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0 && ev.pointerType === "mouse") return;
+    ev.preventDefault();
+    btn.setPointerCapture(ev.pointerId);
+    clearHoldTimer();
+    holdTimer = setTimeout(beginHoldScrub, MAP_HUD_SCRUB_HOLD_MS);
+  });
+
+  const onPointerEnd = (ev) => {
+    const wasTap = holdTimer != null;
+    clearHoldTimer();
+    if (btn.hasPointerCapture(ev.pointerId)) {
+      btn.releasePointerCapture(ev.pointerId);
+    }
+    endHoldScrub(wasTap && !holdActive);
+  };
+
+  btn.addEventListener("pointerup", onPointerEnd);
+  btn.addEventListener("pointercancel", (ev) => {
+    clearHoldTimer();
+    if (holdActive) {
+      holdActive = false;
+      simScrubHold = false;
+      syncSimSpeedFromHud();
+      refreshMapHudScrubLabels();
+    }
+    if (btn.hasPointerCapture(ev.pointerId)) {
+      btn.releasePointerCapture(ev.pointerId);
+    }
+  });
+  btn.addEventListener("lostpointercapture", () => {
+    if (holdActive) {
+      holdActive = false;
+      simScrubHold = false;
+      syncSimSpeedFromHud();
+      refreshMapHudScrubLabels();
+    }
+  });
+}
 function refreshMapSpeedHud() {
   const root = document.getElementById("mapSpeedHud");
   const valueEl = document.getElementById("mapSpeedHudValue");
@@ -6130,30 +6296,9 @@ function refreshMapSpeedHud() {
     return;
   }
   const kmh = running
-    ? Math.round(BASE_METERS_PER_SECOND * speed * 3.6)
+    ? Math.round(BASE_METERS_PER_SECOND * getEffectiveSimSpeedMult() * 3.6)
     : 0;
   valueEl.textContent = String(kmh);
-}
-
-function refreshMapHudSpeedLabel() {
-  const btn = document.getElementById("mapHudSpeedBtn");
-  if (!btn || !speedSelect) return;
-  const raw = Number(speedSelect.value);
-  const v = MAP_HUD_SPEED_SEQUENCE.includes(raw)
-    ? raw
-    : MAP_HUD_SPEED_SEQUENCE[0];
-  btn.textContent = `×${v}`;
-  btn.title = `Vitesse simulation (${btn.textContent}) — clic pour changer`;
-  btn.setAttribute("aria-label", `Vitesse simulation ${btn.textContent}`);
-}
-
-function cycleMapHudSpeed() {
-  if (!speedSelect) return;
-  const cur = Number(speedSelect.value) || 1;
-  const idx = MAP_HUD_SPEED_SEQUENCE.indexOf(cur);
-  const nextIdx = idx === -1 ? 0 : (idx + 1) % MAP_HUD_SPEED_SEQUENCE.length;
-  speedSelect.value = String(MAP_HUD_SPEED_SEQUENCE[nextIdx]);
-  speedSelect.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function refreshMapHudToggleIcon() {
@@ -6254,6 +6399,7 @@ function refreshMapMissionHudState() {
   pauseB.setAttribute("aria-label", showPause ? "Pause" : "Reprendre");
   pauseB.title = showPause ? "Pause" : "Reprendre";
   refreshMapHudVoiceBtn();
+  refreshMapHudScrubLabels();
 }
 
 function hideMapMissionHud() {
@@ -6280,7 +6426,7 @@ function showMapMissionHud() {
   syncMapHudHeadingCheckboxFromMain();
   refreshMapMissionHudState();
   refreshMapHudToggleIcon();
-  refreshMapHudSpeedLabel();
+  refreshMapHudScrubLabels();
   refreshMapHudNextStopPeek();
   refreshMapSpeedHud();
   refreshStopRail();
@@ -6318,6 +6464,10 @@ function togglePauseResumeMission() {
   running = !running;
   if (!running) {
     lastRafTime = 0;
+    simScrubHold = false;
+    syncSimSpeedFromHud();
+  } else {
+    syncSimSpeedFromHud();
   }
   refreshMapMissionHudState();
 }
@@ -6329,7 +6479,8 @@ function setupMapMissionHud() {
   const pauseB = document.getElementById("mapHudPauseBtn");
   const prevB = document.getElementById("mapHudPrevBtn");
   const nextB = document.getElementById("mapHudNextBtn");
-  const speedB = document.getElementById("mapHudSpeedBtn");
+  const rewindB = document.getElementById("mapHudRewindBtn");
+  const fastFwdB = document.getElementById("mapHudFastFwdBtn");
   const mapHeading = document.getElementById("mapHudHeadingUp");
   const nextStrip = root.querySelector(".map-mission-hud__nextStrip");
   if (
@@ -6339,7 +6490,8 @@ function setupMapMissionHud() {
     !pauseB ||
     !prevB ||
     !nextB ||
-    !speedB ||
+    !rewindB ||
+    !fastFwdB ||
     !mapHeading ||
     !nextStrip
   )
@@ -6347,8 +6499,12 @@ function setupMapMissionHud() {
 
   prevB.innerHTML = HUD_CHEVRON_L;
   nextB.innerHTML = HUD_CHEVRON_R;
+  rewindB.querySelector(".map-mission-hud__scrub-icon").innerHTML =
+    HUD_ICON_SCRUB_BACK;
+  fastFwdB.querySelector(".map-mission-hud__scrub-icon").innerHTML =
+    HUD_ICON_SCRUB_FWD;
   refreshMapHudToggleIcon();
-  refreshMapHudSpeedLabel();
+  refreshMapHudScrubLabels();
   refreshMapHudVoiceBtn();
 
   voiceB.addEventListener("click", () => {
@@ -6401,9 +6557,8 @@ function setupMapMissionHud() {
     openTamStopRailAtNextStop();
   });
 
-  speedB.addEventListener("click", () => {
-    cycleMapHudSpeed();
-  });
+  setupMapHudScrubButton(rewindB, -1);
+  setupMapHudScrubButton(fastFwdB, 1);
 
   mapHeading.addEventListener("change", () => {
     headingUpEl.checked = mapHeading.checked;
@@ -6796,15 +6951,24 @@ function tickRaf(now) {
       const prevVoiceD = lastVoiceDistance;
       const dt = Math.min(0.1, (now - lastRafTime) / 1000);
       lastRafTime = now;
+      const mult = getEffectiveSimSpeedMult();
+      const delta = simDirection * BASE_METERS_PER_SECOND * mult * dt;
       distanceAlongPathMeters = Math.min(
         pathTotalMeters,
-        distanceAlongPathMeters + BASE_METERS_PER_SECOND * speed * dt,
+        Math.max(0, distanceAlongPathMeters + delta),
       );
-      if (distanceAlongPathMeters >= pathTotalMeters - 0.01) {
-        distanceAlongPathMeters = pathTotalMeters;
+      if (
+        (simDirection > 0 &&
+          distanceAlongPathMeters >= pathTotalMeters - 0.01) ||
+        (simDirection < 0 && distanceAlongPathMeters <= 0.01)
+      ) {
+        distanceAlongPathMeters =
+          simDirection > 0 ? pathTotalMeters : 0;
         if (running) {
           running = false;
           lastRafTime = 0;
+          simScrubHold = false;
+          syncSimSpeedFromHud();
           refreshMapMissionHudState();
         }
       }
@@ -6832,7 +6996,14 @@ startBtn.addEventListener("click", () => {
   if (!p) return;
   // Démarrage Lignes/Déviations : on repart d’une carte “propre” (efface itinéraire et mission précédente).
   resetMapForNewContext("mission");
-  speed = Number(speedSelect.value) || 1;
+  simDirection = 1;
+  simSpeedForward = Number(speedSelect?.value) || 1;
+  if (!MAP_HUD_TAP_SPEED_SEQUENCE.includes(simSpeedForward)) {
+    simSpeedForward = 1;
+  }
+  simSpeedBackward = 1;
+  simScrubHold = false;
+  syncSimSpeedFromHud();
   const token = ++previewMissionToken;
   running = false;
   startBtn.disabled = true;
@@ -7303,12 +7474,17 @@ document.getElementById("prevBtn").addEventListener("click", () => {
 });
 
 speedSelect.addEventListener("change", () => {
-  speed = Number(speedSelect.value) || 1;
-  refreshMapHudSpeedLabel();
-  refreshMapSpeedHud();
+  simSpeedForward = Number(speedSelect.value) || 1;
+  if (!MAP_HUD_TAP_SPEED_SEQUENCE.includes(simSpeedForward)) {
+    simSpeedForward = MAP_HUD_TAP_SPEED_SEQUENCE[0];
+    speedSelect.value = String(simSpeedForward);
+  }
+  simDirection = 1;
+  syncSimSpeedFromHud();
+  refreshMapHudScrubLabels();
 });
-speed = Number(speedSelect.value) || 1;
-refreshMapHudSpeedLabel();
+syncSimSpeedFromHud();
+refreshMapHudScrubLabels();
 
 lineSelect.addEventListener("change", updateHeadsigns);
 lineSelect.addEventListener("change", syncLineCustomTrigger);
