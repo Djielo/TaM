@@ -5321,7 +5321,12 @@ function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
  * souris / tactile / carte et un comportement alterné.)
  */
 function plmSyncGroupsLayoutToZoom(persist) {
-  if (plmIsLiveMissionForLandmarkDisplay() && plmMapHeadingUpActive()) {
+  /*
+   * Ne pas recalculer ni enregistrer lat/lng au zoom pendant mission ou aperçu :
+   * le centre / cap de la carte ne correspondent pas au contexte d’édition des repères.
+   * (Démarrage en zoom max déclenchait zoomend → réécriture localStorage.)
+   */
+  if (previewOnlyMode || plmIsLiveMissionForLandmarkDisplay()) {
     redrawPersonalLandmarksLayer();
     return;
   }
