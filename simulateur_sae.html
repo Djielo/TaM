@@ -465,6 +465,10 @@
         line-height: 1.35;
         color: #1b1f24;
       }
+      /* Placement repère : curseur visée même au survol d’une zone (zones non cliquables). */
+      #map.tam-map-placing-landmark.leaflet-container {
+        cursor: crosshair !important;
+      }
       /* Même écart entre zoom+ / itinéraire / fond carte / repères (un peu moins que le défaut Leaflet 10px). */
       #map.leaflet-container
         .leaflet-top.leaflet-left

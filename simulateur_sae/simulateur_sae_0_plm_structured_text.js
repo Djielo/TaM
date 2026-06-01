@@ -1279,7 +1279,8 @@
       if (isDescStateEmpty()) {
         legacyDescRaw = null;
         descState.sectionOrder = [];
-      } else if (legacyDescRaw == null) {
+      } else {
+        if (legacyDescRaw != null) legacyDescRaw = null;
         descState.sectionOrder = (descState.sectionOrder || []).filter((k) =>
           plmSectionHasContent(descState, k),
         );
@@ -1289,6 +1290,7 @@
           descPreview.textContent = legacyDescRaw;
           descPreview.dataset.empty = legacyDescRaw ? "0" : "1";
         }
+        descEl.value = String(legacyDescRaw);
         notifyLabelPreview();
         return;
       }
@@ -2444,18 +2446,18 @@
       },
       getCommittedTitle,
       getCommittedName: getCommittedTitle,
+      getCommittedDescription() {
+        syncDescField();
+        if (legacyDescRaw != null && isDescStateEmpty()) {
+          return String(legacyDescRaw).trim();
+        }
+        return isDescStateEmpty() ? "" : formatDescription(descState);
+      },
       syncNameFieldFromPick() {
         syncNameFromPick();
       },
       flush() {
         syncDescField();
-        if (
-          legacyDescRaw != null &&
-          !isDescStateEmpty() &&
-          !formatDescription(descState)
-        ) {
-          descEl.value = legacyDescRaw;
-        }
         syncNameFromPick();
       },
       destroy() {
