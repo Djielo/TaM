@@ -258,8 +258,59 @@ function plmLandmarkDisplayName(item) {
 function plmLandmarkHasMapLabelContent(item) {
   if (!item) return false;
   const ref = plmLandmarkLabelAttachItem(item) || item;
+  if (plmLandmarkHideName(ref)) return false;
   return (
-    !!plmLandmarkDisplayName(ref) || !!plmLandmarkDescriptionText(ref)
+    !!String(ref.name ?? "").trim() || !!plmLandmarkDescriptionText(ref)
+  );
+}
+
+/** Vide titre (champ name), description structurée et coches — conserve icône et position. */
+function plmApplyClearLandmarkContent(landmarkId) {
+  const item = personalLandmarksList.find((x) => x.id === landmarkId);
+  if (!item) return false;
+  if (item.groupId) {
+    const gid = item.groupId;
+    plmSetGroupDescription(gid, "");
+    for (let i = 0; i < personalLandmarksList.length; i++) {
+      if (personalLandmarksList[i].groupId !== gid) continue;
+      const next = { ...personalLandmarksList[i] };
+      next.name = "";
+      next.description = "";
+      delete next.hideName;
+      personalLandmarksList[i] = next;
+    }
+  } else {
+    const idx = personalLandmarksList.findIndex((x) => x.id === landmarkId);
+    if (idx < 0) return false;
+    const next = { ...personalLandmarksList[idx] };
+    next.name = "";
+    next.description = "";
+    delete next.hideName;
+    personalLandmarksList[idx] = next;
+  }
+  savePersonalLandmarksToStorage();
+  savePlmGroupsToStorage();
+  if (typeof plmScheduleAutoBackup === "function") plmScheduleAutoBackup();
+  redrawPersonalLandmarksLayer();
+  return true;
+}
+
+async function plmClearLandmarkContentFromContext(landmarkId) {
+  const item = personalLandmarksList.find((x) => x.id === landmarkId);
+  if (!item) return;
+  const label = item.groupId
+    ? "Vider ce groupe"
+    : "Vider ce repère";
+  const ok = await showAppConfirmDialog(
+    TAM_APP_DIALOG_TITLE,
+    `${label} ?\n\nTitre, CMR, vitesses, lignes INDES et INDIR seront effacés (rien de coché). L’icône et la position sur la carte restent inchangées.`,
+  );
+  if (!ok) return;
+  if (!plmApplyClearLandmarkContent(landmarkId)) return;
+  setGpsStatus(
+    item.groupId
+      ? "Groupe vidé : plus de titre ni de description structurée."
+      : "Repère vidé : plus de titre ni de description structurée.",
   );
 }
 
@@ -1440,7 +1491,7 @@ function plmCommitDialogSave(r) {
         ? normalizePlmColorHex(prev.colorHex)
         : normalizePlmColorHex(r.colorHex),
     };
-    delete row.hideName;
+    if (prev.hideName) row.hideName = true;
     if (finalGroupId) row.groupId = finalGroupId;
     if (prev.parentId) {
       row.parentId = prev.parentId;
@@ -5606,6 +5657,10 @@ function plmInitLandmarkContextMenu() {
     }
     if (action === "rotate-landmark") {
       plmStartLandmarkRotation(id);
+      return;
+    }
+    if (action === "clear-landmark") {
+      void plmClearLandmarkContentFromContext(id);
       return;
     }
     if (action === "del-landmark") {
