@@ -924,6 +924,11 @@
         padding: 0;
         border-bottom: 2px solid #ccd3db;
       }
+      .app-personal-landmark-dialog .tam-plm-tabs__btn {
+        padding: 6px 3px;
+        font-size: 12px;
+        line-height: 1.2;
+      }
       .tam-plm-tabs__btn {
         flex: 1 1 0;
         min-width: 0;
@@ -990,7 +995,10 @@
         -webkit-overflow-scrolling: touch;
       }
       .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden]),
-      .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden]) {
+      .tam-plm-tab-panel[data-plm-tab-panel="cmr"]:not([hidden]),
+      .tam-plm-tab-panel[data-plm-tab-panel="vitesse"]:not([hidden]),
+      .tam-plm-tab-panel[data-plm-tab-panel="indes"]:not([hidden]),
+      .tam-plm-tab-panel[data-plm-tab-panel="indir"]:not([hidden]) {
         overflow: hidden;
       }
       .tam-plm-tab-panel--measure {
@@ -1402,6 +1410,9 @@
       .tam-plm-backup-row {
         margin-top: 4px;
       }
+      .tam-plm-backup-row .tam-plm-backup-btn + .tam-plm-backup-btn {
+        margin-top: 6px;
+      }
       .tam-plm-backup-btn {
         width: 100%;
         padding: 8px 10px;
@@ -1422,6 +1433,14 @@
       }
       .tam-plm-backup-btn:active {
         background: #d0e3f5;
+      }
+      .tam-plm-backup-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .header-gear-popover__title--root {
+        margin: 0 0 10px;
+        font-size: 15px;
       }
       .tam-personal-landmark-marker__bubble {
         display: flex;
@@ -1470,7 +1489,16 @@
         .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
         .tam-plm-struct-panel,
       .app-personal-landmark-dialog
-        .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
+        .tam-plm-tab-panel[data-plm-tab-panel="cmr"]:not([hidden])
+        .tam-plm-struct-panel,
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="vitesse"]:not([hidden])
+        .tam-plm-struct-panel,
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="indes"]:not([hidden])
+        .tam-plm-struct-panel,
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="indir"]:not([hidden])
         .tam-plm-struct-panel {
         flex: 1 1 auto;
         align-self: stretch;
@@ -1547,6 +1575,17 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .tam-plm-desc-title-pill--cmr:not([style*="background"]) {
+        background: #c5cdd6;
+      }
+      /* CMR multi-lignes : blanc (priorité sur le gris des titres standards) */
+      .tam-plm-desc-title-pill--cmr-multi,
+      .tam-plm-map-label__title-row .tam-plm-desc-title-pill--cmr-multi {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        -webkit-text-stroke: 0 !important;
+        text-shadow: none !important;
       }
       .tam-plm-dialog-head-preview__card
         .tam-plm-desc-preview[data-empty="1"]:not(:empty)::before {
@@ -1680,6 +1719,66 @@
       }
       .tam-plm-line-row .tam-plm-struct-tools--asm {
         margin: 0 0 0 2px;
+      }
+      /* Onglet CMR : un encadré par ligne (couleur réseau si disponible) */
+      .tam-plm-struct-section--cmr .tam-plm-line-group {
+        margin-bottom: 8px;
+        padding: 8px 10px 10px;
+        border: 1px solid #b8c6d8;
+        border-radius: 10px;
+        background: #f4f8fc;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset;
+      }
+      .tam-plm-struct-section--cmr .tam-plm-line-group--themed {
+        background: var(--tam-plm-line-bg-soft, #f4f8fc);
+        border: 2px solid var(--tam-plm-line-border, #b8c6d8);
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.65) inset,
+          0 0 0 1px color-mix(in srgb, var(--tam-plm-line-bg, #b8c6d8) 18%, transparent);
+      }
+      .tam-plm-struct-section--cmr .tam-plm-line-group--other,
+      .tam-plm-struct-section--cmr .tam-plm-line-group--neutral {
+        background: #f0f3f7;
+        border-color: #c5ced9;
+      }
+      .tam-plm-struct-section--cmr .tam-plm-line-group:last-child {
+        margin-bottom: 0;
+      }
+      .tam-plm-line-group__bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #d4dde8;
+      }
+      .tam-plm-struct-section--cmr .tam-plm-line-group--themed .tam-plm-line-group__bar {
+        border-bottom-color: color-mix(
+          in srgb,
+          var(--tam-plm-line-bg, #b8c6d8) 40%,
+          #ffffff
+        );
+      }
+      .tam-plm-line-group__label {
+        font-size: 12px;
+        font-weight: 700;
+        color: #005ca9;
+        letter-spacing: 0.02em;
+      }
+      .tam-plm-struct-section--cmr .tam-plm-line-group__label.tam-plm-desc-line-pill {
+        font-size: 11px;
+      }
+      .tam-plm-line-group__empty {
+        font-size: 11px;
+        font-style: italic;
+        color: #6b7280;
+      }
+      .tam-plm-struct-section--cmr .tam-plm-line-group .tam-plm-struct-box {
+        width: 100%;
+      }
+      .tam-plm-struct-section--cmr .tam-plm-line-group .tam-plm-struct-tools--asm {
+        margin: 0;
       }
       .tam-plm-struct-box {
         display: flex;
@@ -3314,19 +3413,34 @@
             </button>
           </div>
           <div id="headerGearPopover" class="header-gear-popover" hidden>
-            <div class="header-gear-popover__section">
-              <p class="header-gear-popover__title">Sauvegarde</p>
+            <p class="header-gear-popover__title header-gear-popover__title--root">
+              Paramètres
+            </p>
+            <div
+              id="tamMasterBackupSection"
+              class="header-gear-popover__section"
+              hidden
+            >
+              <p class="header-gear-popover__title">Sauvegarde (maître)</p>
               <p
                 class="header-gear-popover__note"
                 style="margin-top: 0; margin-bottom: 8px"
               >
-                Vos données sont sauvegardées automatiquement à chaque action
-                validée. Pour restaurer après un vidage de cache :
+                Copie fichier si besoin. Une sauvegarde de secours est aussi
+                gardée au plus une fois par heure de travail (fichier
+                <strong>tam_sauvegarde_simulateur_secours.json</strong>).
               </p>
               <div class="tam-plm-backup-row">
                 <button
                   type="button"
-                  id="appPlmBackupImportBtn"
+                  id="appPlmBackupExportBtn"
+                  class="tam-plm-backup-btn"
+                >
+                  Exporter une copie
+                </button>
+                <button
+                  type="button"
+                  id="appPlmBackupRestoreBtn"
                   class="tam-plm-backup-btn"
                 >
                   Restaurer une sauvegarde
@@ -4662,12 +4776,45 @@
             type="button"
             class="tam-plm-tabs__btn"
             role="tab"
-            id="appPersonalLandmarkDialogTabDesc"
-            data-plm-tab="desc"
+            id="appPersonalLandmarkDialogTabCmr"
+            data-plm-tab="cmr"
             aria-selected="false"
-            aria-controls="appPersonalLandmarkDialogPanelDesc"
+            aria-controls="appPersonalLandmarkDialogPanelCmr"
           >
-            Description
+            CMR
+          </button>
+          <button
+            type="button"
+            class="tam-plm-tabs__btn"
+            role="tab"
+            id="appPersonalLandmarkDialogTabVitesse"
+            data-plm-tab="vitesse"
+            aria-selected="false"
+            aria-controls="appPersonalLandmarkDialogPanelVitesse"
+          >
+            Vitesse
+          </button>
+          <button
+            type="button"
+            class="tam-plm-tabs__btn"
+            role="tab"
+            id="appPersonalLandmarkDialogTabIndes"
+            data-plm-tab="indes"
+            aria-selected="false"
+            aria-controls="appPersonalLandmarkDialogPanelIndes"
+          >
+            INDES
+          </button>
+          <button
+            type="button"
+            class="tam-plm-tabs__btn"
+            role="tab"
+            id="appPersonalLandmarkDialogTabIndir"
+            data-plm-tab="indir"
+            aria-selected="false"
+            aria-controls="appPersonalLandmarkDialogPanelIndir"
+          >
+            INDIR
           </button>
         </div>
         <div
@@ -4772,28 +4919,70 @@
             ></div>
           </div>
           <div
-            id="appPersonalLandmarkDialogPanelDesc"
+            id="appPersonalLandmarkDialogPanelCmr"
             class="tam-plm-tab-panel"
             role="tabpanel"
-            data-plm-tab-panel="desc"
-            aria-labelledby="appPersonalLandmarkDialogTabDesc"
+            data-plm-tab-panel="cmr"
+            aria-labelledby="appPersonalLandmarkDialogTabCmr"
             hidden
           >
             <div
-              id="appPersonalLandmarkDialogDescPanel"
+              id="appPersonalLandmarkDialogCmrPanel"
               class="tam-plm-struct-panel"
-              aria-label="Vitesses, lignes INDES et INDIR (description compacte)."
+              aria-label="CMR par ligne"
             ></div>
-            <textarea
-              id="appPersonalLandmarkDialogDesc"
-              class="app-prompt-dialog__textarea tam-plm-desc-field-hidden"
-              maxlength="500"
-              rows="2"
-              tabindex="-1"
-              aria-hidden="true"
-            ></textarea>
+          </div>
+          <div
+            id="appPersonalLandmarkDialogPanelVitesse"
+            class="tam-plm-tab-panel"
+            role="tabpanel"
+            data-plm-tab-panel="vitesse"
+            aria-labelledby="appPersonalLandmarkDialogTabVitesse"
+            hidden
+          >
+            <div
+              id="appPersonalLandmarkDialogSpeedPanel"
+              class="tam-plm-struct-panel tam-plm-struct-panel--vitesse"
+              aria-label="Vitesses par ligne"
+            ></div>
+          </div>
+          <div
+            id="appPersonalLandmarkDialogPanelIndes"
+            class="tam-plm-tab-panel"
+            role="tabpanel"
+            data-plm-tab-panel="indes"
+            aria-labelledby="appPersonalLandmarkDialogTabIndes"
+            hidden
+          >
+            <div
+              id="appPersonalLandmarkDialogIndesPanel"
+              class="tam-plm-struct-panel"
+              aria-label="Lignes INDES"
+            ></div>
+          </div>
+          <div
+            id="appPersonalLandmarkDialogPanelIndir"
+            class="tam-plm-tab-panel"
+            role="tabpanel"
+            data-plm-tab-panel="indir"
+            aria-labelledby="appPersonalLandmarkDialogTabIndir"
+            hidden
+          >
+            <div
+              id="appPersonalLandmarkDialogIndirPanel"
+              class="tam-plm-struct-panel"
+              aria-label="Lignes INDIR"
+            ></div>
           </div>
         </div>
+        <textarea
+          id="appPersonalLandmarkDialogDesc"
+          class="app-prompt-dialog__textarea tam-plm-desc-field-hidden"
+          maxlength="500"
+          rows="2"
+          tabindex="-1"
+          aria-hidden="true"
+        ></textarea>
         <div class="app-message-dialog__actions tam-plm-dialog-actions">
           <button
             type="button"
@@ -5106,8 +5295,9 @@
             </p>
             <p>
               <strong>Titre</strong> — facultatif ; cochez un libellé
-              enregistré (CMR, etc.). <strong>Description</strong> — vitesses,
-              INDES et INDIR ; un repère peut n’avoir ni titre ni description
+              enregistré (CMR, etc.). Onglets <strong>Vitesse</strong>,
+              <strong>INDES</strong> et <strong>INDIR</strong> pour la
+              description ; un repère peut n’avoir ni titre ni description
               (icône et couleur seuls).
             </p>
           </div>

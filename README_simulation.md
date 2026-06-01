@@ -62,7 +62,13 @@ urllib.request.urlretrieve(url, "simulation_data.json")
 PY
 ```
 
-2. Demarrer un serveur local statique:
+2. Demarrer le serveur local TAM (recommande, sauvegarde disque sous Firefox) :
+
+```bash
+python serve_tam.py
+```
+
+Alternative minimale (pas d’ecriture `tam_sauvegarde_simulateur.json` depuis Firefox) :
 
 ```bash
 python -m http.server 8000
@@ -70,7 +76,7 @@ python -m http.server 8000
 
 3. Ouvrir dans le navigateur:
 
-- [http://localhost:8000/simulateur_sae.html](http://localhost:8000/simulateur_sae.html)
+- [http://127.0.0.1:8000/simulateur_sae.html](http://127.0.0.1:8000/simulateur_sae.html)
 
 Dans l’onglet **Déviation** du simulateur, les sous-onglets **Planifiée** et **Temporaire** sont des parcours distincts (session temporaire, Rétablir, enregistrements locaux) — voir **[EVOLUTION_ET_BACKLOG.md](EVOLUTION_ET_BACKLOG.md)** §2.1 pour le comportement acté et les noms des helpers dans le code.
 

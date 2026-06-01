@@ -742,6 +742,103 @@ function tamApplyPlmDescLinePill(el, lineNum) {
   el.classList.add("tam-plm-desc-line-pill--fallback");
 }
 
+/**
+ * Encadré onglet CMR : fond teinté + bordure aux couleurs réseau (T1…T5, bus, etc.).
+ * @param {HTMLElement} el .tam-plm-line-group
+ */
+function tamApplyPlmCmrLineGroup(el, lineNum) {
+  if (!el) return;
+  const key = String(lineNum ?? "").trim();
+  el.dataset.plmLine = key;
+  el.classList.remove(
+    "tam-plm-line-group--themed",
+    "tam-plm-line-group--neutral",
+    "tam-plm-line-group--other",
+  );
+  el.style.removeProperty("--tam-plm-line-bg");
+  el.style.removeProperty("--tam-plm-line-bg-soft");
+  el.style.removeProperty("--tam-plm-line-border");
+  const label = el.querySelector(".tam-plm-line-group__label");
+  if (label) {
+    label.style.backgroundColor = "";
+    label.style.color = "";
+    label.style.border = "";
+    label.style.padding = "";
+    label.style.borderRadius = "";
+    label.classList.remove("tam-plm-desc-line-pill--fallback");
+  }
+  if (/^other$/i.test(key)) {
+    el.classList.add("tam-plm-line-group--other");
+    return;
+  }
+  const item = tamRouteItemForPlmLineNum(key);
+  const bg =
+    forcedLineColor(item?.route_short_name) || lineColorHex(item?.route_color);
+  if (!bg) {
+    el.classList.add("tam-plm-line-group--neutral");
+    return;
+  }
+  el.classList.add("tam-plm-line-group--themed");
+  el.style.setProperty("--tam-plm-line-bg", bg);
+  el.style.setProperty(
+    "--tam-plm-line-bg-soft",
+    `color-mix(in srgb, ${bg} 38%, #ffffff)`,
+  );
+  el.style.setProperty(
+    "--tam-plm-line-border",
+    `color-mix(in srgb, ${bg} 72%, #1b1f24)`,
+  );
+  if (label) {
+    tamApplyPlmDescLinePill(label, key);
+  }
+}
+
+function tamPlmLineBgHex(lineNum) {
+  const item = tamRouteItemForPlmLineNum(lineNum);
+  return forcedLineColor(item?.route_short_name) || lineColorHex(item?.route_color);
+}
+
+/** CMR sur 2+ lignes : police blanche uniquement (Henri IV 4+5, République 3+4, etc.). */
+function tamPlmCmrMultiLineLabelTxStyle() {
+  return "color:#ffffff;-webkit-text-fill-color:#ffffff;-webkit-text-stroke:0;text-shadow:none";
+}
+
+/**
+ * Bandeau / pastille titre CMR : couleur de ligne, ou dégradé oblique si le CMR
+ * est catalogué sur plusieurs lignes (République 3+4, Henri IV 4+5, etc.).
+ * @param {string[]} lineNums ex. ["3","4"]
+ */
+function tamPlmCmrTitlePillInlineStyle(lineNums) {
+  const nums = [
+    ...new Set(
+      (lineNums || [])
+        .map((n) => String(n ?? "").trim().toUpperCase())
+        .filter((n) => /^\d+[A-Z]?$/.test(n)),
+    ),
+  ].sort((a, b) => {
+    const na = parseInt(a, 10);
+    const nb = parseInt(b, 10);
+    if (na !== nb) return na - nb;
+    return a.localeCompare(b);
+  });
+  if (!nums.length) return "";
+  const colors = nums.map((n) => tamPlmLineBgHex(n)).filter(Boolean);
+  if (!colors.length) return "";
+  const base =
+    "display:inline-block;padding:2px 8px;border-radius:6px;font-weight:700;box-sizing:border-box;line-height:1.25;text-align:center;border:1px solid rgba(0,0,0,0.15);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%";
+  if (colors.length === 1) {
+    const item = tamRouteItemForPlmLineNum(nums[0]);
+    const tx = lineLabelContrastTextColor(item);
+    return `${base};background:${colors[0]};color:${tx};-webkit-text-fill-color:${tx}`;
+  }
+  const stops = colors.map((c, i) => {
+    const p0 = ((i / colors.length) * 100).toFixed(1);
+    const p1 = (((i + 1) / colors.length) * 100).toFixed(1);
+    return `${c} ${p0}% ${p1}%`;
+  });
+  return `${base};background:linear-gradient(128deg,${stops.join(",")});${tamPlmCmrMultiLineLabelTxStyle()}`;
+}
+
 /** Attribut style inline pour pastilles HTML (libellés carte repère). */
 function tamPlmLinePillInlineStyle(lineNum) {
   const item = tamRouteItemForPlmLineNum(lineNum);
@@ -759,7 +856,9 @@ function tamPlmLinePillInlineStyle(lineNum) {
 if (typeof window !== "undefined") {
   window.tamRouteItemForPlmLineNum = tamRouteItemForPlmLineNum;
   window.tamApplyPlmDescLinePill = tamApplyPlmDescLinePill;
+  window.tamApplyPlmCmrLineGroup = tamApplyPlmCmrLineGroup;
   window.tamPlmLinePillInlineStyle = tamPlmLinePillInlineStyle;
+  window.tamPlmCmrTitlePillInlineStyle = tamPlmCmrTitlePillInlineStyle;
 }
 
 /** Libellé pour les phrases « Prenez … » dans le résumé d’itinéraire carte.
@@ -7766,6 +7865,9 @@ headerGearBtn?.addEventListener("click", () => {
   if (!headerGearPopover.hidden) {
     closeControlPanel();
     if (typeof tamCloudRefreshUi === "function") tamCloudRefreshUi();
+    if (typeof tamRefreshGearPopover === "function") {
+      tamRefreshGearPopover();
+    }
   }
 });
 document.addEventListener("click", (e) => {
@@ -7778,13 +7880,23 @@ document.addEventListener("click", (e) => {
   }
 });
 (function wireHeaderBackup() {
-  const importBtn = document.getElementById("appPlmBackupImportBtn");
+  const restoreBtn = document.getElementById("appPlmBackupRestoreBtn");
+  const exportBtn = document.getElementById("appPlmBackupExportBtn");
   const fileInput = document.getElementById("appPlmBackupFileInput");
-  if (importBtn && fileInput) {
-    importBtn.addEventListener("click", () => {
-      fileInput.value = "";
-      fileInput.click();
+  if (typeof tamRefreshGearPopover === "function") {
+    tamRefreshGearPopover();
+  }
+  if (exportBtn && typeof window.tamExportBackupDownload === "function") {
+    exportBtn.addEventListener("click", () => {
+      window.tamExportBackupDownload();
     });
+  }
+  if (restoreBtn && typeof window.tamRestoreBackupPrimary === "function") {
+    restoreBtn.addEventListener("click", () => {
+      void window.tamRestoreBackupPrimary();
+    });
+  }
+  if (fileInput) {
     fileInput.addEventListener("change", () => {
       if (fileInput.files && fileInput.files[0]) {
         tamImportBackup(fileInput.files[0]);
@@ -7814,6 +7926,12 @@ applyMapVisualProfile();
 
 if (typeof tamCloudMaybeAutoPullOnStartup === "function") {
   void tamCloudMaybeAutoPullOnStartup();
+}
+if (typeof tamEnsureServerBackupOnStartup === "function") {
+  void tamEnsureServerBackupOnStartup();
+}
+if (typeof tamRefreshGearPopover === "function") {
+  tamRefreshGearPopover();
 }
 
 fetch("./simulation_data.json")

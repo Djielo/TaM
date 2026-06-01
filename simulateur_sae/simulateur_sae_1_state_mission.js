@@ -3391,6 +3391,254 @@ function savePlmCapFilterBandM(n) {
 }
 
 const TAM_BACKUP_FILENAME = "tam_sauvegarde_simulateur.json";
+const TAM_BACKUP_PICKER_TYPES = [
+  {
+    description: "Sauvegarde simulateur TAM",
+    accept: { "application/json": [".json"] },
+  },
+];
+/** Copie locale (localStorage) : secours si l’écriture fichier n’est pas possible. */
+const LS_KEY_BACKUP_MIRROR = "tam_sauvegarde_simulateur_mirror_v1";
+const LS_KEY_BACKUP_SECOURS_MIRROR = "tam_sauvegarde_simulateur_secours_mirror_v1";
+const LS_KEY_LAST_SECOURS_AT = "tam_backup_secours_last_at_v1";
+const TAM_BACKUP_SECOURS_FILENAME = "tam_sauvegarde_simulateur_secours.json";
+const TAM_SECOURS_BACKUP_INTERVAL_MS = 60 * 60 * 1000;
+
+const TAM_SIMULATOR_URL_HINT =
+  "http://127.0.0.1:8000/simulateur_sae.html";
+const TAM_BACKUP_SERVER_URL = "/api/tam/backup";
+const TAM_BACKUP_SERVER_STATUS_URL = "/api/tam/backup/status";
+const TAM_BACKUP_SECOURS_SERVER_URL = "/api/tam/backup/secours";
+const LS_KEY_USE_SERVER_BACKUP = "tam_use_server_backup_v1";
+let tamServerBackupProbeCache = null;
+
+function tamIsLocalDevHost() {
+  const h = window.location.hostname;
+  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+}
+
+function tamBackupFileApiAvailable() {
+  if (!window.isSecureContext) return false;
+  return (
+    typeof window.showSaveFilePicker === "function" ||
+    typeof window.showOpenFilePicker === "function"
+  );
+}
+
+function tamServerBackupEnabled() {
+  try {
+    return localStorage.getItem(LS_KEY_USE_SERVER_BACKUP) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+
+function tamSetServerBackupEnabled(on) {
+  try {
+    if (on) localStorage.setItem(LS_KEY_USE_SERVER_BACKUP, "1");
+    else localStorage.removeItem(LS_KEY_USE_SERVER_BACKUP);
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function tamProbeServerBackup(force) {
+  const now = Date.now();
+  if (!tamIsLocalDevHost()) {
+    tamServerBackupProbeCache = { at: now, ok: false };
+    return false;
+  }
+  if (
+    !force &&
+    tamServerBackupProbeCache &&
+    now - tamServerBackupProbeCache.at < 15000
+  ) {
+    return tamServerBackupProbeCache.ok;
+  }
+  try {
+    const r = await fetch(TAM_BACKUP_SERVER_STATUS_URL, {
+      method: "GET",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const ct = r.headers.get("content-type") || "";
+    const ok = r.ok && ct.includes("application/json");
+    tamServerBackupProbeCache = { at: now, ok };
+    return ok;
+  } catch (e) {
+    tamServerBackupProbeCache = { at: now, ok: false };
+    return false;
+  }
+}
+
+async function tamWriteBackupViaServer(pretty) {
+  try {
+    const r = await fetch(TAM_BACKUP_SERVER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: pretty,
+    });
+    if (!r.ok) return false;
+    const ct = r.headers.get("content-type") || "";
+    return ct.includes("application/json");
+  } catch (e) {
+    return false;
+  }
+}
+
+async function tamWriteSecoursBackupViaServer(pretty) {
+  try {
+    const r = await fetch(TAM_BACKUP_SECOURS_SERVER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: pretty,
+    });
+    if (!r.ok) return { ok: false, status: r.status };
+    const ct = r.headers.get("content-type") || "";
+    return {
+      ok: ct.includes("application/json"),
+      status: r.status,
+    };
+  } catch (e) {
+    return { ok: false, status: 0 };
+  }
+}
+
+function tamSecoursBackupDue() {
+  try {
+    const last = Number(localStorage.getItem(LS_KEY_LAST_SECOURS_AT) || 0);
+    return !last || Date.now() - last >= TAM_SECOURS_BACKUP_INTERVAL_MS;
+  } catch (e) {
+    return true;
+  }
+}
+
+async function tamMaybeSecoursBackup(pretty) {
+  if (!tamSecoursBackupDue()) return false;
+  if (tamServerBackupEnabled() && tamIsLocalDevHost()) {
+    const wr = await tamWriteSecoursBackupViaServer(pretty);
+    if (!wr.ok) return false;
+  }
+  try {
+    localStorage.setItem(LS_KEY_BACKUP_SECOURS_MIRROR, pretty);
+    localStorage.setItem(LS_KEY_LAST_SECOURS_AT, String(Date.now()));
+  } catch (e) {
+    return false;
+  }
+  return true;
+}
+
+function tamBackupServerMissingMessage(httpStatus) {
+  if (httpStatus === 404) {
+    return (
+      "Le serveur ne connaît pas l’API de sauvegarde (erreur 404).\n\n" +
+      "Vous utilisez sans doute « python -m http.server ».\n" +
+      "Arrêtez-le, puis lancez à la racine du projet :\n\n" +
+      "python serve_tam.py\n\n" +
+      "Rechargez http://127.0.0.1:8000/simulateur_sae.html"
+    );
+  }
+  return (
+    "Écriture sur disque impossible (serveur HTTP " +
+    (httpStatus || "?") +
+    ").\n\nLancez python serve_tam.py puis rechargez la page."
+  );
+}
+
+function tamSecoursBackupAvailableLocally() {
+  try {
+    return !!localStorage.getItem(LS_KEY_BACKUP_SECOURS_MIRROR);
+  } catch (e) {
+    return false;
+  }
+}
+
+async function tamRestoreSecoursBackup() {
+  if (tamServerBackupEnabled() && tamIsLocalDevHost()) {
+    try {
+      const r = await fetch(TAM_BACKUP_SECOURS_SERVER_URL, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      const ct = r.headers.get("content-type") || "";
+      if (r.ok && ct.includes("application/json")) {
+        tamAutoBackupLastJson = "";
+        tamApplyBackupFromObject(await r.json(), {
+          skipFileBackup: true,
+          replaceMissingKeys: true,
+        });
+        return;
+      }
+    } catch (e) {
+      // fallback miroir
+    }
+  }
+  const raw = localStorage.getItem(LS_KEY_BACKUP_SECOURS_MIRROR);
+  if (!raw) {
+    tamAppAlert("Aucune sauvegarde de secours disponible pour l’instant.");
+    return;
+  }
+  tamAutoBackupLastJson = "";
+  tamApplyBackupFromObject(JSON.parse(raw), {
+    skipFileBackup: true,
+    replaceMissingKeys: true,
+  });
+}
+
+/** Active l’écriture via serve_tam.py sur PC (127.0.0.1), sans exiger le cloud. */
+async function tamEnsureServerBackupForLocalDev() {
+  if (!tamIsLocalDevHost()) return;
+  if (tamServerBackupEnabled()) return;
+  if (!(await tamProbeServerBackup(true))) return;
+  tamSetServerBackupEnabled(true);
+  tamAutoBackupLastJson = "";
+  await tamDoAutoBackup();
+}
+
+async function tamEnsureServerBackupForMaster() {
+  if (
+    typeof tamCloudIsMasterSessionActive !== "function" ||
+    !tamCloudIsMasterSessionActive()
+  ) {
+    return;
+  }
+  if (tamServerBackupEnabled() || !tamIsLocalDevHost()) return;
+  tamSetServerBackupEnabled(true);
+  tamAutoBackupLastJson = "";
+  await tamDoAutoBackup();
+}
+
+async function tamEnsureServerBackupOnStartup() {
+  await tamEnsureServerBackupForLocalDev();
+  await tamEnsureServerBackupForMaster();
+}
+
+window.tamEnsureServerBackupForLocalDev = tamEnsureServerBackupForLocalDev;
+window.tamEnsureServerBackupForMaster = tamEnsureServerBackupForMaster;
+window.tamEnsureServerBackupOnStartup = tamEnsureServerBackupOnStartup;
+
+function tamRefreshGearPopover() {
+  const masterSec = document.getElementById("tamMasterBackupSection");
+  const isMaster =
+    typeof tamCloudIsMasterSessionActive === "function" &&
+    tamCloudIsMasterSessionActive();
+  if (masterSec) masterSec.hidden = !isMaster;
+}
+window.tamRefreshGearPopover = tamRefreshGearPopover;
+
+async function tamPickBackupFileHandleViaPicker() {
+  if (typeof window.showOpenFilePicker === "function") {
+    const handles = await window.showOpenFilePicker({
+      multiple: false,
+      types: TAM_BACKUP_PICKER_TYPES,
+    });
+    return handles[0];
+  }
+  return window.showSaveFilePicker({
+    suggestedName: TAM_BACKUP_FILENAME,
+    types: TAM_BACKUP_PICKER_TYPES,
+  });
+}
 const TAM_BACKUP_ALL_KEYS = [
   LS_KEY_PERSONAL_LANDMARKS,
   LS_KEY_PERSONAL_ZONES,
@@ -3474,7 +3722,16 @@ async function tamWriteToHandle(handle, text) {
   return true;
 }
 
-function tamDownloadFallback(jsonString) {
+function tamPersistBackupMirror(jsonString) {
+  try {
+    localStorage.setItem(LS_KEY_BACKUP_MIRROR, jsonString);
+  } catch (e) {
+    // ignore
+  }
+}
+
+/** Export manuel vers le dossier Téléchargements (une fois, à la demande). */
+function tamDownloadBackupFile(jsonString) {
   const blob = new Blob([jsonString], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -3520,10 +3777,22 @@ function tamCollectBackupPayload() {
 function tamApplyBackupFromObject(backup, opts) {
   const o = opts || {};
   if (!backup || typeof backup !== "object") throw new Error("format");
+  const replaceMissing = !!o.replaceMissingKeys;
   for (const key of TAM_BACKUP_ALL_KEYS) {
-    if (backup[key] != null) {
+    const has = Object.prototype.hasOwnProperty.call(backup, key);
+    if (has && backup[key] != null) {
       localStorage.setItem(key, JSON.stringify(backup[key]));
+    } else if (has && backup[key] == null) {
+      localStorage.removeItem(key);
+    } else if (replaceMissing) {
+      localStorage.removeItem(key);
     }
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(backup, LS_KEY_PERSONAL_LANDMARKS) &&
+    !Object.prototype.hasOwnProperty.call(backup, LS_KEY_PLM_GROUPS)
+  ) {
+    localStorage.removeItem(LS_KEY_PLM_GROUPS);
   }
   loadPlmGroupsFromStorage();
   loadPersonalLandmarksFromStorage();
@@ -3563,7 +3832,11 @@ function tamImportBackup(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      tamApplyBackupFromObject(JSON.parse(reader.result));
+      tamAutoBackupLastJson = "";
+      tamApplyBackupFromObject(JSON.parse(reader.result), {
+        skipFileBackup: true,
+        replaceMissingKeys: true,
+      });
     } catch (e) {
       tamAppAlert(
         "Impossible de lire le fichier de sauvegarde. Vérifiez qu'il s'agit bien du fichier « " +
@@ -3579,23 +3852,242 @@ async function tamDoAutoBackup() {
   try {
     const payload = tamCollectBackupPayload();
     const json = JSON.stringify(payload);
-    if (json === tamAutoBackupLastJson) return;
-    tamAutoBackupLastJson = json;
     const pretty = JSON.stringify(payload, null, 2);
+    const unchanged = json === tamAutoBackupLastJson;
 
-    if (tamCachedFileHandle) {
-      try {
-        if (await tamWriteToHandle(tamCachedFileHandle, pretty)) return;
-      } catch (e) {
-        tamCachedFileHandle = null;
+    if (!unchanged) {
+      tamAutoBackupLastJson = json;
+      tamPersistBackupMirror(pretty);
+
+      if (tamCachedFileHandle) {
+        try {
+          if (await tamWriteToHandle(tamCachedFileHandle, pretty)) {
+            await tamMaybeSecoursBackup(pretty);
+            return;
+          }
+        } catch (e) {
+          tamCachedFileHandle = null;
+        }
+      }
+      if (tamServerBackupEnabled() && tamIsLocalDevHost()) {
+        if (await tamWriteBackupViaServer(pretty)) {
+          await tamMaybeSecoursBackup(pretty);
+          return;
+        }
       }
     }
 
-    if (typeof window.showSaveFilePicker !== "function") {
-      tamDownloadFallback(pretty);
-    }
+    await tamMaybeSecoursBackup(pretty);
   } catch (e) {
     // silencieux
+  }
+}
+
+async function tamPickBackupFileHandle() {
+  if (tamBackupFileApiAvailable()) {
+    try {
+      const picked = await tamPickBackupFileHandleViaPicker();
+      tamCachedFileHandle = picked;
+      await tamSetStoredHandle(picked);
+      tamAutoBackupLastJson = "";
+      await tamDoAutoBackup();
+      tamAppAlert(
+        "Fichier de sauvegarde lié. Les prochaines sauvegardes automatiques écraseront ce fichier.",
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  return tamEnsureServerBackupForMaster();
+}
+window.tamPickBackupFileHandle = tamPickBackupFileHandle;
+
+async function tamRestoreBackupFromServer() {
+  try {
+    const r = await fetch(TAM_BACKUP_SERVER_URL, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) {
+      throw new Error("not_api");
+    }
+    if (r.status === 404) {
+      tamAppAlert(
+        "Aucun fichier tam_sauvegarde_simulateur.json à la racine du projet pour l’instant.",
+      );
+      return;
+    }
+    if (!r.ok) throw new Error("fetch");
+    tamAutoBackupLastJson = "";
+    tamApplyBackupFromObject(await r.json(), {
+      skipFileBackup: true,
+      replaceMissingKeys: true,
+    });
+  } catch (e) {
+    tamAppAlert(
+      "Impossible de lire la sauvegarde sur le serveur. Lancez python serve_tam.py puis rechargez la page.",
+    );
+  }
+}
+window.tamRestoreBackupFromServer = tamRestoreBackupFromServer;
+
+function tamRestoreBackupMirror() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_BACKUP_MIRROR);
+    if (!raw) {
+      tamAppAlert(
+        "Aucune copie locale automatique dans ce navigateur pour l’instant.",
+      );
+      return;
+    }
+    tamAutoBackupLastJson = "";
+    tamApplyBackupFromObject(JSON.parse(raw), {
+      skipFileBackup: true,
+      replaceMissingKeys: true,
+    });
+  } catch (e) {
+    tamAppAlert("Impossible de lire la copie locale automatique.");
+  }
+}
+window.tamRestoreBackupMirror = tamRestoreBackupMirror;
+
+async function tamFetchServerBackupStatus() {
+  try {
+    const r = await fetch(TAM_BACKUP_SERVER_STATUS_URL, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const ct = r.headers.get("content-type") || "";
+    if (!r.ok || !ct.includes("application/json")) return null;
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Restaurer (maître) : secours horaire, fichier projet, ou .json au choix.
+ */
+async function tamRestoreBackupPrimary() {
+  if (tamSecoursBackupAvailableLocally()) {
+    const useSecours = await showAppConfirmDialog(
+      TAM_APP_DIALOG_TITLE,
+      "Restaurer la sauvegarde de secours (environ la dernière heure de travail) ?\n\nOui = secours\nNon = autre fichier ou copie courante",
+    );
+    if (useSecours) {
+      await tamRestoreSecoursBackup();
+      return;
+    }
+  }
+  if (tamServerBackupEnabled()) {
+    const st = await tamFetchServerBackupStatus();
+    if (st?.has_backup) {
+      const useMain = await showAppConfirmDialog(
+        TAM_APP_DIALOG_TITLE,
+        "Restaurer la sauvegarde courante du projet (tam_sauvegarde_simulateur.json) ?\n\nOui = fichier courant\nNon = choisir un autre fichier .json",
+      );
+      if (useMain) {
+        await tamRestoreBackupFromServer();
+        return;
+      }
+    }
+  }
+  const fileInput = document.getElementById("appPlmBackupFileInput");
+  if (fileInput) {
+    fileInput.value = "";
+    fileInput.click();
+  }
+}
+window.tamRestoreBackupPrimary = tamRestoreBackupPrimary;
+
+function tamExportBackupDownload() {
+  try {
+    const payload = tamCollectBackupPayload();
+    tamDownloadBackupFile(JSON.stringify(payload, null, 2));
+  } catch (e) {
+    tamAppAlert("Impossible d’exporter la sauvegarde.");
+  }
+}
+window.tamExportBackupDownload = tamExportBackupDownload;
+
+/** Console / dépannage : sauvegarde principale immédiate (fichier si serve_tam.py). */
+async function tamForceBackupNow() {
+  if (!tamIsLocalDevHost()) {
+    tamAppAlert("Disponible seulement en local (127.0.0.1:8000).");
+    return { ok: false, reason: "not_local" };
+  }
+  if (!(await tamProbeServerBackup(true))) {
+    tamAppAlert(tamBackupServerMissingMessage(404));
+    return { ok: false, reason: "no_api", status: 404 };
+  }
+  if (!tamServerBackupEnabled()) tamSetServerBackupEnabled(true);
+  tamAutoBackupLastJson = "";
+  await tamDoAutoBackup();
+  tamAppAlert(
+    "Sauvegarde principale envoyée.\n\nVérifiez dans le dossier TaM : tam_sauvegarde_simulateur.json (date/heure récente).",
+  );
+  return { ok: true, file: TAM_BACKUP_FILENAME };
+}
+
+/** Console / dépannage : secours horaire tout de suite (ignore le délai d’1 h). */
+async function tamForceSecoursBackupNow() {
+  try {
+    if (!tamIsLocalDevHost()) {
+      tamAppAlert("Disponible seulement en local (127.0.0.1:8000).");
+      return { ok: false, reason: "not_local" };
+    }
+    if (!(await tamProbeServerBackup(true))) {
+      tamAppAlert(tamBackupServerMissingMessage(404));
+      return { ok: false, reason: "no_api", status: 404 };
+    }
+    if (!tamServerBackupEnabled()) tamSetServerBackupEnabled(true);
+    localStorage.removeItem(LS_KEY_LAST_SECOURS_AT);
+    const pretty = JSON.stringify(tamCollectBackupPayload(), null, 2);
+    const wr = await tamWriteSecoursBackupViaServer(pretty);
+    if (!wr.ok) {
+      tamAppAlert(tamBackupServerMissingMessage(wr.status));
+      return { ok: false, reason: "write_failed", status: wr.status };
+    }
+    try {
+      localStorage.setItem(LS_KEY_BACKUP_SECOURS_MIRROR, pretty);
+      localStorage.setItem(LS_KEY_LAST_SECOURS_AT, String(Date.now()));
+    } catch (e) {
+      // ignore
+    }
+    tamAppAlert(
+      "Secours OK.\n\nFichier : tam_sauvegarde_simulateur_secours.json à la racine du projet TaM.",
+    );
+    return { ok: true, file: TAM_BACKUP_SECOURS_FILENAME };
+  } catch (e) {
+    const msg = e && e.message ? String(e.message) : String(e);
+    tamAppAlert("Secours impossible : " + (msg || "erreur inconnue"));
+    return { ok: false, reason: "error", detail: msg };
+  }
+}
+
+window.tamForceBackupNow = tamForceBackupNow;
+window.tamForceSecoursBackupNow = tamForceSecoursBackupNow;
+
+function tamExportSecoursBackupDownload() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_BACKUP_SECOURS_MIRROR);
+    if (!raw) {
+      tamAppAlert("Aucune sauvegarde de secours pour l’instant.");
+      return;
+    }
+    const blob = new Blob([raw], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = TAM_BACKUP_SECOURS_FILENAME;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch (e) {
+    tamAppAlert("Impossible d’exporter la sauvegarde de secours.");
   }
 }
 
@@ -3605,20 +4097,12 @@ function plmScheduleAutoBackup(opts) {
   const backupOpts = opts || {};
   if (
     !tamCachedFileHandle &&
+    !tamServerBackupEnabled() &&
     !tamPickerPromise &&
     tamHandleReady &&
-    typeof window.showSaveFilePicker === "function"
+    tamBackupFileApiAvailable()
   ) {
-    tamPickerPromise = window
-      .showSaveFilePicker({
-        suggestedName: TAM_BACKUP_FILENAME,
-        types: [
-          {
-            description: "Sauvegarde simulateur TAM",
-            accept: { "application/json": [".json"] },
-          },
-        ],
-      })
+    tamPickerPromise = tamPickBackupFileHandleViaPicker()
       .then((picked) => {
         tamCachedFileHandle = picked;
         return tamSetStoredHandle(picked);
@@ -5374,10 +5858,7 @@ function loadPersonalLandmarksFromStorage() {
           })
           .filter(
             (x) =>
-              x.id &&
-              Number.isFinite(x.lat) &&
-              Number.isFinite(x.lng) &&
-              x.name.length > 0 || x.hideName,
+              x.id && Number.isFinite(x.lat) && Number.isFinite(x.lng),
           );
       }
     }
@@ -6274,7 +6755,18 @@ function openPersonalLandmarkDialog(spec) {
     const nameIn = document.getElementById("appPersonalLandmarkDialogName");
     const descIn = document.getElementById("appPersonalLandmarkDialogDesc");
     const namePanel = document.getElementById("appPersonalLandmarkDialogNamePanel");
-    const descPanel = document.getElementById("appPersonalLandmarkDialogDescPanel");
+    const speedPanel = document.getElementById(
+      "appPersonalLandmarkDialogSpeedPanel",
+    );
+    const cmrPanel = document.getElementById(
+      "appPersonalLandmarkDialogCmrPanel",
+    );
+    const indesPanel = document.getElementById(
+      "appPersonalLandmarkDialogIndesPanel",
+    );
+    const indirPanel = document.getElementById(
+      "appPersonalLandmarkDialogIndirPanel",
+    );
     const descPreview = document.getElementById(
       "appPersonalLandmarkDialogDescPreview",
     );
@@ -6288,7 +6780,10 @@ function openPersonalLandmarkDialog(spec) {
       !nameIn ||
       !descIn ||
       !namePanel ||
-      !descPanel ||
+      !speedPanel ||
+      !cmrPanel ||
+      !indesPanel ||
+      !indirPanel ||
       !descPreview ||
       !saveBtn ||
       !cancelBtn ||
@@ -6525,7 +7020,10 @@ function openPersonalLandmarkDialog(spec) {
         nameEl: nameIn,
         descEl: descIn,
         namePanel,
-        descPanel,
+        speedPanel,
+        cmrPanel,
+        indesPanel,
+        indirPanel,
         descPreview,
         prompt: (message, defaultValue) =>
           showAppPromptDialog(TAM_APP_DIALOG_TITLE, message, defaultValue ?? ""),

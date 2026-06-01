@@ -154,6 +154,11 @@ def build_perturbations_payload() -> dict:
 
 
 _REPO_ROOT = str(Path(__file__).resolve().parent)
+BACKUP_FILENAME = "tam_sauvegarde_simulateur.json"
+BACKUP_SECOURS_FILENAME = "tam_sauvegarde_simulateur_secours.json"
+BACKUP_PATH = Path(_REPO_ROOT) / BACKUP_FILENAME
+BACKUP_SECOURS_PATH = Path(_REPO_ROOT) / BACKUP_SECOURS_FILENAME
+MAX_BACKUP_BYTES = 32 * 1024 * 1024
 
 
 class TamHandler(SimpleHTTPRequestHandler):
@@ -171,8 +176,111 @@ class TamHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(blob)
 
+    def _read_backup_request_body(self) -> bytes | None:
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            self._send_json(400, {"error": "invalid_content_length"})
+            return None
+        if length <= 0:
+            self._send_json(400, {"error": "empty_body"})
+            return None
+        if length > MAX_BACKUP_BYTES:
+            self._send_json(413, {"error": "too_large"})
+            return None
+        return self.rfile.read(length)
+
+    def _handle_backup_status(self) -> None:
+        has_backup = BACKUP_PATH.is_file()
+        has_secours = BACKUP_SECOURS_PATH.is_file()
+        payload = {
+            "ok": True,
+            "has_backup": has_backup,
+            "has_secours": has_secours,
+            "filename": BACKUP_FILENAME,
+            "secours_filename": BACKUP_SECOURS_FILENAME,
+        }
+        if has_backup:
+            payload["bytes"] = BACKUP_PATH.stat().st_size
+        if has_secours:
+            payload["secours_bytes"] = BACKUP_SECOURS_PATH.stat().st_size
+        self._send_json(200, payload)
+
+    def _handle_backup_secours_read(self) -> None:
+        if not BACKUP_SECOURS_PATH.is_file():
+            self._send_json(
+                404,
+                {"error": "no_secours", "filename": BACKUP_SECOURS_FILENAME},
+            )
+            return
+        blob = BACKUP_SECOURS_PATH.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(blob)))
+        self.end_headers()
+        self.wfile.write(blob)
+
+    def _handle_backup_secours_write(self) -> None:
+        body = self._read_backup_request_body()
+        if body is None:
+            return
+        try:
+            parsed = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+        if not isinstance(parsed, dict):
+            self._send_json(400, {"error": "invalid_payload"})
+            return
+        BACKUP_SECOURS_PATH.write_bytes(body)
+        self._send_json(
+            200,
+            {"ok": True, "filename": BACKUP_SECOURS_FILENAME, "bytes": len(body)},
+        )
+
+    def _handle_backup_read(self) -> None:
+        if not BACKUP_PATH.is_file():
+            self._send_json(404, {"error": "no_backup", "filename": BACKUP_FILENAME})
+            return
+        blob = BACKUP_PATH.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(blob)))
+        self.end_headers()
+        self.wfile.write(blob)
+
+    def _handle_backup_write(self) -> None:
+        body = self._read_backup_request_body()
+        if body is None:
+            return
+        try:
+            parsed = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._send_json(400, {"error": "invalid_json"})
+            return
+        if not isinstance(parsed, dict):
+            self._send_json(400, {"error": "invalid_payload"})
+            return
+        BACKUP_PATH.write_bytes(body)
+        self._send_json(
+            200,
+            {"ok": True, "filename": BACKUP_FILENAME, "bytes": len(body)},
+        )
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path == "/api/tam/backup/status":
+            self._handle_backup_status()
+            return
+
+        if parsed.path == "/api/tam/backup/secours":
+            self._handle_backup_secours_read()
+            return
+
+        if parsed.path == "/api/tam/backup":
+            self._handle_backup_read()
+            return
 
         if parsed.path in ("/", ""):
             self.send_response(302)
@@ -209,6 +317,26 @@ class TamHandler(SimpleHTTPRequestHandler):
 
         super().do_GET()
 
+    def do_POST(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/tam/backup/secours":
+            self._handle_backup_secours_write()
+            return
+        if parsed.path == "/api/tam/backup":
+            self._handle_backup_write()
+            return
+        self._send_json(404, {"error": "not_found"})
+
+    def do_PUT(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/tam/backup/secours":
+            self._handle_backup_secours_write()
+            return
+        if parsed.path == "/api/tam/backup":
+            self._handle_backup_write()
+            return
+        self._send_json(404, {"error": "not_found"})
+
 
 def main() -> None:
     root = Path(_REPO_ROOT)
@@ -216,6 +344,10 @@ def main() -> None:
     print(
         f"Listening on {HOST}:{PORT} — ouvrir : http://127.0.0.1:{PORT}/ "
         f"(redirige vers simulateur_sae.html) ou IP publique si bind 0.0.0.0",
+    )
+    print(
+        f"Sauvegarde simulateur : {BACKUP_PATH.name} (chaque action) ; "
+        f"{BACKUP_SECOURS_FILENAME} (secours, max 1/h si activité)",
     )
     server = ThreadingHTTPServer((HOST, PORT), TamHandler)
     try:
