@@ -6364,11 +6364,13 @@ function openPersonalLandmarkDialog(spec) {
     function rebuildPlmIconGrids() {
       const cap = getPlmFavoritesCap();
       const favIds = getPlmOrderedFavoriteIconIds(cap);
+      const favSet = new Set(favIds);
       const allIds = [...getPlmIconCatalog()]
         .sort((a, b) =>
           (a.label || "").localeCompare(b.label || "", "fr"),
         )
-        .map((x) => x.id);
+        .map((x) => x.id)
+        .filter((id) => !favSet.has(id));
       renderIconButtons(favIconsEl, favIds);
       renderIconButtons(allIconsEl, allIds);
       renderColorButtons();
@@ -6379,7 +6381,8 @@ function openPersonalLandmarkDialog(spec) {
       const ib = ev.target.closest(".tam-plm-icon-btn[data-plm-icon]");
       if (ib) {
         plmPick.iconId = normalizePlmIconId(ib.getAttribute("data-plm-icon"));
-        syncPlmPickerSelectionUi();
+        touchPlmIconRecent(plmPick.iconId);
+        rebuildPlmIconGrids();
         return;
       }
       const cb = ev.target.closest(".tam-plm-color-btn[data-plm-color]");
