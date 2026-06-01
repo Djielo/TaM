@@ -258,10 +258,9 @@ function plmLandmarkDisplayName(item) {
 function plmLandmarkHasMapLabelContent(item) {
   if (!item) return false;
   const ref = plmLandmarkLabelAttachItem(item) || item;
+  if (!!plmLandmarkDescriptionText(ref)) return true;
   if (plmLandmarkHideName(ref)) return false;
-  return (
-    !!String(ref.name ?? "").trim() || !!plmLandmarkDescriptionText(ref)
-  );
+  return !!String(ref.name ?? "").trim();
 }
 
 /** Vide titre (champ name), description structurée et coches — conserve icône et position. */
@@ -1491,7 +1490,7 @@ function plmCommitDialogSave(r) {
         ? normalizePlmColorHex(prev.colorHex)
         : normalizePlmColorHex(r.colorHex),
     };
-    if (prev.hideName) row.hideName = true;
+    delete row.hideName;
     if (finalGroupId) row.groupId = finalGroupId;
     if (prev.parentId) {
       row.parentId = prev.parentId;
@@ -2907,11 +2906,26 @@ function plmCreateZoneMapLayer(z, owner, selected) {
   }
   layer._plmZoneOwner = owner;
   layer.on("click", (e) => {
+    if (personalLandmarkPlacementActive) return;
     L.DomEvent.stopPropagation(e);
     plmSelectZoneOwner(owner);
   });
   plmBindZoneLayerContextMenu(layer, owner);
+  if (personalLandmarkPlacementActive && layer._path) {
+    layer._path.style.pointerEvents = "none";
+  }
   return layer;
+}
+
+/** Mode placement repère : la carte reçoit le clic (pas la sélection de zone). */
+function plmSyncZonesPassThroughForLandmarkPlacement() {
+  if (!personalZonesLayer) return;
+  const passThrough = !!personalLandmarkPlacementActive;
+  personalZonesLayer.eachLayer((layer) => {
+    if (layer._path) {
+      layer._path.style.pointerEvents = passThrough ? "none" : "";
+    }
+  });
 }
 
 function plmAddZoneLayerToGroup(zone, layerGroup, owner, selected) {
@@ -2941,6 +2955,7 @@ function plmRedrawZonesLayer() {
     plmRefreshZoneEditHandles();
   }
   plmRefreshZoneLabels();
+  plmSyncZonesPassThroughForLandmarkPlacement();
 }
 
 function plmEnsureZonePreviewLayer() {
@@ -5879,7 +5894,6 @@ function loadPersonalLandmarksFromStorage() {
             const groupIdRaw = String(x?.groupId ?? "").trim();
             const parentIdRaw = String(x?.parentId ?? "").trim();
             const slotRaw = String(x?.slot ?? "").trim();
-            const hideName = !!x?.hideName;
             const row = {
               id: String(x?.id || "").trim(),
               lat: Number(x?.lat),
@@ -5889,7 +5903,6 @@ function loadPersonalLandmarksFromStorage() {
               iconId,
               colorHex,
             };
-            if (hideName) row.hideName = true;
             if (groupIdRaw) row.groupId = groupIdRaw;
             if (parentIdRaw) row.parentId = parentIdRaw;
             if (slotRaw) row.slot = slotRaw;
@@ -6490,9 +6503,13 @@ function setPersonalLandmarkPlacementActive(on) {
   }
   personalLandmarkPlacementActive = !!on;
   const c = map?.getContainer?.();
-  if (c && c.style) {
-    c.style.cursor = personalLandmarkPlacementActive ? "crosshair" : "";
+  if (c) {
+    c.classList.toggle("tam-map-placing-landmark", personalLandmarkPlacementActive);
+    if (c.style) {
+      c.style.cursor = personalLandmarkPlacementActive ? "crosshair" : "";
+    }
   }
+  plmSyncZonesPassThroughForLandmarkPlacement();
   syncPersonalLandmarkPlacementToggleUi();
 }
 
@@ -7132,6 +7149,9 @@ function openPersonalLandmarkDialog(spec) {
       const name = plmTextUi
         ? plmTextUi.getCommittedTitle()
         : String(nameIn.value || "").trim();
+      const description = plmTextUi
+        ? plmTextUi.getCommittedDescription()
+        : String(descIn.value || "").trim();
       touchPlmIconRecent(plmPick.iconId);
       finish({
         action: "save",
@@ -7140,7 +7160,7 @@ function openPersonalLandmarkDialog(spec) {
         lat: spec.lat,
         lng: spec.lng,
         name,
-        description: String(descIn.value || "").trim(),
+        description,
         iconId: plmPick.iconId,
         colorHex: plmPick.colorHex,
         slots: [],
