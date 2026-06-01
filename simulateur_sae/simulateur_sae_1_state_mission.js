@@ -4984,6 +4984,32 @@ async function plmDetachLandmarkFromGroup(landmarkId) {
   setGpsStatus("Repère détaché du groupe.");
 }
 
+function plmToggleLandmarkHideNameFromContext(landmarkId) {
+  const idx = personalLandmarksList.findIndex((x) => x.id === landmarkId);
+  if (idx < 0) return;
+  const cur = personalLandmarksList[idx];
+  const nextHide = !plmLandmarkHideName(cur);
+  const row = { ...cur };
+  if (nextHide) {
+    row.hideName = true;
+    row.name = "";
+  } else {
+    delete row.hideName;
+    if (!String(row.name ?? "").trim()) {
+      row.name = "Repère";
+    }
+    if (row.groupId) {
+      plmSyncGroupMemberNames(row.groupId, row.name);
+    }
+  }
+  personalLandmarksList[idx] = row;
+  savePersonalLandmarksToStorage();
+  redrawPersonalLandmarksLayer();
+  setGpsStatus(
+    nextHide ? "Repère sans nom activé." : "Nom du repère réaffiché sur la carte.",
+  );
+}
+
 function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   if (
     typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
@@ -5007,6 +5033,11 @@ function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   }
   const delGroupBtn = menu.querySelector('[data-plm-ctx="del-group"]');
   if (delGroupBtn) delGroupBtn.hidden = !item.groupId;
+  const hideNameBtn = menu.querySelector('[data-plm-ctx="toggle-hide-name"]');
+  if (hideNameBtn) {
+    const hideOn = plmLandmarkHideName(item);
+    hideNameBtn.setAttribute("aria-checked", hideOn ? "true" : "false");
+  }
   const rotateBtn = menu.querySelector('[data-plm-ctx="rotate-landmark"]');
   if (rotateBtn) {
     rotateBtn.textContent = item.groupId
@@ -5070,6 +5101,10 @@ function plmInitLandmarkContextMenu() {
     }
     if (action === "detach-group") {
       void plmDetachLandmarkFromGroup(id);
+      return;
+    }
+    if (action === "toggle-hide-name") {
+      plmToggleLandmarkHideNameFromContext(id);
       return;
     }
     if (action === "rotate-landmark") {

@@ -1731,6 +1731,11 @@
         background: #fdecea;
         color: #b71c1c;
       }
+      .tam-plm-context-menu__item--check[aria-checked="true"]::before {
+        content: "✓ ";
+        font-weight: 700;
+        color: #005ca9;
+      }
       .app-personal-landmark-dialog .tam-plm-desc-field-hidden {
         position: absolute;
         width: 1px;
@@ -4880,6 +4885,16 @@
         hidden
       >
         Détacher du groupe
+      </button>
+      <button
+        type="button"
+        class="tam-plm-context-menu__item tam-plm-context-menu__item--check"
+        data-plm-ctx="toggle-hide-name"
+        role="menuitemcheckbox"
+        aria-checked="false"
+        aria-label="Marquer comme repère sans nom sur la carte"
+      >
+        Marquer comme sans nom
       </button>
       <button
         type="button"
