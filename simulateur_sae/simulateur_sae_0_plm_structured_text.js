@@ -1,5 +1,5 @@
 /**
- * Repères personnels : description structurée (vitesses, INDES, INDIRE) et noms enregistrés.
+ * Repères personnels : description structurée (vitesses, INDES, INDIR) et noms enregistrés.
  * Chargé avant simulateur_sae_1_state_mission.js
  */
 (function () {
@@ -50,8 +50,71 @@
   /** Entre vitesses ou entre entrées « numéro : … » (ex. 50 km/h, 2: CO, 1: LB). */
   const PLM_LIST_SEP = ", ";
 
-  /** Entre plusieurs libellés INDIRE sur une même ligne (ex. 2: D-G-TD). */
+  /** Entre plusieurs libellés INDIR sur une même ligne (ex. 2: D-G-TD). */
   const PLM_INDIR_MULTI_SEP = "-";
+
+  /** Guillemets ajoutés à l’écriture seulement si le libellé contient une virgule structurelle. */
+  function plmUserTokenNeedsQuoting(s) {
+    const t = String(s ?? "").trim();
+    if (!t) return false;
+    return /[,;]/.test(t);
+  }
+
+  function plmQuoteUserToken(s) {
+    const t = String(s ?? "").trim();
+    if (!t) return "";
+    if (!plmUserTokenNeedsQuoting(t)) return t;
+    return `"${t.replace(/"/g, '""')}"`;
+  }
+
+  function plmUnquoteUserToken(bit) {
+    const b = String(bit ?? "").trim();
+    if (b.length >= 2 && b.startsWith('"') && b.endsWith('"')) {
+      return b.slice(1, -1).replace(/""/g, '"');
+    }
+    if (b.length >= 2 && b.startsWith("'") && b.endsWith("'")) {
+      return b.slice(1, -1).replace(/''/g, "'");
+    }
+    return b;
+  }
+
+  /**
+   * Découpe la liste structurée (virgule + espace entre blocs), sans couper
+   * à l’intérieur des guillemets ni des parenthèses.
+   */
+  function splitPlmStructuralList(raw) {
+    const s = String(raw ?? "");
+    if (!s.trim()) return [];
+    const parts = [];
+    let quote = null;
+    let paren = 0;
+    let start = 0;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (quote) {
+        if (c === quote && s[i + 1] === quote) {
+          i++;
+          continue;
+        }
+        if (c === quote) quote = null;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        quote = c;
+        continue;
+      }
+      if (c === "(") paren++;
+      else if (c === ")") paren = Math.max(0, paren - 1);
+      else if (c === "," && paren === 0) {
+        const bit = s.slice(start, i).trim();
+        if (bit) parts.push(bit);
+        start = i + 1;
+      }
+    }
+    const tail = s.slice(start).trim();
+    if (tail) parts.push(tail);
+    return parts;
+  }
 
   function joinPlmList(parts) {
     return (Array.isArray(parts) ? parts : [parts])
@@ -130,9 +193,8 @@
     if (/km\s*\/?\s*h/i.test(s) && s.includes(PLM_INDIR_MULTI_SEP)) {
       return splitPlmIndirMulti(s).map((p) => normalizeSpeedLabel(p)).filter(Boolean);
     }
-    return s
-      .split(",")
-      .map((p) => normalizeSpeedLabel(p))
+    return splitPlmStructuralList(s)
+      .map((p) => normalizeSpeedLabel(plmUnquoteUserToken(p)))
       .filter(Boolean);
   }
 
@@ -145,7 +207,7 @@
       .trim();
   }
 
-  /** Extrait numéro de ligne + valeur brute (INDES / INDIRE). */
+  /** Extrait numéro de ligne + valeur brute (INDES / INDIR). */
   function parsePlmLineSegmentRaw(bit) {
     const b = String(bit ?? "").trim();
     if (!b) return null;
@@ -153,12 +215,12 @@
     if (!m) m = b.match(/^(\d+[A-Za-z]?)\s*-\s*(.+)$/);
     if (!m) return null;
     const num = normalizeLineNum(m[1]);
-    const rawValue = String(m[2] ?? "").trim();
+    const rawValue = plmUnquoteUserToken(String(m[2] ?? "").trim());
     return num && rawValue ? { num, rawValue } : null;
   }
 
   function resolveLineSegment(num, rawValue, config) {
-    const val = String(rawValue ?? "").trim();
+    const val = plmUnquoteUserToken(String(rawValue ?? "").trim());
     const indirKnown = config?.lineIndir?.[num] || [];
     const indesKnown = config?.lineIndexes?.[num] || [];
 
@@ -196,12 +258,12 @@
   }
 
   function parseSpeedTokens(bit) {
-    const b = String(bit ?? "").trim();
+    const b = plmUnquoteUserToken(String(bit ?? "").trim());
     if (!b || parsePlmLineSegmentRaw(b)) return [];
     if (/^(\d+[A-Za-z]?)\s*[:\-]/.test(b)) return [];
     if (/km\s*\/?\s*h/i.test(b) && b.includes(PLM_INDIR_MULTI_SEP)) {
       return splitPlmIndirMulti(b)
-        .map((p) => normalizeSpeedLabel(p))
+        .map((p) => normalizeSpeedLabel(plmUnquoteUserToken(p)))
         .filter(Boolean);
     }
     const one = normalizeSpeedLabel(b);
@@ -385,7 +447,7 @@
     for (const rawLine of body.split(/\r?\n/)) {
       const line = stripLegacyDescLinePrefix(rawLine.trim());
       if (!line || /^ZM\s*:/i.test(line)) continue;
-      parts.push(...line.split(",").map((p) => p.trim()).filter(Boolean));
+      parts.push(...splitPlmStructuralList(line));
     }
 
     for (const bit of parts) {
@@ -412,18 +474,19 @@
       return a.localeCompare(b);
     };
     const chunks = [];
-    chunks.push(...asPlmSpeedArray(state.v));
+    for (const v of asPlmSpeedArray(state.v)) {
+      chunks.push(plmQuoteUserToken(v));
+    }
     for (const n of Object.keys(state.lines)
       .filter((k) => normalizeLineNum(k) && state.lines[k])
       .sort(sortLineKeys)) {
-      chunks.push(`${n}: ${state.lines[n]}`);
+      chunks.push(`${n}: ${plmQuoteUserToken(state.lines[n])}`);
     }
     for (const n of Object.keys(state.indir)
       .filter((k) => normalizeLineNum(k) && asPlmMultiArray(state.indir[k]).length)
       .sort(sortLineKeys)) {
-      chunks.push(
-        `${n}: ${joinPlmIndirMulti(asPlmMultiArray(state.indir[n]))}`,
-      );
+      const vals = asPlmMultiArray(state.indir[n]).map((x) => plmQuoteUserToken(x));
+      chunks.push(`${n}: ${joinPlmIndirMulti(vals)}`);
     }
     return joinPlmList(chunks);
   }
@@ -477,8 +540,8 @@
       "Cochez l’élément concerné, puis utilisez S, M ou D.";
     const MSG_COCHER_INDES =
       "Cochez la destination sur cette ligne, puis utilisez S ou M.";
-    const MSG_COCHER_INDIRE =
-      "Cochez un ou plusieurs libellés sur cette ligne INDIRE, puis utilisez S ou M.";
+    const MSG_COCHER_INDIR =
+      "Cochez un ou plusieurs libellés sur cette ligne INDIR, puis utilisez S ou M.";
 
     function getVSelected() {
       return asPlmSpeedArray(descState.v);
@@ -587,9 +650,23 @@
       legacyDescRaw = null;
     }
 
+    function isDescStateEmpty() {
+      if (getVSelected().length) return false;
+      for (const n of Object.keys(descState.lines)) {
+        if (descState.lines[n]) return false;
+      }
+      for (const n of Object.keys(descState.indir)) {
+        if (getIndirSelected(n).length) return false;
+      }
+      return true;
+    }
+
     function syncDescField() {
+      if (isDescStateEmpty()) {
+        legacyDescRaw = null;
+      }
       if (legacyDescRaw != null) return;
-      const text = formatDescription(descState);
+      const text = isDescStateEmpty() ? "" : formatDescription(descState);
       descEl.value = text;
       if (descPreview) {
         descPreview.textContent = text;
@@ -805,6 +882,7 @@
       const lbl = document.createElement("label");
       lbl.htmlFor = id;
       lbl.textContent = labelText;
+      lbl.title = labelText;
       row.append(cb, lbl);
       container.appendChild(row);
       return row;
@@ -943,7 +1021,7 @@
       const secIndir = document.createElement("section");
       secIndir.className = "tam-plm-struct-section";
       secIndir.appendChild(
-        sectionHead("Lignes (INDIRE) :", {
+        sectionHead("Lignes (INDIR) :", {
           a: addIndirLine,
           s: delIndirLine,
           m: modIndirLine,
@@ -955,7 +1033,7 @@
         const emptyHint = document.createElement("p");
         emptyHint.className = "tam-plm-struct-line-label";
         emptyHint.textContent =
-          "Aucune ligne INDIRE : utilisez A pour ajouter 1, 2, 3, 4B, 5, etc.";
+          "Aucune ligne INDIR : utilisez A pour ajouter 1, 2, 3, 4B, 5, etc.";
         secIndir.appendChild(emptyHint);
       }
       for (const num of indirNums) {
@@ -1222,14 +1300,14 @@
 
     async function addIndirLine() {
       const raw = await promptFn(
-        "Numéro de la nouvelle ligne INDIRE (ex. 1, 4B) :",
+        "Numéro de la nouvelle ligne INDIR (ex. 1, 4B) :",
         "",
       );
       if (raw == null) return;
       const n = normalizeLineNum(raw);
       if (!n) return;
       if (config.lineIndir[n]) {
-        alertFn(`La ligne INDIRE ${n} existe déjà.`);
+        alertFn(`La ligne INDIR ${n} existe déjà.`);
         return;
       }
       config.lineIndir[n] = [];
@@ -1241,12 +1319,12 @@
       const lines = getLineNums(config.lineIndir);
       if (!lines.length) return;
       const n = normalizeLineNum(
-        await promptPickOne("Ligne INDIRE à supprimer :", lines, lines[0]),
+        await promptPickOne("Ligne INDIR à supprimer :", lines, lines[0]),
       );
       if (!n) return;
       if (
         !(await confirmEffacer(
-          `la ligne INDIRE ${n} et tous ses libellés`,
+          `la ligne INDIR ${n} et tous ses libellés`,
         ))
       ) {
         return;
@@ -1261,11 +1339,11 @@
       const lines = getLineNums(config.lineIndir);
       if (!lines.length) return;
       const from = normalizeLineNum(
-        await promptPickOne("Ligne INDIRE à renommer :", lines, lines[0]),
+        await promptPickOne("Ligne INDIR à renommer :", lines, lines[0]),
       );
       if (!from) return;
       const rawTo = await promptFn(
-        `Nouveau numéro pour la ligne INDIRE ${from} :`,
+        `Nouveau numéro pour la ligne INDIR ${from} :`,
         from,
       );
       if (rawTo == null) return;
@@ -1274,7 +1352,7 @@
       if (to !== from && config.lineIndir[to]) {
         if (
           !(await confirmFn(
-            `La ligne INDIRE ${to} existe déjà. Remplacer ses libellés par ceux de la ligne ${from} ?`,
+            `La ligne INDIR ${to} existe déjà. Remplacer ses libellés par ceux de la ligne ${from} ?`,
           ))
         ) {
           return;
@@ -1289,17 +1367,17 @@
       const lines = getLineNums(config.lineIndir);
       if (!lines.length) return;
       const from = normalizeLineNum(
-        await promptPickOne("Dupliquer la ligne INDIRE :", lines, lines[0]),
+        await promptPickOne("Dupliquer la ligne INDIR :", lines, lines[0]),
       );
       if (!from) return;
-      const rawTo = await promptFn("Vers le numéro de ligne INDIRE :", "");
+      const rawTo = await promptFn("Vers le numéro de ligne INDIR :", "");
       if (rawTo == null) return;
       const to = normalizeLineNum(rawTo);
       if (!to) return;
       if (config.lineIndir[to]) {
         if (
           !(await confirmFn(
-            `La ligne INDIRE ${to} existe déjà. Écraser ses libellés par ceux de la ligne ${from} ?`,
+            `La ligne INDIR ${to} existe déjà. Écraser ses libellés par ceux de la ligne ${from} ?`,
           ))
         ) {
           return;
@@ -1314,7 +1392,7 @@
 
     async function addIndirDest(lineNum) {
       const raw = await promptFn(
-        `Libellés à ajouter sur la ligne INDIRE ${lineNum} (séparés par des virgules, ex. 10 m, via gare) :`,
+        `Libellés à ajouter sur la ligne INDIR ${lineNum} (séparés par des virgules, ex. 10 m, via gare) :`,
         "",
       );
       if (raw == null) return;
@@ -1329,16 +1407,16 @@
     async function delIndirDest(lineNum) {
       const sel = getIndirSelected(lineNum);
       if (!sel.length) {
-        alertFn(MSG_COCHER_INDIRE);
+        alertFn(MSG_COCHER_INDIR);
         return;
       }
       const content = await pickOneFromSelected(
-        `Libellé coché à retirer (ligne INDIRE ${lineNum}) :`,
+        `Libellé coché à retirer (ligne INDIR ${lineNum}) :`,
         sel,
         sel[0],
       );
       if (!content) return;
-      const label = `ligne INDIRE ${lineNum} — ${content}`;
+      const label = `ligne INDIR ${lineNum} — ${content}`;
       if (!(await confirmEffacer(label))) return;
       config.lineIndir[lineNum] = (config.lineIndir[lineNum] || []).filter(
         (x) => x !== content,
@@ -1354,16 +1432,16 @@
     async function modIndirDest(lineNum) {
       const sel = getIndirSelected(lineNum);
       if (!sel.length) {
-        alertFn(MSG_COCHER_INDIRE);
+        alertFn(MSG_COCHER_INDIR);
         return;
       }
       const oldC = await pickOneFromSelected(
-        `Libellé coché à modifier (ligne INDIRE ${lineNum}) :`,
+        `Libellé coché à modifier (ligne INDIR ${lineNum}) :`,
         sel,
         sel[0],
       );
       if (!oldC) return;
-      const label = `ligne INDIRE ${lineNum} — ${oldC}`;
+      const label = `ligne INDIR ${lineNum} — ${oldC}`;
       if (!(await confirmModifier(label))) return;
       const newV = await promptFn("Nouveau libellé :", oldC);
       if (newV == null || !String(newV).trim()) return;
@@ -1414,7 +1492,11 @@
       },
       flush(opts) {
         syncDescField();
-        if (legacyDescRaw != null && !formatDescription(descState)) {
+        if (
+          legacyDescRaw != null &&
+          !isDescStateEmpty() &&
+          !formatDescription(descState)
+        ) {
           descEl.value = legacyDescRaw;
         }
         if (!opts?.hideName && namePick.kind === "preset" && namePick.value) {
@@ -1524,6 +1606,7 @@
       const lbl = document.createElement("label");
       lbl.htmlFor = id;
       lbl.textContent = labelText;
+      lbl.title = labelText;
       row.append(cb, lbl);
       container.appendChild(row);
     }
