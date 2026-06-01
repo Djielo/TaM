@@ -166,6 +166,9 @@
     });
     cloudPushLastJson = "";
     void tamCloudPushNow();
+    if (typeof tamEnsureServerBackupForMaster === "function") {
+      void tamEnsureServerBackupForMaster();
+    }
   }
 
   function tamCloudMasterSignOut() {
@@ -392,7 +395,7 @@
           "Mode maître : vos changements sont envoyés automatiquement vers le cloud.";
       } else if (reader) {
         note.textContent =
-          "Mode lecture : repères et zones se mettent à jour depuis le cloud au chargement.";
+          "Repères et zones préparés par le maître sur le PC sont partagés via le cloud. Utilisez « Récupérer depuis le cloud » pour mettre à jour cet appareil.";
       } else if (known) {
         note.textContent =
           "Dernière récupération cloud : " +
@@ -406,6 +409,7 @@
     if (loginBtn) loginBtn.hidden = master;
     if (logoutBtn) logoutBtn.hidden = !master;
     tamCloudApplyReaderUi();
+    if (typeof tamRefreshGearPopover === "function") tamRefreshGearPopover();
   }
 
   function tamCloudOpenLoginDialog() {

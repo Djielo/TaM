@@ -23,6 +23,10 @@ HOWTO_BACKUP_ECRASEMENT.md
 # Donnees locales Open Data (volumineux / non versionnees)
 gtfs_data/
 simulation_data.json
+
+# Sauvegardes personnelles simulateur (données locales, pas le dépôt)
+tam_sauvegarde_simulateur.json
+tam_sauvegarde_simulateur_secours.json
 MMM_MMM_LigneTram.json
 MMM_MMM_BusLigne.json
 *.pb

@@ -9,6 +9,40 @@
   const DEFAULT_LINE_NUMS = ["1", "2", "3", "4", "5"];
   const DEFAULT_INDEXES = ["MA", "OB", "RO", "PL", "SA", "LB", "H4"];
 
+  /**
+   * Catalogue CMR par ligne — uniquement les 16 libellés déjà présents dans
+   * tam_plm_structured_text_config_v1 (aucun renommage). Classement selon votre
+   * liste orale lignes 3 / 4 / 5.
+   */
+  const PLM_LINE_CMR_SEED = {
+    1: [],
+    2: [],
+    3: [
+      "CMR Pilory",
+      "CMR Jules Guesde",
+      "CMR République",
+      "CMR Pont de Lattes Carnot",
+      "CMR Port Marianne",
+      "CMR Pablo Picasso",
+    ],
+    4: [
+      "CMR Garcia Lorca",
+      "CMR Pont de Sète",
+      "CMR République",
+      "CMR Henri IV",
+      "CMR Pompignane",
+      "CMR Georges Frêche HDV",
+    ],
+    5: [
+      "CMR CNRS",
+      "CMR Saint-Éloi Pezet",
+      "CMR Henri IV",
+      "CMR Clémenceau",
+      "CMR Le Pic",
+      "CMR Ovalie",
+    ],
+  };
+
   const DEFAULT_CONFIG = {
     lineSpeeds: {
       1: ["5", "10", "15", "40"],
@@ -26,6 +60,8 @@
     },
     /** Lignes INDIR : libellés libres par numéro (1, 2, 4B, …), vide au départ. */
     lineIndir: {},
+    /** CMR / CMU par ligne (onglet CMR, exclusif avec le titre standard). */
+    lineCmr: PLM_LINE_CMR_SEED,
     zones: ["Gare", "Moularès"],
     namePresets: [],
   };
@@ -42,9 +78,69 @@
         DEFAULT_LINE_NUMS.map((n) => [n, [...DEFAULT_CONFIG.lineIndexes[n]]]),
       ),
       lineIndir: {},
+      lineCmr: Object.fromEntries(
+        Object.keys(PLM_LINE_CMR_SEED).map((n) => [
+          n,
+          [...(PLM_LINE_CMR_SEED[n] || [])],
+        ]),
+      ),
       zones: [...DEFAULT_CONFIG.zones],
       namePresets: [],
     };
+  }
+
+  const PLM_CMR_CNRS = "CMR CNRS";
+  const PLM_CMR_SAINT_ELOI = "CMR Saint-Éloi Pezet";
+
+  /** CMR CNRS : ligne 5, immédiatement avant Saint-Éloi Pezet (plus dans « Autres »). */
+  function migrateCnrsOnLine5(lineCmr) {
+    if (!lineCmr || typeof lineCmr !== "object") return false;
+    let changed = false;
+    for (const key of Object.keys(lineCmr)) {
+      if (key === "5") continue;
+      const list = lineCmr[key];
+      if (!Array.isArray(list) || !list.includes(PLM_CMR_CNRS)) continue;
+      lineCmr[key] = list.filter((x) => x !== PLM_CMR_CNRS);
+      changed = true;
+      if (key === "other" && lineCmr.other.length === 0) delete lineCmr.other;
+    }
+    if (!lineCmr["5"]) lineCmr["5"] = [];
+    let l5 = lineCmr["5"].filter((x) => x !== PLM_CMR_CNRS);
+    const pezetIdx = l5.indexOf(PLM_CMR_SAINT_ELOI);
+    if (pezetIdx >= 0) l5.splice(pezetIdx, 0, PLM_CMR_CNRS);
+    else l5.unshift(PLM_CMR_CNRS);
+    if (JSON.stringify(lineCmr["5"]) !== JSON.stringify(l5)) {
+      lineCmr["5"] = l5;
+      changed = true;
+    }
+    return changed;
+  }
+
+  function dedupeLineCmrList(list) {
+    const out = [];
+    const seen = new Set();
+    for (const z of list) {
+      const t = String(z).trim();
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      out.push(t);
+    }
+    return out;
+  }
+
+  function migrateCmrPresetsIntoLineCmr(base) {
+    const { standard, cmr } = partitionNamePresets(base.namePresets || []);
+    base.namePresets = standard;
+    const lineCmr = base.lineCmr && typeof base.lineCmr === "object" ? base.lineCmr : {};
+    const hasAny = getLineNums(lineCmr).some(
+      (n) => (lineCmr[n] || []).length > 0,
+    );
+    if (!hasAny && cmr.length) {
+      const n = getLineNums(lineCmr)[0] || "1";
+      lineCmr[n] = dedupeLineCmrList(cmr);
+      base.lineCmr = lineCmr;
+    }
+    return base;
   }
 
   function normalizeCode(raw) {
@@ -332,9 +428,9 @@
 
   /** Noms enregistrés : chiffres d’abord, puis ordre alphabétique. */
   function normalizeLineNum(raw) {
-    const n = String(raw ?? "")
-      .trim()
-      .toUpperCase();
+    const t = String(raw ?? "").trim();
+    if (/^other$/i.test(t)) return "other";
+    const n = t.toUpperCase();
     return /^\d+[A-Z]?$/.test(n) ? n : "";
   }
 
@@ -342,6 +438,8 @@
     return Object.keys(lineIndexes || {})
       .filter((k) => normalizeLineNum(k))
       .sort((a, b) => {
+        if (a === "other") return 1;
+        if (b === "other") return -1;
         const na = parseInt(a, 10);
         const nb = parseInt(b, 10);
         if (na !== nb) return na - nb;
@@ -367,6 +465,23 @@
   /** Noms de type CMR / CMU (préfixe ou mention dans le libellé). */
   function isCmrStyleNamePreset(name) {
     return /CM[UR]/i.test(String(name ?? ""));
+  }
+
+  /** Lignes du catalogue où ce CMR est listé (1, 2, 3… — pas « Autres »). */
+  function plmCmrCatalogLinesForName(name, cfg) {
+    const t = String(name ?? "").trim();
+    if (!t || !isCmrStyleNamePreset(t)) return [];
+    const lineCmr = cfg?.lineCmr;
+    if (!lineCmr || typeof lineCmr !== "object") return [];
+    const lines = [];
+    for (const key of Object.keys(lineCmr)) {
+      const n = normalizeLineNum(key);
+      if (!n || n === "other") continue;
+      if (Array.isArray(lineCmr[key]) && lineCmr[key].includes(t)) {
+        lines.push(n);
+      }
+    }
+    return lines.sort(plmSortLineKeys);
   }
 
   function partitionNamePresets(arr) {
@@ -456,7 +571,25 @@
           ...new Set(presetSrc.map((z) => String(z).trim()).filter(Boolean)),
         ]);
       }
-      return base;
+      if (p.lineCmr && typeof p.lineCmr === "object") {
+        const loadedCmr = {};
+        for (const key of Object.keys(p.lineCmr)) {
+          const n = normalizeLineNum(key);
+          if (!n) continue;
+          const list = p.lineCmr[key];
+          loadedCmr[n] = Array.isArray(list)
+            ? dedupeLineCmrList(list.map((z) => String(z).trim()))
+            : [];
+        }
+        base.lineCmr = loadedCmr;
+      } else if (!base.lineCmr) {
+        base.lineCmr = Object.fromEntries(
+          DEFAULT_LINE_NUMS.map((n) => [n, []]),
+        );
+      }
+      const merged = migrateCmrPresetsIntoLineCmr(base);
+      if (migrateCnrsOnLine5(merged.lineCmr)) saveConfig(merged);
+      return merged;
     } catch (e) {
       return cloneDefaults();
     }
@@ -470,6 +603,7 @@
           lineSpeeds: cfg.lineSpeeds,
           lineIndexes: cfg.lineIndexes,
           lineIndir: cfg.lineIndir,
+          lineCmr: cfg.lineCmr,
           zones: cfg.zones,
           namePresets: cfg.namePresets,
         }),
@@ -773,7 +907,10 @@
    *   nameEl: HTMLInputElement,
    *   descEl: HTMLTextAreaElement,
    *   namePanel: HTMLElement,
-   *   descPanel: HTMLElement,
+   *   speedPanel: HTMLElement,
+   *   cmrPanel: HTMLElement,
+   *   indesPanel: HTMLElement,
+   *   indirPanel: HTMLElement,
    *   descPreview: HTMLElement,
    *   prompt?: (message: string, defaultValue?: string) => Promise<string|null>,
    *   confirm?: (message: string) => Promise<boolean>,
@@ -785,7 +922,10 @@
     const nameEl = opts.nameEl;
     const descEl = opts.descEl;
     const namePanel = opts.namePanel;
-    const descPanel = opts.descPanel;
+    const speedPanel = opts.speedPanel;
+    const cmrPanel = opts.cmrPanel;
+    const indesPanel = opts.indesPanel;
+    const indirPanel = opts.indirPanel;
     const descPreview = opts.descPreview;
     const promptFn =
       opts.prompt ||
@@ -801,11 +941,43 @@
       });
     const onLabelPreviewChange = opts.onLabelPreviewChange;
 
+    function getCmrCatalogLines(preset) {
+      return plmCmrCatalogLinesForName(preset, config);
+    }
+
+    function isCmrChecked(preset) {
+      return cmrPick.kind === "cmr" && cmrPick.value === preset;
+    }
+
+    function pickCmr(preset) {
+      cmrPick = {
+        kind: "cmr",
+        value: preset,
+        lines: getCmrCatalogLines(preset),
+      };
+    }
+
+    function unpickCmr(preset) {
+      if (isCmrChecked(preset)) clearCmrPick();
+    }
+
     function getCommittedTitle() {
+      if (cmrPick.kind === "cmr" && cmrPick.value) {
+        return String(cmrPick.value).trim();
+      }
       if (namePick.kind === "preset" && namePick.value) {
         return String(namePick.value).trim();
       }
       return "";
+    }
+
+    /** Titre standard ↔ CMR uniquement (pas vitesse / INDES / INDIR). */
+    function clearNamePick() {
+      namePick = { kind: "none" };
+    }
+
+    function clearCmrPick() {
+      cmrPick = { kind: "none" };
     }
 
     function notifyLabelPreview() {
@@ -820,6 +992,8 @@
       "Cochez un ou plusieurs libellés sur cette ligne INDIR, puis utilisez S ou M.";
     const MSG_COCHER_VITESSE =
       "Cochez la vitesse sur cette ligne, puis utilisez S ou M.";
+    const MSG_COCHER_CMR =
+      "Cochez un CMR sur cette ligne, puis utilisez S ou M.";
 
     function getIndirSelected(num) {
       const known = config.lineIndir[num] || [];
@@ -875,6 +1049,8 @@
     let config = loadConfig();
     let descState = emptyDescState();
     let namePick = { kind: "none" };
+    /** @type {{ kind: 'none' } | { kind: 'line', line: string, value: string }} */
+    let cmrPick = { kind: "none" };
     /** Description libre héritée tant qu’aucune case structurée n’est utilisée. */
     let legacyDescRaw = null;
 
@@ -976,6 +1152,29 @@
       return isDescStateEmpty();
     }
 
+    function applyCmrTitlePillStyle(pill, title) {
+      const full = String(title ?? "").trim();
+      if (!full || !isCmrStyleNamePreset(full)) return;
+      const lines =
+        cmrPick.kind === "cmr" && cmrPick.value === full
+          ? cmrPick.lines
+          : getCmrCatalogLines(full);
+      if (
+        !lines.length ||
+        typeof window.tamPlmCmrTitlePillInlineStyle !== "function"
+      ) {
+        return;
+      }
+      const st = window.tamPlmCmrTitlePillInlineStyle(lines);
+      if (!st) return;
+      pill.classList.add("tam-plm-desc-title-pill--cmr");
+      if (lines.length > 1) {
+        pill.classList.add("tam-plm-desc-title-pill--cmr-multi");
+      }
+      pill.setAttribute("style", `${st};display:block;width:100%`);
+      pill.dataset.plmCmrLines = lines.join(",");
+    }
+
     function appendTitlePill(row, title) {
       const full = String(title ?? "").trim();
       if (!full) return;
@@ -983,6 +1182,7 @@
       pill.className = "tam-plm-desc-title-pill";
       pill.textContent = full;
       pill.title = full;
+      applyCmrTitlePillStyle(pill, full);
       row.appendChild(pill);
     }
 
@@ -1099,10 +1299,17 @@
     }
 
     function syncNameFromPick() {
-      nameEl.value =
-        namePick.kind === "preset" && namePick.value
-          ? String(namePick.value)
-          : "";
+      if (cmrPick.kind === "cmr" && cmrPick.value) {
+        nameEl.value = String(cmrPick.value);
+      } else {
+        nameEl.value =
+          namePick.kind === "preset" && namePick.value
+            ? String(namePick.value)
+            : "";
+      }
+      if (descPreview && legacyDescRaw == null) {
+        renderDescPreviewFromState();
+      }
       notifyLabelPreview();
     }
 
@@ -1151,17 +1358,18 @@
       cb.checked = namePick.kind === "preset" && namePick.value === preset;
       cb.addEventListener("change", () => {
         if (cb.checked) {
+          clearCmrPick();
           namePick = { kind: "preset", value: preset };
         } else if (
           namePick.kind === "preset" &&
           namePick.value === preset
         ) {
-          namePick = { kind: "none" };
-          nameEl.value = "";
+          clearNamePick();
         }
         syncNameFromPick();
         syncDescField();
         renderNamePanel();
+        renderCmrPanel();
       });
       const lbl = document.createElement("label");
       lbl.htmlFor = cid;
@@ -1199,20 +1407,84 @@
       );
 
       if (config.namePresets.length) {
-        const { standard, cmr } = partitionNamePresets(config.namePresets);
         const groups = document.createElement("div");
         groups.className = "tam-plm-name-preset-groups";
-        if (standard.length) {
-          appendNamePresetBox(groups, standard);
-        }
-        if (standard.length && cmr.length) {
-          appendNamePresetDivider(groups);
-        }
-        if (cmr.length) {
-          appendNamePresetBox(groups, cmr);
-        }
+        appendNamePresetBox(groups, config.namePresets);
         namePanel.appendChild(groups);
       }
+    }
+
+    function renderCmrPanel() {
+      if (!cmrPanel) return;
+      cmrPanel.innerHTML = "";
+      const sec = document.createElement("section");
+      sec.className = "tam-plm-struct-section tam-plm-struct-section--cmr";
+      sec.appendChild(
+        sectionHead("CMR :", {
+          a: addCmrLine,
+          s: delCmrLine,
+          m: modCmrLine,
+          d: dupCmrLine,
+        }),
+      );
+      for (const num of getLineNums(config.lineCmr)) {
+        const presets = config.lineCmr[num] || [];
+        const lineGroup = document.createElement("div");
+        lineGroup.className = "tam-plm-line-group";
+        const bar = document.createElement("div");
+        bar.className = "tam-plm-line-group__bar";
+        const numEl = document.createElement("span");
+        numEl.className = "tam-plm-line-group__label";
+        numEl.textContent =
+          num === "other" ? "Autres" : `Ligne ${num}`;
+        bar.appendChild(numEl);
+        bar.appendChild(
+          asmTools(
+            {
+              a: () => addCmrDest(num),
+              s: () => delCmrDest(num),
+              m: () => modCmrDest(num),
+            },
+            { showDup: false },
+          ),
+        );
+        lineGroup.appendChild(bar);
+        const box = document.createElement("div");
+        box.className = "tam-plm-struct-box tam-plm-struct-box--chips";
+        if (!presets.length) {
+          const empty = document.createElement("span");
+          empty.className = "tam-plm-line-group__empty";
+          empty.textContent = "Aucun CMR sur cette ligne";
+          box.appendChild(empty);
+        }
+        for (const preset of presets) {
+          const id = `plm-cmr${num}-${preset.replace(/\W/g, "_")}`;
+          renderChipCheckbox(box, {
+            id,
+            labelText: preset,
+            checked: isCmrChecked(preset),
+            onChange: (cb) => {
+              if (cb.checked) {
+                clearNamePick();
+                pickCmr(preset);
+              } else {
+                unpickCmr(preset);
+              }
+              syncNameFromPick();
+              renderNamePanel();
+              renderCmrPanel();
+            },
+          });
+        }
+        lineGroup.appendChild(box);
+        if (typeof window.tamApplyPlmCmrLineGroup === "function") {
+          window.tamApplyPlmCmrLineGroup(lineGroup, num);
+        } else {
+          lineGroup.classList.add("tam-plm-line-group--neutral");
+        }
+        sec.appendChild(lineGroup);
+      }
+      cmrPanel.appendChild(sec);
     }
 
     async function addNamePreset() {
@@ -1223,11 +1495,23 @@
       if (raw == null) return;
       const batch = splitBatchInput(raw);
       if (!batch.length) return;
-      config.namePresets = sortNamePresets([
-        ...new Set([...config.namePresets, ...batch]),
-      ]);
+      const cmrBatch = batch.filter((x) => isCmrStyleNamePreset(x));
+      const stdBatch = batch.filter((x) => !isCmrStyleNamePreset(x));
+      if (stdBatch.length) {
+        config.namePresets = sortNamePresets([
+          ...new Set([...config.namePresets, ...stdBatch]),
+        ]);
+      }
+      if (cmrBatch.length) {
+        const lineNum = getLineNums(config.lineCmr)[0] || "1";
+        if (!config.lineCmr[lineNum]) config.lineCmr[lineNum] = [];
+        config.lineCmr[lineNum] = sortNamePresets([
+          ...new Set([...(config.lineCmr[lineNum] || []), ...cmrBatch]),
+        ]);
+      }
       saveConfig(config);
       renderNamePanel();
+      renderCmrPanel();
     }
 
     async function dupNamePreset() {
@@ -1344,9 +1628,19 @@
       }
     }
 
-    function renderDescPanel() {
-      descPanel.innerHTML = "";
+    function renderDescPanelSection(kind) {
+      const panel =
+        kind === "v"
+          ? speedPanel
+          : kind === "lines"
+            ? indesPanel
+            : kind === "indir"
+              ? indirPanel
+              : null;
+      if (!panel) return;
+      panel.innerHTML = "";
 
+      if (kind === "v") {
       const secV = document.createElement("section");
       secV.className = "tam-plm-struct-section";
       secV.appendChild(
@@ -1379,7 +1673,7 @@
                 delete descState.speeds[num];
               }
               afterDescSelectionChange("v");
-              renderDescPanel();
+              renderDescPanelSection("v");
             },
           });
         }
@@ -1396,8 +1690,11 @@
         );
         secV.appendChild(lineRow);
       }
-      descPanel.appendChild(secV);
+      panel.appendChild(secV);
+      return;
+      }
 
+      if (kind === "lines") {
       const secL = document.createElement("section");
       secL.className = "tam-plm-struct-section";
       secL.appendChild(
@@ -1430,7 +1727,7 @@
                 delete descState.lines[num];
               }
               afterDescSelectionChange("lines");
-              renderDescPanel();
+              renderDescPanelSection("lines");
             },
           });
         }
@@ -1447,8 +1744,11 @@
         );
         secL.appendChild(lineRow);
       }
-      descPanel.appendChild(secL);
+      panel.appendChild(secL);
+      return;
+      }
 
+      if (kind === "indir") {
       const secIndir = document.createElement("section");
       secIndir.className = "tam-plm-struct-section";
       secIndir.appendChild(
@@ -1493,6 +1793,7 @@
               }
               setIndirSelected(num, sel);
               afterDescSelectionChange("indir");
+              renderDescPanelSection("indir");
             },
           });
         }
@@ -1509,9 +1810,159 @@
         );
         secIndir.appendChild(lineRow);
       }
-      descPanel.appendChild(secIndir);
+      panel.appendChild(secIndir);
+      }
+    }
 
+    /** Vitesse / INDES / INDIR seulement (ne pas reconstruire l’onglet CMR). */
+    function renderDescPanel() {
+      renderDescPanelSection("v");
+      renderDescPanelSection("lines");
+      renderDescPanelSection("indir");
       syncDescField();
+    }
+
+    async function addCmrLine() {
+      const raw = await promptFn("Numéro de la nouvelle ligne CMR :", "6");
+      if (raw == null) return;
+      const n = normalizeLineNum(raw);
+      if (!n) return;
+      if (config.lineCmr[n]) {
+        alertFn(`La ligne CMR ${n} existe déjà.`);
+        return;
+      }
+      config.lineCmr[n] = [];
+      saveConfig(config);
+      renderCmrPanel();
+    }
+
+    async function delCmrLine() {
+      const lines = getLineNums(config.lineCmr);
+      if (!lines.length) return;
+      const n = normalizeLineNum(
+        await promptPickOne("Ligne CMR à supprimer :", lines, lines[0]),
+      );
+      if (!n) return;
+      if (
+        !(await confirmEffacer(
+          `la ligne CMR ${n} et tous ses libellés du catalogue`,
+        ))
+      ) {
+        return;
+      }
+      if (cmrPick.kind === "cmr" && cmrPick.lines.includes(n)) {
+        cmrPick.lines = getCmrCatalogLines(cmrPick.value);
+        if (!cmrPick.lines.length) clearCmrPick();
+      }
+      delete config.lineCmr[n];
+      saveConfig(config);
+      syncNameFromPick();
+      renderCmrPanel();
+    }
+
+    async function modCmrLine() {
+      const lines = getLineNums(config.lineCmr);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Ligne CMR à renommer :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn(`Nouveau numéro pour la ligne CMR ${from} :`, from);
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (to !== from && config.lineCmr[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne CMR ${to} existe déjà. Remplacer ses libellés par ceux de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      config.lineCmr[to] = [...(config.lineCmr[from] || [])];
+      delete config.lineCmr[from];
+      if (cmrPick.kind === "cmr") {
+        cmrPick.lines = getCmrCatalogLines(cmrPick.value);
+        if (!cmrPick.lines.length) clearCmrPick();
+      }
+      saveConfig(config);
+      renderCmrPanel();
+    }
+
+    async function dupCmrLine() {
+      const lines = getLineNums(config.lineCmr);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Dupliquer la ligne CMR :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn("Vers le numéro de ligne CMR :", "");
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (config.lineCmr[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne CMR ${to} existe déjà. Écraser ses libellés par ceux de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      config.lineCmr[to] = [...(config.lineCmr[from] || [])];
+      saveConfig(config);
+      renderCmrPanel();
+    }
+
+    async function addCmrDest(lineNum) {
+      const raw = await promptFn(
+        `CMR à ajouter sur la ligne ${lineNum} (séparés par des virgules) :`,
+        "",
+      );
+      if (raw == null) return;
+      const batch = splitBatchInput(raw).map((z) => String(z).trim()).filter(Boolean);
+      if (!batch.length) return;
+      const cur = config.lineCmr[lineNum] || [];
+      config.lineCmr[lineNum] = sortNamePresets([...new Set([...cur, ...batch])]);
+      saveConfig(config);
+      renderCmrPanel();
+    }
+
+    async function delCmrDest(lineNum) {
+      const t = cmrPick.kind === "cmr" ? cmrPick.value : "";
+      if (!t || !(config.lineCmr[lineNum] || []).includes(t)) {
+        alertFn(MSG_COCHER_CMR);
+        return;
+      }
+      if (!(await confirmEffacer(`ligne ${lineNum} — ${t}`))) return;
+      config.lineCmr[lineNum] = (config.lineCmr[lineNum] || []).filter(
+        (x) => x !== t,
+      );
+      clearCmrPick();
+      syncNameFromPick();
+      saveConfig(config);
+      renderNamePanel();
+      renderCmrPanel();
+    }
+
+    async function modCmrDest(lineNum) {
+      const oldT = cmrPick.kind === "cmr" ? cmrPick.value : "";
+      if (!oldT || !(config.lineCmr[lineNum] || []).includes(oldT)) {
+        alertFn(MSG_COCHER_CMR);
+        return;
+      }
+      if (!(await confirmModifier(`ligne ${lineNum} — ${oldT}`))) return;
+      const newV = await promptFn("Nouveau libellé CMR :", oldT);
+      if (newV == null || !String(newV).trim()) return;
+      const newT = String(newV).trim();
+      config.lineCmr[lineNum] = sortNamePresets(
+        (config.lineCmr[lineNum] || []).map((x) => (x === oldT ? newT : x)),
+      );
+      if (isCmrChecked(oldT)) pickCmr(newT);
+      syncNameFromPick();
+      saveConfig(config);
+      renderCmrPanel();
     }
 
     async function addSpeedLine() {
@@ -1964,12 +2415,17 @@
     return {
       setInitial(name, description) {
         const n = String(name ?? "").trim();
-        if (n && config.namePresets.includes(n)) {
-          namePick = { kind: "preset", value: n };
-        } else {
-          namePick = { kind: "none" };
+        clearNamePick();
+        clearCmrPick();
+        if (n) {
+          if (isCmrStyleNamePreset(n) && getCmrCatalogLines(n).length) {
+            pickCmr(n);
+          }
+          if (cmrPick.kind === "none" && config.namePresets.includes(n)) {
+            namePick = { kind: "preset", value: n };
+          }
         }
-        nameEl.value = n && namePick.kind === "preset" ? n : "";
+        nameEl.value = getCommittedTitle() || "";
         legacyDescRaw = null;
         const raw = plmStripTitleFromDescriptionRaw(
           stripStructuredZmLines(String(description ?? "").trim()),
@@ -1982,6 +2438,7 @@
           descEl.value = raw;
         }
         renderNamePanel();
+        renderCmrPanel();
         renderDescPanel();
         syncDescField();
       },
@@ -2003,7 +2460,10 @@
       },
       destroy() {
         namePanel.innerHTML = "";
-        descPanel.innerHTML = "";
+        if (speedPanel) speedPanel.innerHTML = "";
+        if (cmrPanel) cmrPanel.innerHTML = "";
+        if (indesPanel) indesPanel.innerHTML = "";
+        if (indirPanel) indirPanel.innerHTML = "";
       },
     };
   }
@@ -2234,6 +2694,22 @@
     const full = String(title ?? "").trim();
     if (!full) return "";
     const escFull = plmEscapeHtmlForDisplay(full);
+    if (isCmrStyleNamePreset(full)) {
+      const lines = plmCmrCatalogLinesForName(full, loadConfig());
+      if (
+        lines.length &&
+        typeof window.tamPlmCmrTitlePillInlineStyle === "function"
+      ) {
+        const st = window.tamPlmCmrTitlePillInlineStyle(lines);
+        if (st) {
+          const multiCls =
+            lines.length > 1
+              ? " tam-plm-desc-title-pill--cmr-multi"
+              : "";
+          return `<span class="tam-plm-desc-title-pill tam-plm-desc-title-pill--cmr${multiCls}" style="${st}" title="${escFull}" data-plm-cmr-lines="${plmEscapeHtmlForDisplay(lines.join(","))}">${escFull}</span>`;
+        }
+      }
+    }
     return `<span class="tam-plm-desc-title-pill" title="${escFull}">${escFull}</span>`;
   }
 
@@ -2327,6 +2803,7 @@
   window.plmFormatStructuredDescription = formatDescription;
   window.plmBuildDescriptionDisplayHtml = buildDescriptionDisplayHtml;
   window.plmTitlePillHtmlString = plmTitlePillHtmlString;
+  window.plmCmrCatalogLinesForName = plmCmrCatalogLinesForName;
   window.plmStripTitleFromDescriptionRaw = plmStripTitleFromDescriptionRaw;
   window.plmCreateStructuredTextUi = createStructuredTextUi;
   window.plmCreateZoneNamePickerUi = createZoneNamePickerUi;
