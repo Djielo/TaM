@@ -4221,10 +4221,22 @@ function getTrackBearingDeg(d) {
   );
 }
 
+/** Zoom carte au démarrage d’une mission (ligne ou déviation), aligné sur le max des tuiles. */
+function getMissionMapZoom() {
+  if (map && typeof map.getMaxZoom === "function") {
+    const z = map.getMaxZoom();
+    if (Number.isFinite(z)) return z;
+  }
+  if (typeof PLM_MAP_MAX_ZOOM === "number" && Number.isFinite(PLM_MAP_MAX_ZOOM)) {
+    return PLM_MAP_MAX_ZOOM;
+  }
+  return 19;
+}
+
 /**
  * Met a jour le triangle, le cap (rotation carte ou de l'icone) et optionnellement la camera.
  * @param { { centerCamera?: boolean, zoom?: number } } opt
- *        centerCamera false : apres fitBounds, ne deplace pas la vue.
+ *        centerCamera false : ne deplace pas la vue (conserve le zoom actuel).
  */
 function updateMapNavigation(opt) {
   if (!currentPattern || pathTotalMeters <= 0) {
@@ -5108,12 +5120,10 @@ async function setMission(pattern, opts) {
     applyMapHeadingCapMode(true);
   }
 
-  if (headingUpEl.checked) {
-    updateMapNavigation({ centerCamera: true, zoom: 16 });
-  } else {
-    map.fitBounds(fullLine.getBounds(), { padding: [20, 20] });
-    updateMapNavigation({ centerCamera: false });
-  }
+  updateMapNavigation({
+    centerCamera: true,
+    zoom: getMissionMapZoom(),
+  });
   if (!previewOnlyMode) {
     announceInitialNextStopIfNeeded();
   }
