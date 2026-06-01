@@ -10,7 +10,13 @@
   const DEFAULT_INDEXES = ["MA", "OB", "RO", "PL", "SA", "LB", "H4"];
 
   const DEFAULT_CONFIG = {
-    speeds: ["10km/h", "15km/h", "40km/h"],
+    lineSpeeds: {
+      1: ["5", "10", "15", "40"],
+      2: ["5", "10", "15", "40"],
+      3: ["5", "10", "15", "40"],
+      4: ["5", "10", "15", "40"],
+      5: ["5", "10", "15", "40"],
+    },
     lineIndexes: {
       1: [...DEFAULT_INDEXES],
       2: [...DEFAULT_INDEXES],
@@ -26,7 +32,12 @@
 
   function cloneDefaults() {
     return {
-      speeds: [...DEFAULT_CONFIG.speeds],
+      lineSpeeds: Object.fromEntries(
+        DEFAULT_LINE_NUMS.map((n) => [
+          n,
+          [...(DEFAULT_CONFIG.lineSpeeds[n] || [])],
+        ]),
+      ),
       lineIndexes: Object.fromEntries(
         DEFAULT_LINE_NUMS.map((n) => [n, [...DEFAULT_CONFIG.lineIndexes[n]]]),
       ),
@@ -47,7 +58,7 @@
     return String(raw ?? "").trim();
   }
 
-  /** Entre vitesses ou entre entrées « numéro : … » (ex. 50 km/h, 2: CO, 1: LB). */
+  /** Entre vitesses ou entre entrées « numéro : … » (ex. 1: 5 km/h, 2: CO, 1: LB). */
   const PLM_LIST_SEP = ", ";
 
   /** Entre plusieurs libellés INDIR sur une même ligne (ex. 2: D-G-TD). */
@@ -270,11 +281,40 @@
     return one ? [one] : [];
   }
 
+  /** Valeur canonique enregistrée : « 5 km/h » (espace avant km/h). */
   function normalizeSpeedLabel(raw) {
-    return String(raw ?? "")
-      .trim()
-      .replace(/\s*km\s*\/\s*h/gi, "km/h")
-      .replace(/(\d)\s+(?=km)/gi, "$1");
+    let t = String(raw ?? "").trim();
+    if (!t) return "";
+    if (/km\s*\/?\s*h/i.test(t)) {
+      const m = t.match(/^(\d+(?:[.,]\d+)?)\s*km\s*\/?\s*h\s*$/i);
+      if (m) return `${m[1].replace(",", ".")} km/h`;
+      t = t
+        .replace(/\s*km\s*\/?\s*h/gi, "")
+        .trim()
+        .replace(/(\d)\s+(?=km)/gi, "$1");
+    }
+    const num = t.match(/^(\d+(?:[.,]\d+)?)$/);
+    if (num) return `${num[1].replace(",", ".")} km/h`;
+    return t;
+  }
+
+  /** Affichage compact dans les cases (chiffre seul). */
+  function plmSpeedChipLabel(speed) {
+    const full = normalizeSpeedLabel(speed);
+    const m = full.match(/^(\d+(?:\.\d+)?)\s+km\/h$/i);
+    return m ? m[1] : full;
+  }
+
+  function plmSortSpeedLabels(a, b) {
+    const na = parseFloat(plmSpeedChipLabel(a)) || 0;
+    const nb = parseFloat(plmSpeedChipLabel(b)) || 0;
+    if (na !== nb) return na - nb;
+    return String(a).localeCompare(String(b), "fr", { sensitivity: "base" });
+  }
+
+  function isSpeedLabel(val) {
+    const t = String(val ?? "").trim();
+    return /km\s*\/?\s*h/i.test(t) || /^\d+(?:[.,]\d+)?\s*$/.test(t);
   }
 
   /** Corrige d’anciennes zones sans accent (ex. Moulares → Moularès). */
@@ -346,8 +386,26 @@
       if (!raw) return cloneDefaults();
       const p = JSON.parse(raw);
       const base = cloneDefaults();
-      if (Array.isArray(p.speeds) && p.speeds.length) {
-        base.speeds = p.speeds.map(normalizeSpeedLabel).filter(Boolean);
+      if (p.lineSpeeds && typeof p.lineSpeeds === "object") {
+        const loadedSpeeds = {};
+        for (const key of Object.keys(p.lineSpeeds)) {
+          const n = normalizeLineNum(key);
+          if (!n) continue;
+          const list = p.lineSpeeds[key];
+          loadedSpeeds[n] = Array.isArray(list)
+            ? [
+                ...new Set(list.map(normalizeSpeedLabel).filter(Boolean)),
+              ].sort(plmSortSpeedLabels)
+            : [];
+        }
+        base.lineSpeeds = loadedSpeeds;
+      } else if (Array.isArray(p.speeds) && p.speeds.length) {
+        const legacy = sortAlpha([
+          ...new Set(p.speeds.map(normalizeSpeedLabel).filter(Boolean)),
+        ]);
+        for (const n of DEFAULT_LINE_NUMS) {
+          base.lineSpeeds[n] = [...legacy];
+        }
       }
       if (p.lineIndexes && typeof p.lineIndexes === "object") {
         const loaded = {};
@@ -409,7 +467,7 @@
       localStorage.setItem(
         LS_KEY,
         JSON.stringify({
-          speeds: cfg.speeds,
+          lineSpeeds: cfg.lineSpeeds,
           lineIndexes: cfg.lineIndexes,
           lineIndir: cfg.lineIndir,
           zones: cfg.zones,
@@ -425,11 +483,35 @@
   }
 
   function emptyDescState() {
-    return { v: [], lines: {}, indir: {}, sectionOrder: [] };
+    return { speeds: {}, lines: {}, indir: {}, sectionOrder: [] };
+  }
+
+  function plmNormalizeDescState(state, cfg) {
+    if (!state.speeds || typeof state.speeds !== "object") {
+      state.speeds = {};
+    }
+    if (Array.isArray(state.v) && state.v.length) {
+      const legacy = [...new Set(state.v.map(normalizeSpeedLabel).filter(Boolean))];
+      const nums = getLineNums(cfg?.lineSpeeds);
+      legacy.forEach((sp, i) => {
+        const n = nums[i] || nums[0];
+        if (n) state.speeds[n] = sp;
+      });
+    }
+    delete state.v;
+    for (const key of Object.keys(state.speeds)) {
+      const n = normalizeLineNum(key);
+      const val = normalizeSpeedLabel(state.speeds[key]);
+      if (!n || !val) delete state.speeds[key];
+      else state.speeds[n] = val;
+    }
+    return state;
   }
 
   function plmSectionHasContent(state, kind) {
-    if (kind === "v") return asPlmSpeedArray(state.v).length > 0;
+    if (kind === "v") {
+      return Object.keys(state.speeds || {}).some((n) => state.speeds[n]);
+    }
     if (kind === "lines") {
       return Object.keys(state.lines).some((n) => state.lines[n]);
     }
@@ -461,7 +543,10 @@
 
   function plmFormatSectionLine(state, kind) {
     if (kind === "v") {
-      const parts = asPlmSpeedArray(state.v).map((v) => plmQuoteUserToken(v));
+      const parts = Object.keys(state.speeds || {})
+        .filter((k) => normalizeLineNum(k) && state.speeds[k])
+        .sort(plmSortLineKeys)
+        .map((n) => `${n}: ${plmQuoteUserToken(state.speeds[n])}`);
       return parts.length ? joinPlmList(parts) : "";
     }
     if (kind === "lines") {
@@ -499,6 +584,10 @@
         continue;
       }
       const val = plmUnquoteUserToken(seg.rawValue);
+      if (isSpeedLabel(val)) {
+        speedBits++;
+        continue;
+      }
       if (val.includes(PLM_INDIR_MULTI_SEP)) {
         indirBits++;
         continue;
@@ -537,10 +626,20 @@
     return rows;
   }
 
-  function plmParseSpeedsFromLine(line, state) {
+  function plmParseSpeedsFromLine(line, state, cfg) {
+    const lineNums = getLineNums(cfg?.lineSpeeds);
+    let legacyIdx = 0;
     for (const bit of splitPlmStructuralList(line)) {
-      if (parsePlmLineSegmentRaw(bit)) continue;
-      state.v.push(...parseSpeedTokens(bit));
+      const seg = parsePlmLineSegmentRaw(bit);
+      if (seg) {
+        const val = normalizeSpeedLabel(plmUnquoteUserToken(seg.rawValue));
+        if (val && isSpeedLabel(val)) state.speeds[seg.num] = val;
+        continue;
+      }
+      for (const t of parseSpeedTokens(bit)) {
+        const n = lineNums[legacyIdx++] || lineNums[0];
+        if (n) state.speeds[n] = t;
+      }
     }
   }
 
@@ -549,6 +648,7 @@
       const seg = parsePlmLineSegmentRaw(bit);
       if (!seg) continue;
       const val = plmUnquoteUserToken(seg.rawValue);
+      if (isSpeedLabel(val)) continue;
       if (val.includes(PLM_INDIR_MULTI_SEP)) continue;
       const code = normalizeCode(val);
       const indesKnown = cfg?.lineIndexes?.[seg.num] || [];
@@ -566,6 +666,8 @@
     for (const bit of splitPlmStructuralList(line)) {
       const seg = parsePlmLineSegmentRaw(bit);
       if (!seg) continue;
+      const val = plmUnquoteUserToken(seg.rawValue);
+      if (isSpeedLabel(val)) continue;
       const resolved = resolveLineSegment(seg.num, seg.rawValue, cfg);
       if (resolved?.kind === "indir" && resolved.values?.length) {
         state.indir[resolved.num] = resolved.values;
@@ -583,6 +685,11 @@
     for (const bit of parts) {
       const lineSeg = parsePlmLineSegmentRaw(bit);
       if (lineSeg) {
+        const val = plmUnquoteUserToken(lineSeg.rawValue);
+        if (isSpeedLabel(val)) {
+          state.speeds[lineSeg.num] = normalizeSpeedLabel(val);
+          continue;
+        }
         const resolved = resolveLineSegment(lineSeg.num, lineSeg.rawValue, cfg);
         if (resolved?.kind === "indes") state.lines[resolved.num] = resolved.code;
         else if (resolved?.kind === "indir" && resolved.values?.length) {
@@ -590,7 +697,12 @@
         }
         continue;
       }
-      state.v.push(...parseSpeedTokens(bit));
+      const tokens = parseSpeedTokens(bit);
+      const lineNums = getLineNums(cfg?.lineSpeeds);
+      tokens.forEach((t, i) => {
+        const n = lineNums[i] || lineNums[0];
+        if (n) state.speeds[n] = t;
+      });
     }
   }
 
@@ -609,7 +721,7 @@
         if (!state.sectionOrder.includes(kind)) {
           state.sectionOrder.push(kind);
         }
-        if (kind === "v") plmParseSpeedsFromLine(row, state);
+        if (kind === "v") plmParseSpeedsFromLine(row, state, cfg);
         else if (kind === "lines") plmParseIndesFromLine(row, state, cfg);
         else if (kind === "indir") plmParseIndirFromLine(row, state, cfg);
       }
@@ -621,8 +733,7 @@
       if (plmSectionHasContent(state, "indir")) state.sectionOrder.push("indir");
     }
 
-    state.v = [...new Set(state.v.map(normalizeSpeedLabel).filter(Boolean))];
-    return state;
+    return plmNormalizeDescState(state, cfg);
   }
 
   function formatDescription(state) {
@@ -685,14 +796,8 @@
       "Cochez la destination sur cette ligne, puis utilisez S ou M.";
     const MSG_COCHER_INDIR =
       "Cochez un ou plusieurs libellés sur cette ligne INDIR, puis utilisez S ou M.";
-
-    function getVSelected() {
-      return asPlmSpeedArray(descState.v);
-    }
-
-    function setVSelected(arr) {
-      descState.v = arr.length ? [...arr] : [];
-    }
+    const MSG_COCHER_VITESSE =
+      "Cochez la vitesse sur cette ligne, puis utilisez S ou M.";
 
     function getIndirSelected(num) {
       const known = config.lineIndir[num] || [];
@@ -708,7 +813,7 @@
     }
 
     function reconcileDescState() {
-      descState.v = asPlmSpeedArray(descState.v);
+      plmNormalizeDescState(descState, config);
       for (const n of Object.keys(descState.indir)) {
         const known = config.lineIndir[n] || [];
         const normalized = splitPlmMultiByKnown(
@@ -767,6 +872,14 @@
       }
     }
 
+    function migrateDescSpeedLineKey(from, to) {
+      if (!from || !to || from === to) return;
+      if (descState.speeds[from]) {
+        descState.speeds[to] = descState.speeds[from];
+        delete descState.speeds[from];
+      }
+    }
+
     function renameLineInConfig(from, to, overwrite) {
       if (from === to) return true;
       const next = { ...config.lineIndexes };
@@ -794,7 +907,11 @@
     }
 
     function plmSectionHasContentLocal(kind) {
-      if (kind === "v") return getVSelected().length > 0;
+      if (kind === "v") {
+        return Object.keys(descState.speeds || {}).some(
+          (n) => descState.speeds[n],
+        );
+      }
       if (kind === "lines") {
         return Object.keys(descState.lines).some((n) => descState.lines[n]);
       }
@@ -819,7 +936,9 @@
     }
 
     function isDescStateEmpty() {
-      if (getVSelected().length) return false;
+      for (const n of Object.keys(descState.speeds || {})) {
+        if (descState.speeds[n]) return false;
+      }
       for (const n of Object.keys(descState.lines)) {
         if (descState.lines[n]) return false;
       }
@@ -827,6 +946,72 @@
         if (getIndirSelected(n).length) return false;
       }
       return true;
+    }
+
+    function appendDescPreviewLinePills(row, segments) {
+      row.classList.add("tam-plm-desc-preview-row--pills");
+      segments.forEach((seg) => {
+        const pill = document.createElement("span");
+        pill.className = "tam-plm-desc-line-pill";
+        const label = `${seg.num}: ${seg.label}`;
+        pill.textContent = label;
+        pill.title = label;
+        if (typeof window.tamApplyPlmDescLinePill === "function") {
+          window.tamApplyPlmDescLinePill(pill, seg.num);
+        } else {
+          pill.classList.add("tam-plm-desc-line-pill--fallback");
+        }
+        row.appendChild(pill);
+      });
+    }
+
+    function renderDescPreviewFromState() {
+      if (!descPreview) return;
+      const empty = isDescStateEmpty();
+      descPreview.dataset.empty = empty ? "1" : "0";
+      descPreview.innerHTML = "";
+      if (legacyDescRaw != null) {
+        descPreview.textContent = legacyDescRaw;
+        return;
+      }
+      if (empty) return;
+
+      const order = plmEffectiveSectionOrder(descState);
+      for (const kind of order) {
+        const row = document.createElement("div");
+        row.className = "tam-plm-desc-preview-row";
+
+        if (kind === "v") {
+          const segs = Object.keys(descState.speeds || {})
+            .filter((n) => normalizeLineNum(n) && descState.speeds[n])
+            .sort(plmSortLineKeys)
+            .map((n) => ({ num: n, label: descState.speeds[n] }));
+          appendDescPreviewLinePills(row, segs);
+        } else if (kind === "lines") {
+          const segs = Object.keys(descState.lines)
+            .filter((n) => normalizeLineNum(n) && descState.lines[n])
+            .sort(plmSortLineKeys)
+            .map((n) => ({ num: n, label: descState.lines[n] }));
+          appendDescPreviewLinePills(row, segs);
+        } else if (kind === "indir") {
+          const segs = Object.keys(descState.indir)
+            .filter(
+              (n) =>
+                normalizeLineNum(n) &&
+                asPlmMultiArray(descState.indir[n]).length,
+            )
+            .sort(plmSortLineKeys)
+            .map((n) => ({
+              num: n,
+              label: joinPlmIndirMulti(asPlmMultiArray(descState.indir[n])),
+            }));
+          appendDescPreviewLinePills(row, segs);
+        }
+
+        if (row.childNodes.length || row.textContent) {
+          descPreview.appendChild(row);
+        }
+      }
     }
 
     function syncDescField() {
@@ -838,13 +1023,16 @@
           plmSectionHasContent(descState, k),
         );
       }
-      if (legacyDescRaw != null) return;
+      if (legacyDescRaw != null) {
+        if (descPreview) {
+          descPreview.textContent = legacyDescRaw;
+          descPreview.dataset.empty = legacyDescRaw ? "0" : "1";
+        }
+        return;
+      }
       const text = isDescStateEmpty() ? "" : formatDescription(descState);
       descEl.value = text;
-      if (descPreview) {
-        descPreview.textContent = text;
-        descPreview.dataset.empty = text ? "0" : "1";
-      }
+      renderDescPreviewFromState();
     }
 
     function syncNameFromPick() {
@@ -1108,34 +1296,51 @@
       secV.className = "tam-plm-struct-section";
       secV.appendChild(
         sectionHead("Vitesse :", {
-          a: addSpeed,
-          s: delSpeed,
-          m: modSpeed,
-          d: dupSpeed,
+          a: addSpeedLine,
+          s: delSpeedLine,
+          m: modSpeedLine,
+          d: dupSpeedLine,
         }),
       );
-      const boxV = document.createElement("div");
-      boxV.className = "tam-plm-struct-box tam-plm-struct-box--chips";
-      const vSelected = getVSelected();
-      for (const item of config.speeds) {
-        const id = `plm-v-${String(item).replace(/\W/g, "_")}`;
-        renderChipCheckbox(boxV, {
-          id,
-          labelText: item,
-          checked: vSelected.includes(item),
-          onChange: (cb) => {
-            let sel = getVSelected();
-            if (cb.checked) {
-              if (!sel.includes(item)) sel = [...sel, item];
-            } else {
-              sel = sel.filter((x) => x !== item);
-            }
-            setVSelected(sel);
-            afterDescSelectionChange("v");
-          },
-        });
+      for (const num of getLineNums(config.lineSpeeds)) {
+        const speeds = config.lineSpeeds[num] || [];
+        const lineRow = document.createElement("div");
+        lineRow.className = "tam-plm-line-row";
+        const numEl = document.createElement("span");
+        numEl.className = "tam-plm-line-num";
+        numEl.textContent = `${num} :`;
+        lineRow.appendChild(numEl);
+        const box = document.createElement("div");
+        box.className = "tam-plm-struct-box tam-plm-struct-box--chips";
+        for (const item of speeds) {
+          const id = `plm-v${num}-${String(item).replace(/\W/g, "_")}`;
+          renderChipCheckbox(box, {
+            id,
+            labelText: plmSpeedChipLabel(item),
+            checked: descState.speeds[num] === item,
+            onChange: (cb) => {
+              if (cb.checked) descState.speeds[num] = item;
+              else if (descState.speeds[num] === item) {
+                delete descState.speeds[num];
+              }
+              afterDescSelectionChange("v");
+              renderDescPanel();
+            },
+          });
+        }
+        lineRow.appendChild(box);
+        lineRow.appendChild(
+          asmTools(
+            {
+              a: () => addSpeedDest(num),
+              s: () => delSpeedDest(num),
+              m: () => modSpeedDest(num),
+            },
+            { showDup: false },
+          ),
+        );
+        secV.appendChild(lineRow);
       }
-      secV.appendChild(boxV);
       descPanel.appendChild(secV);
 
       const secL = document.createElement("section");
@@ -1254,81 +1459,156 @@
       syncDescField();
     }
 
-    async function addSpeed() {
+    async function addSpeedLine() {
+      const raw = await promptFn("Numéro de la nouvelle ligne vitesse :", "6");
+      if (raw == null) return;
+      const n = normalizeLineNum(raw);
+      if (!n) return;
+      if (config.lineSpeeds[n]) {
+        alertFn(`La ligne vitesse ${n} existe déjà.`);
+        return;
+      }
+      config.lineSpeeds[n] = [];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function delSpeedLine() {
+      const lines = getLineNums(config.lineSpeeds);
+      if (!lines.length) return;
+      const n = normalizeLineNum(
+        await promptPickOne("Ligne vitesse à supprimer :", lines, lines[0]),
+      );
+      if (!n) return;
+      if (
+        !(await confirmEffacer(
+          `la ligne vitesse ${n} et toutes ses vitesses du catalogue`,
+        ))
+      ) {
+        return;
+      }
+      delete config.lineSpeeds[n];
+      delete descState.speeds[n];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function modSpeedLine() {
+      const lines = getLineNums(config.lineSpeeds);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Ligne vitesse à renommer :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn(
+        `Nouveau numéro pour la ligne vitesse ${from} :`,
+        from,
+      );
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (to !== from && config.lineSpeeds[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne vitesse ${to} existe déjà. Remplacer ses vitesses par celles de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      renameSpeedLineInConfig(from, to, true);
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function dupSpeedLine() {
+      const lines = getLineNums(config.lineSpeeds);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Dupliquer la ligne vitesse :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn("Vers le numéro de ligne :", "");
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (config.lineSpeeds[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne vitesse ${to} existe déjà. Écraser ses vitesses par celles de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      config.lineSpeeds[to] = [...(config.lineSpeeds[from] || [])];
+      if (descState.speeds[from]) descState.speeds[to] = descState.speeds[from];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    function renameSpeedLineInConfig(from, to, overwrite) {
+      if (from === to) return true;
+      const next = { ...config.lineSpeeds };
+      if (next[to] && !overwrite) return false;
+      next[to] = [...(next[from] || [])];
+      delete next[from];
+      config.lineSpeeds = next;
+      migrateDescSpeedLineKey(from, to);
+      return true;
+    }
+
+    async function addSpeedDest(lineNum) {
       const raw = await promptFn(
-        "Vitesses à ajouter (séparées par des virgules, ex. 10km/h, 25km/h) :",
+        `Vitesses à ajouter sur la ligne ${lineNum} (chiffres séparés par des virgules, ex. 5, 10, 40) :`,
         "",
       );
       if (raw == null) return;
-      const batch = splitBatchInput(raw).map(normalizeSpeedLabel);
+      const batch = splitBatchInput(raw).map(normalizeSpeedLabel).filter(Boolean);
       if (!batch.length) return;
-      config.speeds = sortAlpha([...new Set([...config.speeds, ...batch])]);
+      const cur = config.lineSpeeds[lineNum] || [];
+      config.lineSpeeds[lineNum] = [...new Set([...cur, ...batch])].sort(
+        plmSortSpeedLabels,
+      );
       saveConfig(config);
       renderDescPanel();
     }
 
-    async function dupSpeed() {
-      const sel = getVSelected();
-      if (!sel.length) {
-        alertFn(MSG_COCHER);
+    async function delSpeedDest(lineNum) {
+      const t = descState.speeds[lineNum];
+      if (!t) {
+        alertFn(MSG_COCHER_VITESSE);
         return;
       }
-      const src = await pickOneFromSelected(
-        "Vitesse à dupliquer dans le catalogue :",
-        sel,
-        sel[0],
+      const label = `ligne ${lineNum} — ${plmSpeedChipLabel(t)}`;
+      if (!(await confirmEffacer(label))) return;
+      config.lineSpeeds[lineNum] = (config.lineSpeeds[lineNum] || []).filter(
+        (x) => x !== t,
       );
-      if (!src) return;
-      const newV = await promptFn("Libellé du doublon :", src);
+      delete descState.speeds[lineNum];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function modSpeedDest(lineNum) {
+      const oldT = descState.speeds[lineNum];
+      if (!oldT) {
+        alertFn(MSG_COCHER_VITESSE);
+        return;
+      }
+      const label = `ligne ${lineNum} — ${plmSpeedChipLabel(oldT)}`;
+      if (!(await confirmModifier(label))) return;
+      const newV = await promptFn(
+        "Nouvelle vitesse (chiffre seul) :",
+        plmSpeedChipLabel(oldT),
+      );
       if (newV == null || !String(newV).trim()) return;
       const newT = normalizeSpeedLabel(newV);
-      config.speeds = sortAlpha([...new Set([...config.speeds, newT])]);
-      setVSelected([newT]);
-      saveConfig(config);
-      renderDescPanel();
-    }
-
-    async function delSpeed() {
-      if (!config.speeds.length) return;
-      const sel = getVSelected();
-      if (!sel.length) {
-        alertFn(MSG_COCHER);
-        return;
-      }
-      const t = await pickOneFromSelected(
-        "Vitesse à retirer du catalogue :",
-        sel,
-        sel[0],
-      );
-      if (!t) return;
-      if (!(await confirmEffacer(t))) return;
-      config.speeds = config.speeds.filter((x) => x !== t);
-      setVSelected(sel.filter((x) => x !== t));
-      saveConfig(config);
-      renderDescPanel();
-    }
-
-    async function modSpeed() {
-      if (!config.speeds.length) return;
-      const sel = getVSelected();
-      if (!sel.length) {
-        alertFn(MSG_COCHER);
-        return;
-      }
-      const oldT = await pickOneFromSelected(
-        "Vitesse à modifier :",
-        sel,
-        sel[0],
-      );
-      if (!oldT) return;
-      if (!(await confirmModifier(oldT))) return;
-      const newV = await promptFn("Nouveau libellé :", oldT);
-      if (newV == null || !String(newV).trim()) return;
-      const newT = normalizeSpeedLabel(newV);
-      config.speeds = sortAlpha(
-        config.speeds.map((x) => (x === oldT ? newT : x)),
-      );
-      setVSelected(sel.map((x) => (x === oldT ? newT : x)));
+      const list = config.lineSpeeds[lineNum] || [];
+      config.lineSpeeds[lineNum] = list
+        .map((x) => (x === oldT ? newT : x))
+        .sort(plmSortSpeedLabels);
+      descState.speeds[lineNum] = newT;
       saveConfig(config);
       renderDescPanel();
     }
@@ -1642,13 +1922,10 @@
         if (raw && !formatDescription(descState)) {
           legacyDescRaw = raw;
           descEl.value = raw;
-          if (descPreview) {
-            descPreview.textContent = raw;
-            descPreview.dataset.empty = "0";
-          }
         }
         renderNamePanel();
         renderDescPanel();
+        syncDescField();
         notifyNameActive();
       },
       getCommittedName() {
@@ -1903,8 +2180,95 @@
     };
   }
 
+  function plmEscapeHtmlForDisplay(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function plmLinePillHtmlString(num, label) {
+    const text = `${num}: ${label}`;
+    const style =
+      typeof window.tamPlmLinePillInlineStyle === "function"
+        ? window.tamPlmLinePillInlineStyle(num)
+        : "display:inline-block;padding:2px 8px;border-radius:6px;font-weight:600;background:#e8ecf1;color:#1b1f24;border:1px solid #ccd3db;white-space:nowrap";
+    return `<span class="tam-plm-desc-line-pill tam-plm-map-desc-pill" style="${style}" title="${plmEscapeHtmlForDisplay(text)}">${plmEscapeHtmlForDisplay(text)}</span>`;
+  }
+
+  function plmSegmentsFromSectionLine(state, kind) {
+    const line = plmFormatSectionLine(state, kind);
+    if (!line) return [];
+    const segs = [];
+    for (const bit of splitPlmStructuralList(line)) {
+      const seg = parsePlmLineSegmentRaw(bit);
+      if (seg) {
+        segs.push({
+          num: seg.num,
+          label: plmUnquoteUserToken(seg.rawValue),
+        });
+      } else {
+        const label = plmUnquoteUserToken(bit).trim();
+        if (label) segs.push({ num: null, label });
+      }
+    }
+    return segs;
+  }
+
+  function plmBuildPillsRowHtmlString(segments) {
+    if (!segments.length) return "";
+    const parts = segments.map((seg) => {
+      if (seg.num) return plmLinePillHtmlString(seg.num, seg.label);
+      return `<span class="tam-plm-map-desc-pill tam-plm-map-desc-pill--plain">${plmEscapeHtmlForDisplay(seg.label)}</span>`;
+    });
+    return `<div class="tam-plm-map-desc-row">${parts.join("")}</div>`;
+  }
+
+  /** HTML description structurée (pastilles couleur) pour libellés carte repère. */
+  function buildDescriptionDisplayHtml(text) {
+    const raw = String(text ?? "").trim();
+    if (!raw) return "";
+
+    const state = parseDescription(raw, loadConfig());
+    const hasStructured =
+      plmSectionHasContent(state, "v") ||
+      plmSectionHasContent(state, "lines") ||
+      plmSectionHasContent(state, "indir");
+
+    if (!hasStructured) {
+      return plmEscapeHtmlForDisplay(raw).replace(/\n/g, "<br>");
+    }
+
+    const rows = [];
+    for (const kind of plmEffectiveSectionOrder(state)) {
+      if (kind === "v" || kind === "lines") {
+        const row = plmBuildPillsRowHtmlString(
+          plmSegmentsFromSectionLine(state, kind),
+        );
+        if (row) rows.push(row);
+      } else if (kind === "indir") {
+        const segs = Object.keys(state.indir)
+          .filter(
+            (n) =>
+              normalizeLineNum(n) &&
+              asPlmMultiArray(state.indir[n]).length,
+          )
+          .sort(plmSortLineKeys)
+          .map((n) => ({
+            num: n,
+            label: joinPlmIndirMulti(asPlmMultiArray(state.indir[n])),
+          }));
+        const row = plmBuildPillsRowHtmlString(segs);
+        if (row) rows.push(row);
+      }
+    }
+    return rows.join("");
+  }
+
   window.plmParseStructuredDescription = parseDescription;
   window.plmFormatStructuredDescription = formatDescription;
+  window.plmBuildDescriptionDisplayHtml = buildDescriptionDisplayHtml;
   window.plmCreateStructuredTextUi = createStructuredTextUi;
   window.plmCreateZoneNamePickerUi = createZoneNamePickerUi;
 })();

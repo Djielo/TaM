@@ -332,7 +332,13 @@ function plmBuildMapLabelHtml(item) {
     html += `<strong>${plmEscapeHtml(name)}</strong>`;
   }
   if (desc) {
-    html += `<p>${plmEscapeHtml(desc)}</p>`;
+    const descHtml =
+      typeof window.plmBuildDescriptionDisplayHtml === "function"
+        ? window.plmBuildDescriptionDisplayHtml(desc)
+        : plmEscapeHtml(desc).replace(/\n/g, "<br>");
+    if (descHtml) {
+      html += `<div class="tam-plm-map-label__desc">${descHtml}</div>`;
+    }
   }
   html += "</div>";
   return html;

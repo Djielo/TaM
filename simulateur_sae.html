@@ -814,6 +814,24 @@
         font-size: 11px;
         white-space: pre-wrap;
       }
+      .tam-plm-map-label__desc {
+        margin: 3px 0 0;
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      .tam-plm-map-desc-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px 5px;
+        margin-top: 3px;
+      }
+      .tam-plm-map-desc-row:first-child {
+        margin-top: 0;
+      }
+      .tam-plm-map-desc-pill--plain {
+        font-weight: 600;
+        white-space: nowrap;
+      }
       .tam-personal-landmark-marker {
         background: transparent;
         border: none;
@@ -1680,11 +1698,37 @@
         background: #fff;
         font-size: 12px;
         line-height: 1.45;
-        white-space: pre-wrap;
         color: #1b1f24;
         min-height: 2.5em;
         max-height: 5.5rem;
         overflow-y: auto;
+      }
+      .tam-plm-desc-preview-row {
+        margin: 0 0 4px;
+        line-height: 1.5;
+      }
+      .tam-plm-desc-preview-row:last-child {
+        margin-bottom: 0;
+      }
+      .tam-plm-desc-preview-row--pills {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 6px;
+      }
+      .tam-plm-desc-line-pill {
+        white-space: nowrap;
+      }
+      .tam-plm-desc-line-pill--fallback {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 6px;
+        background: #e8ecf1;
+        color: #1b1f24;
+        font-weight: 600;
+        border: 1px solid #ccd3db;
+        box-sizing: border-box;
+        vertical-align: baseline;
       }
       .tam-plm-desc-preview:empty::before,
       .tam-plm-desc-preview[data-empty="1"]::before {
