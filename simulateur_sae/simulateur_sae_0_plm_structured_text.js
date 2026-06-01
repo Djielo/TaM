@@ -252,6 +252,7 @@
    *   prompt?: (message: string, defaultValue?: string) => Promise<string|null>,
    *   confirm?: (message: string) => Promise<boolean>,
    *   alert?: (message: string) => void,
+   *   onNameActiveChange?: (hasName: boolean) => void,
    * }} opts
    */
   function createStructuredTextUi(opts) {
@@ -272,6 +273,12 @@
       ((msg) => {
         window.alert(msg);
       });
+    const onNameActiveChange = opts.onNameActiveChange;
+
+    function notifyNameActive() {
+      if (!onNameActiveChange) return;
+      onNameActiveChange(String(nameEl.value || "").trim().length > 0);
+    }
 
     const MSG_COCHER =
       "Cochez l’élément concerné, puis utilisez S, M ou D.";
@@ -348,6 +355,7 @@
         namePick = { kind: "preset", value: v };
       } else namePick = { kind: "manual" };
       renderNamePanel();
+      notifyNameActive();
     }
 
     function asmTools(handlers, { showDup = true } = {}) {
@@ -397,12 +405,14 @@
         if (cb.checked) {
           namePick = { kind: "preset", value: preset };
           syncNameFromPick();
+          notifyNameActive();
         } else if (
           namePick.kind === "preset" &&
           namePick.value === preset
         ) {
           namePick = { kind: "manual" };
           nameEl.value = "Groupe";
+          notifyNameActive();
         }
         renderNamePanel();
       });
@@ -888,13 +898,23 @@
         }
         renderNamePanel();
         renderDescPanel();
+        notifyNameActive();
       },
-      flush() {
+      getCommittedName() {
+        if (namePick.kind === "preset" && namePick.value) {
+          return String(namePick.value).trim();
+        }
+        return String(nameEl.value || "").trim();
+      },
+      syncNameFieldFromPick() {
+        syncNameFromPick();
+      },
+      flush(opts) {
         syncDescField();
         if (legacyDescRaw != null && !formatDescription(descState)) {
           descEl.value = legacyDescRaw;
         }
-        if (namePick.kind === "preset" && namePick.value) {
+        if (!opts?.hideName && namePick.kind === "preset" && namePick.value) {
           nameEl.value = namePick.value;
         }
       },
