@@ -714,6 +714,54 @@ function displayLineLabel(item) {
   return code;
 }
 
+/** Numéro repère (1, 4A, 4B…) → ligne GTFS (4A et 4B → couleur de la ligne 4). */
+function tamRouteItemForPlmLineNum(lineNum) {
+  const raw = String(lineNum ?? "").trim();
+  if (!raw) return null;
+  const base = raw.match(/^(\d+)/)?.[1] || raw;
+  if (!Array.isArray(lineOptionLookup) || !lineOptionLookup.length) {
+    return null;
+  }
+  return (
+    lineOptionLookup.find(
+      (x) => String(x?.route_short_name ?? "").trim() === base,
+    ) || null
+  );
+}
+
+/** Pastille description repère : mêmes couleurs que mission / correspondances. */
+function tamApplyPlmDescLinePill(el, lineNum) {
+  if (!el) return;
+  const item = tamRouteItemForPlmLineNum(lineNum);
+  if (item) {
+    applyLineColorStyling(el, item, "contextPill");
+    el.classList.remove("tam-plm-desc-line-pill--fallback");
+    return;
+  }
+  applyLineColorStyling(el, null, "contextPill");
+  el.classList.add("tam-plm-desc-line-pill--fallback");
+}
+
+/** Attribut style inline pour pastilles HTML (libellés carte repère). */
+function tamPlmLinePillInlineStyle(lineNum) {
+  const item = tamRouteItemForPlmLineNum(lineNum);
+  const bg =
+    forcedLineColor(item?.route_short_name) || lineColorHex(item?.route_color);
+  const base =
+    "display:inline-block;padding:2px 8px;border-radius:6px;box-sizing:border-box;line-height:1.2;white-space:nowrap;vertical-align:baseline";
+  if (bg) {
+    const tx = lineLabelContrastTextColor(item);
+    return `${base};font-weight:700;background:${bg};color:${tx};-webkit-text-fill-color:${tx};border:1px solid rgba(0,0,0,0.12)`;
+  }
+  return `${base};font-weight:600;background:#e8ecf1;color:#1b1f24;border:1px solid #ccd3db`;
+}
+
+if (typeof window !== "undefined") {
+  window.tamRouteItemForPlmLineNum = tamRouteItemForPlmLineNum;
+  window.tamApplyPlmDescLinePill = tamApplyPlmDescLinePill;
+  window.tamPlmLinePillInlineStyle = tamPlmLinePillInlineStyle;
+}
+
 /** Libellé pour les phrases « Prenez … » dans le résumé d’itinéraire carte.
  * @param {string|null|undefined} branchLetter « A » ou « B » (boucle T4 / même base de headsign), sinon omis. */
 function routePlannerTakeLinePhrase(routeCode, branchLetter) {
