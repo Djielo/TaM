@@ -791,9 +791,9 @@
         border: none;
       }
       .tam-plm-map-label__card {
-        display: inline-block;
+        display: inline-grid;
         width: max-content;
-        max-width: min(92vw, 36rem);
+        max-width: min(92vw, 42rem);
         padding: 4px 8px;
         border-radius: 4px;
         background: #fff;
@@ -803,6 +803,7 @@
         color: #1b1f24;
         text-align: left;
         transform-origin: 0 0;
+        box-sizing: border-box;
       }
       .tam-plm-map-label__card strong {
         display: block;
@@ -814,10 +815,39 @@
         font-size: 11px;
         white-space: pre-wrap;
       }
+      .tam-plm-map-label__title-row,
       .tam-plm-map-label__desc {
-        margin: 3px 0 0;
+        grid-column: 1;
+        width: 100%;
+        min-width: max-content;
+        box-sizing: border-box;
+      }
+      .tam-plm-map-label__title-row {
+        margin: 0 0 3px;
+      }
+      .tam-plm-map-label__title-row .tam-plm-desc-title-pill {
+        font-size: 11px;
+        padding: 3px 6px;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      .tam-plm-map-label__desc {
+        margin: 0;
         font-size: 11px;
         line-height: 1.35;
+      }
+      .tam-plm-map-label__card .tam-plm-map-desc-row {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 3px 5px;
+        margin-top: 3px;
+        width: max-content;
+        max-width: 100%;
+        min-width: 100%;
+        box-sizing: border-box;
+      }
+      .tam-plm-map-label__card .tam-plm-map-desc-row:first-child {
+        margin-top: 0;
       }
       .tam-plm-map-desc-row {
         display: flex;
@@ -827,6 +857,10 @@
       }
       .tam-plm-map-desc-row:first-child {
         margin-top: 0;
+      }
+      .tam-plm-dialog-head-preview__card.tam-plm-map-label__card {
+        width: 100%;
+        max-width: 100%;
       }
       .tam-plm-map-desc-pill--plain {
         font-weight: 600;
@@ -868,6 +902,7 @@
         overflow: hidden;
         box-sizing: border-box;
       }
+      .app-personal-landmark-dialog .tam-plm-dialog-head,
       .app-personal-landmark-dialog .tam-plm-tabs,
       .app-personal-landmark-dialog .tam-plm-dialog-tab-body,
       .app-personal-landmark-dialog .tam-plm-tab-panel[data-plm-tab-panel],
@@ -1455,13 +1490,67 @@
         max-width: none;
         box-sizing: border-box;
       }
-      .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
-        > .tam-plm-name-row,
-      .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
-        > .app-personal-landmark-dialog__label,
-      .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
-        > .tam-plm-desc-preview {
+      .tam-plm-dialog-head {
         flex: 0 0 auto;
+        margin: 0 0 8px;
+        padding: 0 0 10px;
+        border-bottom: 1px solid #dde3ea;
+      }
+      .tam-plm-dialog-head .tam-plm-name-row {
+        margin-bottom: 4px;
+      }
+      .tam-plm-dialog-head__desc-label {
+        margin-top: 4px;
+        margin-bottom: 4px;
+      }
+      .tam-plm-dialog-head-preview {
+        margin: 0;
+      }
+      .tam-plm-dialog-head-preview__card {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      .tam-plm-dialog-head-preview__card .tam-plm-desc-preview {
+        margin: 0;
+        padding: 0;
+        min-height: 1.35em;
+        max-height: 5.5rem;
+        overflow-y: auto;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+      }
+      .tam-plm-desc-preview-row--title {
+        display: block;
+        width: 100%;
+        margin: 0 0 4px;
+        box-sizing: border-box;
+      }
+      .tam-plm-desc-preview-row--title:last-child {
+        margin-bottom: 0;
+      }
+      .tam-plm-desc-title-pill {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 4px 6px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 12px;
+        line-height: 1.25;
+        text-align: center;
+        background: #c5cdd6;
+        color: #1b1f24;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tam-plm-dialog-head-preview__card
+        .tam-plm-desc-preview[data-empty="1"]:not(:empty)::before {
+        content: none;
       }
       .tam-plm-name-row {
         display: flex;
@@ -1510,10 +1599,6 @@
         accent-color: #005ca9;
         cursor: pointer;
         -webkit-tap-highlight-color: transparent;
-      }
-      .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
-        > .tam-plm-desc-preview {
-        margin-bottom: 8px;
       }
       .tam-plm-struct-section {
         margin-bottom: 10px;
@@ -4521,6 +4606,31 @@
         <h2 id="appPersonalLandmarkDialogTitle" class="tam-plm-sr-only">
           Repère personnel
         </h2>
+        <input
+          type="hidden"
+          id="appPersonalLandmarkDialogName"
+          value=""
+        />
+        <div
+          class="tam-plm-dialog-head"
+          aria-label="Aperçu du libellé sur la carte"
+        >
+          <p class="app-personal-landmark-dialog__label tam-plm-dialog-head__desc-label">
+            Aperçu (titre et description optionnels)
+          </p>
+          <div
+            class="tam-plm-dialog-head-preview"
+            aria-live="polite"
+          >
+            <div class="tam-plm-map-label__card tam-plm-dialog-head-preview__card">
+              <div
+                id="appPersonalLandmarkDialogDescPreview"
+                class="tam-plm-desc-preview tam-plm-map-label__desc"
+                data-empty="1"
+              ></div>
+            </div>
+          </div>
+        </div>
         <div
           class="tam-plm-tabs"
           role="tablist"
@@ -4546,7 +4656,7 @@
             aria-selected="false"
             aria-controls="appPersonalLandmarkDialogPanelName"
           >
-            Nom
+            Titre
           </button>
           <button
             type="button"
@@ -4655,34 +4765,10 @@
             aria-labelledby="appPersonalLandmarkDialogTabName"
             hidden
           >
-            <div class="tam-plm-name-row">
-              <label
-                for="appPersonalLandmarkDialogName"
-                class="app-personal-landmark-dialog__label"
-                >Nom (cochez la case pour un repère sans nom)</label
-              >
-              <div class="tam-plm-name-field-line">
-                <input
-                  type="text"
-                  id="appPersonalLandmarkDialogName"
-                  class="app-prompt-dialog__input"
-                  maxlength="120"
-                  autocomplete="off"
-                  spellcheck="true"
-                />
-                <input
-                  type="checkbox"
-                  id="appPersonalLandmarkDialogHideName"
-                  class="tam-plm-hide-name-cb"
-                  aria-label="Repère sans nom"
-                  title="Repère sans nom"
-                />
-              </div>
-            </div>
             <div
               id="appPersonalLandmarkDialogNamePanel"
               class="tam-plm-struct-panel"
-              aria-label="Nom : libellés enregistrés"
+              aria-label="Titre : libellés enregistrés"
             ></div>
           </div>
           <div
@@ -4693,17 +4779,6 @@
             aria-labelledby="appPersonalLandmarkDialogTabDesc"
             hidden
           >
-            <label
-              for="appPersonalLandmarkDialogDesc"
-              class="app-personal-landmark-dialog__label"
-              >Description (optionnelle)</label
-            >
-            <div
-              id="appPersonalLandmarkDialogDescPreview"
-              class="tam-plm-desc-preview"
-              aria-live="polite"
-              data-empty="1"
-            ></div>
             <div
               id="appPersonalLandmarkDialogDescPanel"
               class="tam-plm-struct-panel"
@@ -4933,16 +5008,6 @@
       </button>
       <button
         type="button"
-        class="tam-plm-context-menu__item tam-plm-context-menu__item--check"
-        data-plm-ctx="toggle-hide-name"
-        role="menuitemcheckbox"
-        aria-checked="false"
-        aria-label="Marquer comme repère sans nom sur la carte"
-      >
-        Marquer comme sans nom
-      </button>
-      <button
-        type="button"
         class="tam-plm-context-menu__item"
         data-plm-ctx="rotate-landmark"
         role="menuitem"
@@ -5035,10 +5100,16 @@
           <div class="tam-plm-help-defs">
             <p><strong>Couleur</strong> — pastille du repère sur la carte.</p>
             <p>
-              <strong>Nom</strong> — cochez la case à droite du champ pour un
-              repère sans libellé sous l’icône.
+              <strong>Aperçu</strong> (en haut) — libellé tel qu’il apparaîtra
+              sur la carte : pastille grise pour le <strong>titre</strong>,
+              pastilles colorées pour vitesses / INDES / INDIR.
             </p>
-            <p><strong>Description</strong> — facultative.</p>
+            <p>
+              <strong>Titre</strong> — facultatif ; cochez un libellé
+              enregistré (CMR, etc.). <strong>Description</strong> — vitesses,
+              INDES et INDIR ; un repère peut n’avoir ni titre ni description
+              (icône et couleur seuls).
+            </p>
           </div>
           <p>
             <strong>Sur la carte :</strong> aux zooms les plus proches, les
