@@ -255,6 +255,14 @@ function plmLandmarkDisplayName(item) {
   return String(item.name ?? "").trim();
 }
 
+function plmLandmarkHasMapLabelContent(item) {
+  if (!item) return false;
+  const ref = plmLandmarkLabelAttachItem(item) || item;
+  return (
+    !!plmLandmarkDisplayName(ref) || !!plmLandmarkDescriptionText(ref)
+  );
+}
+
 function plmEscapeHtml(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -325,11 +333,17 @@ function plmLandmarkForGroupLabel(groupId) {
 }
 
 function plmBuildMapLabelHtml(item) {
-  const name = plmLandmarkDisplayName(item);
-  const desc = plmLandmarkDescriptionText(item);
-  let html = '<div class="tam-plm-map-label__card">';
-  if (name) {
-    html += `<strong>${plmEscapeHtml(name)}</strong>`;
+  const title = plmLandmarkDisplayName(item);
+  let desc = plmLandmarkDescriptionText(item);
+  if (
+    title &&
+    typeof window.plmStripTitleFromDescriptionRaw === "function"
+  ) {
+    desc = window.plmStripTitleFromDescriptionRaw(desc, title);
+  }
+  let inner = "";
+  if (title && typeof window.plmTitlePillHtmlString === "function") {
+    inner += `<div class="tam-plm-map-label__title-row">${window.plmTitlePillHtmlString(title)}</div>`;
   }
   if (desc) {
     const descHtml =
@@ -337,11 +351,11 @@ function plmBuildMapLabelHtml(item) {
         ? window.plmBuildDescriptionDisplayHtml(desc)
         : plmEscapeHtml(desc).replace(/\n/g, "<br>");
     if (descHtml) {
-      html += `<div class="tam-plm-map-label__desc">${descHtml}</div>`;
+      inner += `<div class="tam-plm-map-label__desc">${descHtml}</div>`;
     }
   }
-  html += "</div>";
-  return html;
+  if (!inner) return "";
+  return `<div class="tam-plm-map-label__card">${inner}</div>`;
 }
 
 function plmCreateMapLabelIcon(html, item) {
@@ -1399,9 +1413,8 @@ function plmSanitizeParentLinks() {
 }
 
 function plmCommitDialogSave(r) {
-  const hideName = !!r.hideName;
+  if (r.action !== "save") return { ok: false, added: 0 };
   const name = String(r.name ?? "").trim();
-  if (r.action !== "save" || (!hideName && !name)) return { ok: false, added: 0 };
   const slots = Array.isArray(r.slots) ? r.slots : [];
   let groupId = r.groupId || null;
   if (slots.length && !groupId) {
@@ -1427,8 +1440,7 @@ function plmCommitDialogSave(r) {
         ? normalizePlmColorHex(prev.colorHex)
         : normalizePlmColorHex(r.colorHex),
     };
-    if (hideName) row.hideName = true;
-    else delete row.hideName;
+    delete row.hideName;
     if (finalGroupId) row.groupId = finalGroupId;
     if (prev.parentId) {
       row.parentId = prev.parentId;
@@ -1440,7 +1452,7 @@ function plmCommitDialogSave(r) {
     personalLandmarksList[idx] = row;
     if (finalGroupId) {
       plmSetGroupDescription(finalGroupId, r.description);
-      if (!hideName) {
+      if (name) {
         plmSyncGroupMemberNames(finalGroupId, name);
       }
     }
@@ -1479,7 +1491,7 @@ function plmCommitDialogSave(r) {
     iconId: normalizePlmIconId(r.iconId),
     colorHex: normalizePlmColorHex(r.colorHex),
   };
-  if (hideName) row.hideName = true;
+  delete row.hideName;
   row.iconBearingDeg = plmCaptureLandmarkIconBearingDeg();
   if (snapped.snapped && snapped.anchorLandmarkId) {
     row = plmApplySnapAlignBearingToAnchor(row, snapped.anchorLandmarkId);
@@ -5019,32 +5031,6 @@ async function plmDetachLandmarkFromGroup(landmarkId) {
   setGpsStatus("Repère détaché du groupe.");
 }
 
-function plmToggleLandmarkHideNameFromContext(landmarkId) {
-  const idx = personalLandmarksList.findIndex((x) => x.id === landmarkId);
-  if (idx < 0) return;
-  const cur = personalLandmarksList[idx];
-  const nextHide = !plmLandmarkHideName(cur);
-  const row = { ...cur };
-  if (nextHide) {
-    row.hideName = true;
-    row.name = "";
-  } else {
-    delete row.hideName;
-    if (!String(row.name ?? "").trim()) {
-      row.name = "Repère";
-    }
-    if (row.groupId) {
-      plmSyncGroupMemberNames(row.groupId, row.name);
-    }
-  }
-  personalLandmarksList[idx] = row;
-  savePersonalLandmarksToStorage();
-  redrawPersonalLandmarksLayer();
-  setGpsStatus(
-    nextHide ? "Repère sans nom activé." : "Nom du repère réaffiché sur la carte.",
-  );
-}
-
 function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   if (
     typeof tamCloudBlocksLandmarkZoneEdits === "function" &&
@@ -5069,11 +5055,6 @@ function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   }
   const delGroupBtn = menu.querySelector('[data-plm-ctx="del-group"]');
   if (delGroupBtn) delGroupBtn.hidden = !item.groupId;
-  const hideNameBtn = menu.querySelector('[data-plm-ctx="toggle-hide-name"]');
-  if (hideNameBtn) {
-    const hideOn = plmLandmarkHideName(item);
-    hideNameBtn.setAttribute("aria-checked", hideOn ? "true" : "false");
-  }
   const rotateBtn = menu.querySelector('[data-plm-ctx="rotate-landmark"]');
   if (rotateBtn) {
     rotateBtn.textContent = item.groupId
@@ -5137,10 +5118,6 @@ function plmInitLandmarkContextMenu() {
     }
     if (action === "detach-group") {
       void plmDetachLandmarkFromGroup(id);
-      return;
-    }
-    if (action === "toggle-hide-name") {
-      plmToggleLandmarkHideNameFromContext(id);
       return;
     }
     if (action === "rotate-landmark") {
@@ -5211,20 +5188,21 @@ function plmResolveLandmarkLabelDisplay(landmarkId) {
   if (item.groupId) {
     const ref = plmLandmarkForGroupLabel(item.groupId);
     if (!ref) return null;
-    const descText = plmLandmarkDescriptionText(ref);
-    if (!plmLandmarkDisplayName(ref) && !descText) return null;
+    if (!plmLandmarkHasMapLabelContent(ref)) return null;
+    const html = plmBuildMapLabelHtml(ref);
+    if (!html) return null;
     return {
       attach: ref,
-      html: plmBuildMapLabelHtml(ref),
+      html,
       landmarkId: ref.id,
     };
   }
-  const displayName = plmLandmarkDisplayName(item);
-  const descText = plmLandmarkDescriptionText(item);
-  if (!displayName && !descText) return null;
+  if (!plmLandmarkHasMapLabelContent(item)) return null;
+  const html = plmBuildMapLabelHtml(item);
+  if (!html) return null;
   return {
     attach: item,
-    html: plmBuildMapLabelHtml(item),
+    html,
     landmarkId: item.id,
   };
 }
@@ -6294,12 +6272,7 @@ function openPersonalLandmarkDialog(spec) {
     const settingsPop = document.getElementById("appPersonalLandmarkSettingsPopover");
     const helpBtn = document.getElementById("appPersonalLandmarkDialogHelpBtn");
     const nameIn = document.getElementById("appPersonalLandmarkDialogName");
-    const hideNameCb = document.getElementById("appPersonalLandmarkDialogHideName");
     const descIn = document.getElementById("appPersonalLandmarkDialogDesc");
-    const isHideNameChecked = () => !!(hideNameCb && hideNameCb.checked);
-    const setHideNameChecked = (on) => {
-      if (hideNameCb) hideNameCb.checked = !!on;
-    };
     const namePanel = document.getElementById("appPersonalLandmarkDialogNamePanel");
     const descPanel = document.getElementById("appPersonalLandmarkDialogDescPanel");
     const descPreview = document.getElementById(
@@ -6532,47 +6505,16 @@ function openPersonalLandmarkDialog(spec) {
     let initialName = spec.name != null ? String(spec.name) : "";
     if (editItem && plmLandmarkHideName(editItem)) {
       initialName = "";
+    } else if (editItem) {
+      initialName = String(editItem.name ?? "").trim();
     }
-    const initialHideName =
-      spec.hideName != null
-        ? !!spec.hideName
-        : editItem
-          ? plmLandmarkHideName(editItem)
-          : mode === "create";
     const initialDesc = editGroupId
       ? plmGetGroupDescription(editGroupId)
       : spec.description != null
         ? String(spec.description)
         : "";
     nameIn.value = initialName;
-    setHideNameChecked(initialHideName);
     descIn.value = initialDesc;
-
-    function syncHideNameUi() {
-      nameIn.disabled = isHideNameChecked();
-    }
-
-    function onNameActiveChange(hasName) {
-      if (hasName && isHideNameChecked()) {
-        setHideNameChecked(false);
-        syncHideNameUi();
-        if (plmTextUi && typeof plmTextUi.syncNameFieldFromPick === "function") {
-          plmTextUi.syncNameFieldFromPick();
-        }
-      }
-    }
-
-    function onHideNameChange() {
-      if (isHideNameChecked()) {
-        nameIn.value = "";
-      } else if (
-        plmTextUi &&
-        typeof plmTextUi.syncNameFieldFromPick === "function"
-      ) {
-        plmTextUi.syncNameFieldFromPick();
-      }
-      syncHideNameUi();
-    }
 
     let plmTextUi = null;
     if (typeof window.plmCreateStructuredTextUi === "function") {
@@ -6587,21 +6529,13 @@ function openPersonalLandmarkDialog(spec) {
         confirm: (message) =>
           showAppConfirmDialog(TAM_APP_DIALOG_TITLE, message),
         alert: (message) => tamAppAlert(message),
-        onNameActiveChange,
       });
       plmTextUi.setInitial(initialName, initialDesc);
     }
-    if (initialHideName) {
-      nameIn.value = "";
-    }
-    syncHideNameUi();
     let settled = false;
     function cleanupListeners() {
       saveBtn.removeEventListener("click", onSave);
       cancelBtn.removeEventListener("click", onCancel);
-      if (hideNameCb) {
-        hideNameCb.removeEventListener("change", onHideNameChange);
-      }
       nameIn.removeEventListener("keydown", onNameKeydown);
       dlg.removeEventListener("close", onClose);
       dlg.removeEventListener("click", onPlmDlgClick);
@@ -6638,17 +6572,10 @@ function openPersonalLandmarkDialog(spec) {
       finish({ action: "cancel" });
     }
     function onSave() {
-      const hideName = isHideNameChecked();
-      if (plmTextUi) plmTextUi.flush({ hideName });
+      if (plmTextUi) plmTextUi.flush();
       const name = plmTextUi
-        ? plmTextUi.getCommittedName()
+        ? plmTextUi.getCommittedTitle()
         : String(nameIn.value || "").trim();
-      if (!hideName && !name) {
-        tamAppAlert(
-          "Indiquez un nom pour le repère, ou cochez la case « sans nom ».",
-        );
-        return;
-      }
       touchPlmIconRecent(plmPick.iconId);
       finish({
         action: "save",
@@ -6657,7 +6584,6 @@ function openPersonalLandmarkDialog(spec) {
         lat: spec.lat,
         lng: spec.lng,
         name,
-        hideName,
         description: String(descIn.value || "").trim(),
         iconId: plmPick.iconId,
         colorHex: plmPick.colorHex,
@@ -6676,22 +6602,11 @@ function openPersonalLandmarkDialog(spec) {
     dlg.addEventListener("close", onClose, { once: true });
     saveBtn.addEventListener("click", onSave);
     cancelBtn.addEventListener("click", onCancel);
-    if (hideNameCb) {
-      hideNameCb.addEventListener("change", onHideNameChange);
-    }
     nameIn.addEventListener("keydown", onNameKeydown);
     dlg.showModal();
     dialogOpened = true;
     requestAnimationFrame(() => {
       plmSyncPersonalLandmarkDialogTabHeights(dlg);
-      if (!isHideNameChecked()) {
-        try {
-          nameIn.focus({ preventScroll: true });
-        } catch (err) {
-          nameIn.focus();
-        }
-        nameIn.select();
-      }
     });
     if (!dlg.dataset.tamPlmTabResizeWired) {
       dlg.dataset.tamPlmTabResizeWired = "1";
@@ -6733,22 +6648,22 @@ async function openPersonalLandmarkMarkerEditor(id) {
     groupId: item.groupId,
     lat: item.lat,
     lng: item.lng,
-    name: item.name,
-    hideName: plmLandmarkHideName(item),
+    name: plmLandmarkDisplayName(item),
     description: plmLandmarkDescriptionText(item),
     iconId: item.iconId,
     colorHex: item.colorHex,
   });
   if (r.action === "cancel") return;
-  if (r.action === "save" && r.id && (r.name || r.hideName)) {
+  if (r.action === "save" && r.id) {
     const result = plmCommitDialogSave({ ...r, action: "save" });
     if (result.ok) {
       savePersonalLandmarksToStorage();
       redrawPersonalLandmarksLayer();
+      const label = r.name || "Repère";
       setGpsStatus(
         result.added > 0
-          ? `Repère mis à jour : ${r.name} (${result.added} repère(s) ajouté(s)).`
-          : `Repère mis à jour : ${r.name}`,
+          ? `Repère mis à jour : ${label} (${result.added} repère(s) ajouté(s)).`
+          : `Repère mis à jour : ${label}`,
       );
     }
   }
@@ -6832,7 +6747,6 @@ map.on("click", async (ev) => {
     });
     if (
       r.action === "save" &&
-      (r.name || r.hideName) &&
       Number.isFinite(r.lat) &&
       Number.isFinite(r.lng)
     ) {
@@ -6841,7 +6755,6 @@ map.on("click", async (ev) => {
         lat: r.lat,
         lng: r.lng,
         name: r.name,
-        hideName: r.hideName,
         description: r.description,
         iconId: r.iconId,
         colorHex: r.colorHex,
@@ -6851,9 +6764,7 @@ map.on("click", async (ev) => {
       if (result.ok) {
         savePersonalLandmarksToStorage();
         redrawPersonalLandmarksLayer();
-        const label = r.hideName
-          ? "sans nom"
-          : r.name || "Repère";
+        const label = r.name || "Repère";
         setGpsStatus(
           result.snapped
             ? `Repère ajouté : ${label} (aimanté et aligné).`

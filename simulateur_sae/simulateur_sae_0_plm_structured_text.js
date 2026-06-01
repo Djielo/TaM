@@ -618,6 +618,22 @@
     return a.localeCompare(b);
   }
 
+  /** Évite le doublon titre / première ligne de description (données héritées). */
+  function plmStripTitleFromDescriptionRaw(raw, title) {
+    const t = String(title ?? "").trim();
+    let body = String(raw ?? "").trim();
+    if (!t || !body) return body;
+    if (body === t) return "";
+    const lines = body.split(/\r?\n/);
+    if (lines[0]?.trim() === t) {
+      return lines
+        .slice(1)
+        .join("\n")
+        .trim();
+    }
+    return body;
+  }
+
   function plmDescRowsFromBody(body) {
     const rows = String(body ?? "")
       .split(/\r?\n/)
@@ -762,7 +778,7 @@
    *   prompt?: (message: string, defaultValue?: string) => Promise<string|null>,
    *   confirm?: (message: string) => Promise<boolean>,
    *   alert?: (message: string) => void,
-   *   onNameActiveChange?: (hasName: boolean) => void,
+   *   onLabelPreviewChange?: () => void,
    * }} opts
    */
   function createStructuredTextUi(opts) {
@@ -783,11 +799,17 @@
       ((msg) => {
         window.alert(msg);
       });
-    const onNameActiveChange = opts.onNameActiveChange;
+    const onLabelPreviewChange = opts.onLabelPreviewChange;
 
-    function notifyNameActive() {
-      if (!onNameActiveChange) return;
-      onNameActiveChange(String(nameEl.value || "").trim().length > 0);
+    function getCommittedTitle() {
+      if (namePick.kind === "preset" && namePick.value) {
+        return String(namePick.value).trim();
+      }
+      return "";
+    }
+
+    function notifyLabelPreview() {
+      if (onLabelPreviewChange) onLabelPreviewChange();
     }
 
     const MSG_COCHER =
@@ -852,7 +874,7 @@
 
     let config = loadConfig();
     let descState = emptyDescState();
-    let namePick = { kind: "manual" };
+    let namePick = { kind: "none" };
     /** Description libre héritée tant qu’aucune case structurée n’est utilisée. */
     let legacyDescRaw = null;
 
@@ -948,6 +970,22 @@
       return true;
     }
 
+    function isPreviewEmpty() {
+      if (getCommittedTitle()) return false;
+      if (legacyDescRaw != null) return !String(legacyDescRaw).trim();
+      return isDescStateEmpty();
+    }
+
+    function appendTitlePill(row, title) {
+      const full = String(title ?? "").trim();
+      if (!full) return;
+      const pill = document.createElement("span");
+      pill.className = "tam-plm-desc-title-pill";
+      pill.textContent = full;
+      pill.title = full;
+      row.appendChild(pill);
+    }
+
     function appendDescPreviewLinePills(row, segments) {
       row.classList.add("tam-plm-desc-preview-row--pills");
       segments.forEach((seg) => {
@@ -967,14 +1005,37 @@
 
     function renderDescPreviewFromState() {
       if (!descPreview) return;
-      const empty = isDescStateEmpty();
-      descPreview.dataset.empty = empty ? "1" : "0";
+      const title = getCommittedTitle();
+      descPreview.dataset.empty = isPreviewEmpty() ? "1" : "0";
       descPreview.innerHTML = "";
       if (legacyDescRaw != null) {
-        descPreview.textContent = legacyDescRaw;
+        const legacyBody = plmStripTitleFromDescriptionRaw(
+          legacyDescRaw,
+          title,
+        );
+        if (title) {
+          const row = document.createElement("div");
+          row.className =
+            "tam-plm-desc-preview-row tam-plm-desc-preview-row--title";
+          appendTitlePill(row, title);
+          descPreview.appendChild(row);
+        }
+        if (legacyBody) {
+          const row = document.createElement("div");
+          row.className = "tam-plm-desc-preview-row";
+          row.textContent = legacyBody;
+          descPreview.appendChild(row);
+        }
         return;
       }
-      if (empty) return;
+      if (title) {
+        const titleRow = document.createElement("div");
+        titleRow.className =
+          "tam-plm-desc-preview-row tam-plm-desc-preview-row--title";
+        appendTitlePill(titleRow, title);
+        descPreview.appendChild(titleRow);
+      }
+      if (isDescStateEmpty()) return;
 
       const order = plmEffectiveSectionOrder(descState);
       for (const kind of order) {
@@ -1028,26 +1089,21 @@
           descPreview.textContent = legacyDescRaw;
           descPreview.dataset.empty = legacyDescRaw ? "0" : "1";
         }
+        notifyLabelPreview();
         return;
       }
       const text = isDescStateEmpty() ? "" : formatDescription(descState);
       descEl.value = text;
       renderDescPreviewFromState();
+      notifyLabelPreview();
     }
 
     function syncNameFromPick() {
-      if (namePick.kind === "preset" && namePick.value) {
-        nameEl.value = namePick.value;
-      }
-    }
-
-    function onNameInput() {
-      const v = String(nameEl.value || "").trim();
-      if (config.namePresets.includes(v)) {
-        namePick = { kind: "preset", value: v };
-      } else namePick = { kind: "manual" };
-      renderNamePanel();
-      notifyNameActive();
+      nameEl.value =
+        namePick.kind === "preset" && namePick.value
+          ? String(namePick.value)
+          : "";
+      notifyLabelPreview();
     }
 
     function asmTools(handlers, { showDup = true } = {}) {
@@ -1096,16 +1152,15 @@
       cb.addEventListener("change", () => {
         if (cb.checked) {
           namePick = { kind: "preset", value: preset };
-          syncNameFromPick();
-          notifyNameActive();
         } else if (
           namePick.kind === "preset" &&
           namePick.value === preset
         ) {
-          namePick = { kind: "manual" };
-          nameEl.value = "Groupe";
-          notifyNameActive();
+          namePick = { kind: "none" };
+          nameEl.value = "";
         }
+        syncNameFromPick();
+        syncDescField();
         renderNamePanel();
       });
       const lbl = document.createElement("label");
@@ -1135,7 +1190,7 @@
     function renderNamePanel() {
       namePanel.innerHTML = "";
       namePanel.appendChild(
-        sectionHead("Nom :", {
+        sectionHead("Titre :", {
           a: addNamePreset,
           s: delNamePreset,
           m: modNamePreset,
@@ -1202,8 +1257,8 @@
       const t = namePick.value;
       if (!(await confirmEffacer(t))) return;
       config.namePresets = config.namePresets.filter((x) => x !== t);
-      namePick = { kind: "manual" };
-      nameEl.value = "Groupe";
+      namePick = { kind: "none" };
+      nameEl.value = "";
       saveConfig(config);
       renderNamePanel();
     }
@@ -1906,17 +1961,20 @@
       renderDescPanel();
     }
 
-    nameEl.addEventListener("input", onNameInput);
-
     return {
       setInitial(name, description) {
         const n = String(name ?? "").trim();
-        if (config.namePresets.includes(n)) {
+        if (n && config.namePresets.includes(n)) {
           namePick = { kind: "preset", value: n };
-        } else namePick = { kind: "manual" };
-        nameEl.value = n;
+        } else {
+          namePick = { kind: "none" };
+        }
+        nameEl.value = n && namePick.kind === "preset" ? n : "";
         legacyDescRaw = null;
-        const raw = stripStructuredZmLines(String(description ?? "").trim());
+        const raw = plmStripTitleFromDescriptionRaw(
+          stripStructuredZmLines(String(description ?? "").trim()),
+          n,
+        );
         descState = parseDescription(raw, config);
         reconcileDescState();
         if (raw && !formatDescription(descState)) {
@@ -1926,18 +1984,13 @@
         renderNamePanel();
         renderDescPanel();
         syncDescField();
-        notifyNameActive();
       },
-      getCommittedName() {
-        if (namePick.kind === "preset" && namePick.value) {
-          return String(namePick.value).trim();
-        }
-        return String(nameEl.value || "").trim();
-      },
+      getCommittedTitle,
+      getCommittedName: getCommittedTitle,
       syncNameFieldFromPick() {
         syncNameFromPick();
       },
-      flush(opts) {
+      flush() {
         syncDescField();
         if (
           legacyDescRaw != null &&
@@ -1946,12 +1999,9 @@
         ) {
           descEl.value = legacyDescRaw;
         }
-        if (!opts?.hideName && namePick.kind === "preset" && namePick.value) {
-          nameEl.value = namePick.value;
-        }
+        syncNameFromPick();
       },
       destroy() {
-        nameEl.removeEventListener("input", onNameInput);
         namePanel.innerHTML = "";
         descPanel.innerHTML = "";
       },
@@ -2180,6 +2230,13 @@
     };
   }
 
+  function plmTitlePillHtmlString(title) {
+    const full = String(title ?? "").trim();
+    if (!full) return "";
+    const escFull = plmEscapeHtmlForDisplay(full);
+    return `<span class="tam-plm-desc-title-pill" title="${escFull}">${escFull}</span>`;
+  }
+
   function plmEscapeHtmlForDisplay(s) {
     return String(s ?? "")
       .replace(/&/g, "&amp;")
@@ -2269,6 +2326,8 @@
   window.plmParseStructuredDescription = parseDescription;
   window.plmFormatStructuredDescription = formatDescription;
   window.plmBuildDescriptionDisplayHtml = buildDescriptionDisplayHtml;
+  window.plmTitlePillHtmlString = plmTitlePillHtmlString;
+  window.plmStripTitleFromDescriptionRaw = plmStripTitleFromDescriptionRaw;
   window.plmCreateStructuredTextUi = createStructuredTextUi;
   window.plmCreateZoneNamePickerUi = createZoneNamePickerUi;
 })();
