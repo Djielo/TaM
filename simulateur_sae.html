@@ -818,21 +818,43 @@
         border: none;
         touch-action: none;
       }
-      .tam-personal-landmark-dialog.app-prompt-dialog {
-        width: min(94vw, 500px);
-        max-width: min(94vw, 500px);
-        min-width: 260px;
-        max-height: min(92dvh, 820px);
-        overflow: hidden;
+      /*
+       * Repère : mêmes principes que la modale zone (taille fixe, pas au contenu).
+       * Marges écran : 4 % gauche/droite (92 vw), 2 % haut/bas (4 vh).
+       */
+      .app-personal-landmark-dialog.app-prompt-dialog {
+        box-sizing: border-box;
+        width: min(92vw, 520px);
+        max-width: min(92vw, 520px);
+        height: calc(100dvh - 4vh);
+        max-height: calc(100dvh - 4vh);
+        min-width: 0;
+        padding: 0;
+        overflow: clip;
       }
-      .tam-personal-landmark-dialog .tam-plm-dialog-inner {
+      @supports not (overflow: clip) {
+        .app-personal-landmark-dialog.app-prompt-dialog {
+          overflow: hidden;
+        }
+      }
+      .app-personal-landmark-dialog .app-message-dialog__inner.tam-plm-dialog-inner {
         position: relative;
         display: flex;
         flex-direction: column;
         width: 100%;
-        max-height: min(92dvh, 820px);
-        min-height: min(68dvh, 480px);
+        height: 100%;
+        max-height: calc(100dvh - 4vh);
+        min-height: 0;
+        padding: 12px 14px 12px;
         overflow: hidden;
+        box-sizing: border-box;
+      }
+      .app-personal-landmark-dialog .tam-plm-tabs,
+      .app-personal-landmark-dialog .tam-plm-dialog-tab-body,
+      .app-personal-landmark-dialog .tam-plm-tab-panel[data-plm-tab-panel],
+      .app-personal-landmark-dialog .tam-plm-dialog-actions {
+        width: 100%;
+        max-width: none;
         box-sizing: border-box;
       }
       .tam-plm-dialog-inner {
@@ -882,12 +904,13 @@
         outline: 2px solid #005ca9;
         outline-offset: -1px;
       }
-      .tam-plm-dialog-tab-body {
+      .app-personal-landmark-dialog .tam-plm-dialog-tab-body {
         position: relative;
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
         width: 100%;
+        min-width: 0;
         min-height: 0;
         overflow: hidden;
         box-sizing: border-box;
@@ -899,12 +922,22 @@
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
         min-height: 0;
+        max-height: 100%;
         overflow: hidden;
+        box-sizing: border-box;
       }
       .tam-plm-tab-panel[data-plm-tab-panel="icon"]:not([hidden]) {
+        overflow-x: hidden;
         overflow-y: auto;
         overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden]),
+      .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden]) {
+        overflow: hidden;
       }
       .tam-plm-tab-panel--measure {
         visibility: hidden !important;
@@ -1372,31 +1405,92 @@
         resize: vertical;
       }
       .tam-plm-struct-panel {
-        flex: 1 1 auto;
-        min-height: 8rem;
         margin: 0;
         padding: 8px;
         border: 1px solid #dde3ea;
         border-radius: 8px;
         background: #f8fafc;
-        max-height: none;
-        overflow: auto;
+        box-sizing: border-box;
+      }
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
+        .tam-plm-struct-panel,
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
+        .tam-plm-struct-panel {
+        flex: 1 1 auto;
+        align-self: stretch;
+        width: 100%;
+        min-width: 0;
+        min-height: 4.5rem;
+        max-height: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
       }
+      .app-personal-landmark-dialog .tam-plm-struct-box,
+      .app-personal-landmark-dialog .tam-plm-struct-box--grid2,
+      .app-personal-landmark-dialog .tam-plm-name-preset-groups {
+        width: 100%;
+        max-width: none;
+        box-sizing: border-box;
+      }
       .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
-        > .app-personal-landmark-dialog__label,
-      .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
-        > .app-prompt-dialog__input,
+        > .tam-plm-name-row,
       .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
         > .app-personal-landmark-dialog__label,
       .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
         > .tam-plm-desc-preview {
         flex: 0 0 auto;
       }
-      .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
-        > .app-prompt-dialog__input {
+      .tam-plm-name-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 8px;
         margin-bottom: 8px;
+      }
+      .tam-plm-name-row > .app-personal-landmark-dialog__label {
+        flex: 1 0 100%;
+        margin: 0;
+        line-height: 1.35;
+      }
+      .tam-plm-name-field-line {
+        display: flex;
+        flex: 1 1 100%;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .tam-plm-name-field-line #appPersonalLandmarkDialogName {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: calc(100% - 32px);
+        margin: 0;
+        padding: 8px 10px;
+        border: none;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: inset 0 0 0 1px #ccd3db;
+        outline: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tam-plm-name-field-line #appPersonalLandmarkDialogName:focus {
+        box-shadow: inset 0 0 0 2px #005ca9;
+      }
+      .tam-plm-name-field-line #appPersonalLandmarkDialogName:disabled {
+        background: #f1f5f9;
+        color: #64748b;
+      }
+      .tam-plm-name-field-line .tam-plm-hide-name-cb {
+        flex: 0 0 14px;
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: #005ca9;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
       }
       .tam-plm-tab-panel[data-plm-tab-panel="desc"]:not([hidden])
         > .tam-plm-desc-preview {
@@ -1574,6 +1668,10 @@
         accent-color: #005ca9;
       }
       .tam-plm-desc-preview {
+        flex: 0 0 auto;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
         margin: 0 0 6px;
         padding: 8px;
         border-radius: 8px;
@@ -1584,6 +1682,8 @@
         white-space: pre-wrap;
         color: #1b1f24;
         min-height: 2.5em;
+        max-height: 5.5rem;
+        overflow-y: auto;
       }
       .tam-plm-desc-preview:empty::before,
       .tam-plm-desc-preview[data-empty="1"]::before {
@@ -1736,7 +1836,7 @@
         padding: 0;
         justify-content: stretch;
       }
-      .tam-personal-landmark-dialog .tam-plm-tabs {
+      .app-personal-landmark-dialog .tam-plm-tabs {
         flex: 0 0 auto;
       }
       .app-personal-landmark-dialog .tam-plm-dialog-actions button {
@@ -4496,18 +4596,6 @@
               role="group"
               aria-labelledby="appPersonalLandmarkDialogColorHeading"
             ></div>
-            <p
-              class="app-personal-landmark-dialog__label"
-              id="appPersonalLandmarkDialogGridHeading"
-            >
-              Voisins sur la carte (8 directions)
-            </p>
-            <div
-              id="appPersonalLandmarkDialogSlotGrid"
-              class="tam-plm-slot-grid"
-              role="group"
-              aria-labelledby="appPersonalLandmarkDialogGridHeading"
-            ></div>
           </div>
           <div
             id="appPersonalLandmarkDialogPanelName"
@@ -4517,19 +4605,30 @@
             aria-labelledby="appPersonalLandmarkDialogTabName"
             hidden
           >
-            <label
-              for="appPersonalLandmarkDialogName"
-              class="app-personal-landmark-dialog__label"
-              >Nom du repère</label
-            >
-            <input
-              type="text"
-              id="appPersonalLandmarkDialogName"
-              class="app-prompt-dialog__input"
-              maxlength="120"
-              autocomplete="off"
-              spellcheck="true"
-            />
+            <div class="tam-plm-name-row">
+              <label
+                for="appPersonalLandmarkDialogName"
+                class="app-personal-landmark-dialog__label"
+                >Nom (cochez la case pour un repère sans nom)</label
+              >
+              <div class="tam-plm-name-field-line">
+                <input
+                  type="text"
+                  id="appPersonalLandmarkDialogName"
+                  class="app-prompt-dialog__input"
+                  maxlength="120"
+                  autocomplete="off"
+                  spellcheck="true"
+                />
+                <input
+                  type="checkbox"
+                  id="appPersonalLandmarkDialogHideName"
+                  class="tam-plm-hide-name-cb"
+                  aria-label="Repère sans nom"
+                  title="Repère sans nom"
+                />
+              </div>
+            </div>
             <div
               id="appPersonalLandmarkDialogNamePanel"
               class="tam-plm-struct-panel"
@@ -4875,16 +4974,11 @@
           </p>
           <div class="tam-plm-help-defs">
             <p><strong>Couleur</strong> — pastille du repère sur la carte.</p>
-            <p><strong>Nom du repère</strong> — obligatoire.</p>
             <p>
-              <strong>Description</strong> — facultative ; partagée par tout le
-              groupe si vous ajoutez des voisins.
+              <strong>Nom</strong> — cochez la case à droite du champ pour un
+              repère sans libellé sous l’icône.
             </p>
-            <p>
-              <strong>Voisins (grille + / −)</strong> — un « + » ajoute un
-              repère dans cette direction (même nom de groupe). Un « − » indique
-              qu’un voisin existe déjà de ce côté.
-            </p>
+            <p><strong>Description</strong> — facultative.</p>
           </div>
           <p>
             <strong>Sur la carte :</strong> aux zooms les plus proches, les
