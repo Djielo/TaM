@@ -425,7 +425,92 @@
   }
 
   function emptyDescState() {
-    return { v: [], lines: {}, indir: {} };
+    return { v: [], lines: {}, indir: {}, sectionOrder: [] };
+  }
+
+  function plmSectionHasContent(state, kind) {
+    if (kind === "v") return asPlmSpeedArray(state.v).length > 0;
+    if (kind === "lines") {
+      return Object.keys(state.lines).some((n) => state.lines[n]);
+    }
+    if (kind === "indir") {
+      return Object.keys(state.indir).some(
+        (n) => asPlmMultiArray(state.indir[n]).length > 0,
+      );
+    }
+    return false;
+  }
+
+  /** Ordre d’affichage : pas de lignes vides ; vitesse en tête si présente ; sinon ordre de saisie. */
+  function plmEffectiveSectionOrder(state) {
+    const raw = (state.sectionOrder || []).filter((k) =>
+      plmSectionHasContent(state, k),
+    );
+    const hasV = plmSectionHasContent(state, "v");
+    const hasL = plmSectionHasContent(state, "lines");
+    const hasI = plmSectionHasContent(state, "indir");
+    if (hasV && hasL && hasI) {
+      return ["v", "lines", "indir"];
+    }
+    if (hasV) {
+      const rest = raw.filter((k) => k !== "v");
+      return ["v", ...rest];
+    }
+    return raw;
+  }
+
+  function plmFormatSectionLine(state, kind) {
+    if (kind === "v") {
+      const parts = asPlmSpeedArray(state.v).map((v) => plmQuoteUserToken(v));
+      return parts.length ? joinPlmList(parts) : "";
+    }
+    if (kind === "lines") {
+      const parts = Object.keys(state.lines)
+        .filter((k) => normalizeLineNum(k) && state.lines[k])
+        .sort(plmSortLineKeys)
+        .map((n) => `${n}: ${plmQuoteUserToken(state.lines[n])}`);
+      return parts.length ? joinPlmList(parts) : "";
+    }
+    if (kind === "indir") {
+      const parts = Object.keys(state.indir)
+        .filter((k) => normalizeLineNum(k) && asPlmMultiArray(state.indir[k]).length)
+        .sort(plmSortLineKeys)
+        .map((n) => {
+          const vals = asPlmMultiArray(state.indir[n]).map((x) =>
+            plmQuoteUserToken(x),
+          );
+          return `${n}: ${joinPlmIndirMulti(vals)}`;
+        });
+      return parts.length ? joinPlmList(parts) : "";
+    }
+    return "";
+  }
+
+  function plmClassifyDescRow(line, cfg) {
+    const bits = splitPlmStructuralList(line);
+    if (!bits.length) return null;
+    let speedBits = 0;
+    let indesBits = 0;
+    let indirBits = 0;
+    for (const bit of bits) {
+      const seg = parsePlmLineSegmentRaw(bit);
+      if (!seg) {
+        speedBits++;
+        continue;
+      }
+      const val = plmUnquoteUserToken(seg.rawValue);
+      if (val.includes(PLM_INDIR_MULTI_SEP)) {
+        indirBits++;
+        continue;
+      }
+      const resolved = resolveLineSegment(seg.num, seg.rawValue, cfg);
+      if (resolved?.kind === "indir") indirBits++;
+      else indesBits++;
+    }
+    if (speedBits && !indesBits && !indirBits) return "v";
+    if (indirBits && !speedBits && !indesBits) return "indir";
+    if (indirBits > indesBits) return "indir";
+    return "lines";
   }
 
   /** Retire les lignes ZM: héritées (zones gérées dans la modale zone). */
@@ -437,19 +522,64 @@
       .trim();
   }
 
-  function parseDescription(text, config) {
-    const state = emptyDescState();
-    const cfg = config || loadConfig();
-    const body = stripStructuredZmLines(text);
-    if (!body) return state;
+  function plmSortLineKeys(a, b) {
+    const na = parseInt(a, 10);
+    const nb = parseInt(b, 10);
+    if (na !== nb) return na - nb;
+    return a.localeCompare(b);
+  }
 
+  function plmDescRowsFromBody(body) {
+    const rows = String(body ?? "")
+      .split(/\r?\n/)
+      .map((raw) => stripLegacyDescLinePrefix(raw.trim()))
+      .filter((line) => line && !/^ZM\s*:/i.test(line));
+    return rows;
+  }
+
+  function plmParseSpeedsFromLine(line, state) {
+    for (const bit of splitPlmStructuralList(line)) {
+      if (parsePlmLineSegmentRaw(bit)) continue;
+      state.v.push(...parseSpeedTokens(bit));
+    }
+  }
+
+  function plmParseIndesFromLine(line, state, cfg) {
+    for (const bit of splitPlmStructuralList(line)) {
+      const seg = parsePlmLineSegmentRaw(bit);
+      if (!seg) continue;
+      const val = plmUnquoteUserToken(seg.rawValue);
+      if (val.includes(PLM_INDIR_MULTI_SEP)) continue;
+      const code = normalizeCode(val);
+      const indesKnown = cfg?.lineIndexes?.[seg.num] || [];
+      if (indesKnown.includes(code)) {
+        state.lines[seg.num] = code;
+        continue;
+      }
+      if (/^[A-Z0-9]{1,6}$/.test(code)) {
+        state.lines[seg.num] = code;
+      }
+    }
+  }
+
+  function plmParseIndirFromLine(line, state, cfg) {
+    for (const bit of splitPlmStructuralList(line)) {
+      const seg = parsePlmLineSegmentRaw(bit);
+      if (!seg) continue;
+      const resolved = resolveLineSegment(seg.num, seg.rawValue, cfg);
+      if (resolved?.kind === "indir" && resolved.values?.length) {
+        state.indir[resolved.num] = resolved.values;
+      } else if (resolved?.kind === "indes") {
+        state.lines[resolved.num] = resolved.code;
+      }
+    }
+  }
+
+  function plmParseDescriptionFlat(body, state, cfg) {
     const parts = [];
-    for (const rawLine of body.split(/\r?\n/)) {
-      const line = stripLegacyDescLinePrefix(rawLine.trim());
-      if (!line || /^ZM\s*:/i.test(line)) continue;
+    for (const line of plmDescRowsFromBody(body)) {
       parts.push(...splitPlmStructuralList(line));
     }
-
     for (const bit of parts) {
       const lineSeg = parsePlmLineSegmentRaw(bit);
       if (lineSeg) {
@@ -462,33 +592,46 @@
       }
       state.v.push(...parseSpeedTokens(bit));
     }
+  }
+
+  function parseDescription(text, config) {
+    const state = emptyDescState();
+    const cfg = config || loadConfig();
+    const body = stripStructuredZmLines(text);
+    if (!body) return state;
+
+    if (body.includes("\n") || body.includes("\r")) {
+      const rows = plmDescRowsFromBody(body);
+      state.sectionOrder = [];
+      for (const row of rows) {
+        const kind = plmClassifyDescRow(row, cfg);
+        if (!kind) continue;
+        if (!state.sectionOrder.includes(kind)) {
+          state.sectionOrder.push(kind);
+        }
+        if (kind === "v") plmParseSpeedsFromLine(row, state);
+        else if (kind === "lines") plmParseIndesFromLine(row, state, cfg);
+        else if (kind === "indir") plmParseIndirFromLine(row, state, cfg);
+      }
+    } else {
+      plmParseDescriptionFlat(body, state, cfg);
+      state.sectionOrder = [];
+      if (plmSectionHasContent(state, "v")) state.sectionOrder.push("v");
+      if (plmSectionHasContent(state, "lines")) state.sectionOrder.push("lines");
+      if (plmSectionHasContent(state, "indir")) state.sectionOrder.push("indir");
+    }
+
     state.v = [...new Set(state.v.map(normalizeSpeedLabel).filter(Boolean))];
     return state;
   }
 
   function formatDescription(state) {
-    const sortLineKeys = (a, b) => {
-      const na = parseInt(a, 10);
-      const nb = parseInt(b, 10);
-      if (na !== nb) return na - nb;
-      return a.localeCompare(b);
-    };
-    const chunks = [];
-    for (const v of asPlmSpeedArray(state.v)) {
-      chunks.push(plmQuoteUserToken(v));
+    const out = [];
+    for (const kind of plmEffectiveSectionOrder(state)) {
+      const line = plmFormatSectionLine(state, kind);
+      if (line) out.push(line);
     }
-    for (const n of Object.keys(state.lines)
-      .filter((k) => normalizeLineNum(k) && state.lines[k])
-      .sort(sortLineKeys)) {
-      chunks.push(`${n}: ${plmQuoteUserToken(state.lines[n])}`);
-    }
-    for (const n of Object.keys(state.indir)
-      .filter((k) => normalizeLineNum(k) && asPlmMultiArray(state.indir[k]).length)
-      .sort(sortLineKeys)) {
-      const vals = asPlmMultiArray(state.indir[n]).map((x) => plmQuoteUserToken(x));
-      chunks.push(`${n}: ${joinPlmIndirMulti(vals)}`);
-    }
-    return joinPlmList(chunks);
+    return out.join("\n");
   }
 
   function splitBatchInput(raw) {
@@ -650,6 +793,31 @@
       legacyDescRaw = null;
     }
 
+    function plmSectionHasContentLocal(kind) {
+      if (kind === "v") return getVSelected().length > 0;
+      if (kind === "lines") {
+        return Object.keys(descState.lines).some((n) => descState.lines[n]);
+      }
+      if (kind === "indir") {
+        return Object.keys(descState.indir).some(
+          (n) => getIndirSelected(n).length > 0,
+        );
+      }
+      return false;
+    }
+
+    function afterDescSelectionChange(kind) {
+      clearLegacyDesc();
+      if (!descState.sectionOrder) descState.sectionOrder = [];
+      if (plmSectionHasContentLocal(kind) && !descState.sectionOrder.includes(kind)) {
+        descState.sectionOrder.push(kind);
+      }
+      descState.sectionOrder = descState.sectionOrder.filter((k) =>
+        plmSectionHasContentLocal(k),
+      );
+      syncDescField();
+    }
+
     function isDescStateEmpty() {
       if (getVSelected().length) return false;
       for (const n of Object.keys(descState.lines)) {
@@ -664,6 +832,11 @@
     function syncDescField() {
       if (isDescStateEmpty()) {
         legacyDescRaw = null;
+        descState.sectionOrder = [];
+      } else if (legacyDescRaw == null) {
+        descState.sectionOrder = (descState.sectionOrder || []).filter((k) =>
+          plmSectionHasContent(descState, k),
+        );
       }
       if (legacyDescRaw != null) return;
       const text = isDescStateEmpty() ? "" : formatDescription(descState);
@@ -951,7 +1124,6 @@
           labelText: item,
           checked: vSelected.includes(item),
           onChange: (cb) => {
-            clearLegacyDesc();
             let sel = getVSelected();
             if (cb.checked) {
               if (!sel.includes(item)) sel = [...sel, item];
@@ -959,7 +1131,7 @@
               sel = sel.filter((x) => x !== item);
             }
             setVSelected(sel);
-            syncDescField();
+            afterDescSelectionChange("v");
           },
         });
       }
@@ -993,12 +1165,11 @@
             code,
             checked: descState.lines[num] === code,
             onChange: (cb) => {
-              clearLegacyDesc();
               if (cb.checked) descState.lines[num] = code;
               else if (descState.lines[num] === code) {
                 delete descState.lines[num];
               }
-              syncDescField();
+              afterDescSelectionChange("lines");
               renderDescPanel();
             },
           });
@@ -1054,7 +1225,6 @@
             labelText: entry,
             checked: indirSelected.includes(entry),
             onChange: (cb) => {
-              clearLegacyDesc();
               let sel = getIndirSelected(num);
               if (cb.checked) {
                 if (!sel.includes(entry)) sel = [...sel, entry];
@@ -1062,7 +1232,7 @@
                 sel = sel.filter((x) => x !== entry);
               }
               setIndirSelected(num, sel);
-              syncDescField();
+              afterDescSelectionChange("indir");
             },
           });
         }
