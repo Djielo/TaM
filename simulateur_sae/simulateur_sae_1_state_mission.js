@@ -299,32 +299,23 @@ function plmMarkerScreenBoundsForLandmark(item) {
   );
 }
 
-/** Point d’ancrage du libellé : sous le repère, aligné à gauche de l’icône. */
-function plmLabelTopLeftLatLngBelowMarker(lat, lng) {
-  if (!map) return null;
-  const b = plmMarkerScreenBoundsFromLatLng(lat, lng);
-  const pt = L.point(b.left, b.bottom + PLM_LABEL_GAP_BELOW_PX);
-  const ll = map.containerPointToLatLng(pt);
-  return { lat: ll.lat, lng: ll.lng };
+/**
+ * Même point carte que le repère ; iconAnchor place le haut-gauche du libellé
+ * sous le bas-gauche de l’icône (30×30). Rotation identique → suit le repère seul.
+ */
+function plmLabelIconAnchorForItem(item) {
+  const inGroup = !!String(item?.groupId ?? "").trim();
+  const ay = inGroup ? PLM_MARKER_ICON_H / 2 : PLM_MARKER_ICON_ANCHOR_Y;
+  const belowPx = PLM_MARKER_ICON_H - ay + PLM_LABEL_GAP_BELOW_PX;
+  return [PLM_MARKER_ICON_ANCHOR_X, -belowPx];
 }
 
-/** Libellé de groupe : sous le repère le plus bas, aligné à gauche du groupe. */
-function plmGroupLabelTopLeftLatLng(groupId) {
-  const members = plmMembersOfGroup(groupId).filter(
-    (m) => plmIsValidPlmLatLng(m.lat, m.lng) && plmIsLandmarkVisibleOnMap(m),
-  );
-  if (!members.length || !map) return null;
-  let minLeft = Infinity;
-  let maxBottom = -Infinity;
-  for (const m of members) {
-    const b = plmMarkerScreenBoundsForLandmark(m);
-    if (b.left < minLeft) minLeft = b.left;
-    if (b.bottom > maxBottom) maxBottom = b.bottom;
+function plmLandmarkLabelAttachItem(item) {
+  if (!item) return null;
+  if (item.groupId) {
+    return plmLandmarkForGroupLabel(item.groupId) || item;
   }
-  if (!Number.isFinite(minLeft) || !Number.isFinite(maxBottom)) return null;
-  const pt = L.point(minLeft, maxBottom + PLM_LABEL_GAP_BELOW_PX);
-  const ll = map.containerPointToLatLng(pt);
-  return { lat: ll.lat, lng: ll.lng };
+  return item;
 }
 
 function plmLandmarkForGroupLabel(groupId) {
@@ -347,11 +338,14 @@ function plmBuildMapLabelHtml(item) {
   return html;
 }
 
-function plmCreateMapLabelIcon(html) {
+function plmCreateMapLabelIcon(html, item) {
+  const anchor = item
+    ? plmLabelIconAnchorForItem(item)
+    : [PLM_MARKER_ICON_ANCHOR_X, -PLM_LABEL_GAP_BELOW_PX];
   return L.divIcon({
     className: "tam-plm-map-label",
     html,
-    iconAnchor: [0, 0],
+    iconAnchor: anchor,
   });
 }
 
@@ -471,7 +465,12 @@ function plmBakeGroupLatLngFromGrid(groupId) {
     let lat = pivot.lat;
     let lng = pivot.lng;
     if (mem.id !== pivot.id) {
-      const pos = plmLatLngFromGridOffset(pivot.lat, pivot.lng, off.qx, off.qy);
+      const pos = plmLatLngFromGridOffsetStored(
+        pivot.lat,
+        pivot.lng,
+        off.qx,
+        off.qy,
+      );
       if (!pos || !plmIsValidPlmLatLng(pos[0], pos[1])) continue;
       lat = pos[0];
       lng = pos[1];
@@ -967,6 +966,7 @@ function plmBakeSoloLandmarksMagneticClusters() {
   return changed;
 }
 
+/** Affichage à l’écran (30 px) — dépend du zoom courant. */
 function plmLatLngFromGridOffset(pivotLat, pivotLng, qx, qy) {
   if (!plmIsValidPlmLatLng(pivotLat, pivotLng)) return null;
   if (plmMapUsesMagneticLayout() && map) {
@@ -978,6 +978,12 @@ function plmLatLngFromGridOffset(pivotLat, pivotLng, qx, qy) {
     const ll = map.containerPointToLatLng(p1);
     return [ll.lat, ll.lng];
   }
+  return plmLatLngFromGridOffsetStored(pivotLat, pivotLng, qx, qy);
+}
+
+/** Persistance lat/lng — indépendante du zoom (évite la dérive au zoom arrière / avant). */
+function plmLatLngFromGridOffsetStored(pivotLat, pivotLng, qx, qy) {
+  if (!plmIsValidPlmLatLng(pivotLat, pivotLng)) return null;
   return [
     pivotLat - qy * PLM_SLOT_SPACING_LAT,
     pivotLng + qx * PLM_SLOT_SPACING_LNG,
@@ -1575,6 +1581,26 @@ function plmSyncLandmarkMarkerRotations() {
     }
     m.update();
   }
+  if (!plmLabelsVisible || !personalLandmarkLabelsLayer) return;
+  personalLandmarkLabelsLayer.eachLayer((lm) => {
+    const id = lm.__tamPlmLandmarkId;
+    if (!id) return;
+    const item = personalLandmarksList.find((x) => x.id === id);
+    if (!item) return;
+    const attach = plmLandmarkLabelAttachItem(item) || item;
+    const m = plmMarkerById.get(attach.id);
+    if (m) {
+      const ll = m.getLatLng();
+      if (plmIsValidPlmLatLng(ll.lat, ll.lng)) {
+        lm.setLatLng(ll);
+      }
+    }
+    lm.options.rotateWithView = cap;
+    if (typeof lm.setRotation === "function") {
+      lm.setRotation(plmLandmarkIconRotationRad(attach));
+    }
+    if (typeof lm.update === "function") lm.update();
+  });
 }
 
 function plmEnsureRotationLayer() {
@@ -4401,6 +4427,9 @@ let personalLandmarkPlacementActive = false;
 let personalLandmarkPlacementToggleEl = null;
 let personalLandmarkLabelsToggleEl = null;
 let plmLabelsVisible = false;
+/** Libellé au survol (bouton texte désactivé) : même rendu que les libellés permanents. */
+let plmHoverLabelLandmarkId = null;
+let plmHoverLabelHideTimer = 0;
 /** Modale repère ouverte : pas de recentrage caméra mission ni invalidateSize carte. */
 let plmEditorDialogDepth = 0;
 /** Après un glisser-déposer ou un appui long, ignorer le clic parasite qui ouvrirait l’éditeur. */
@@ -5019,6 +5048,7 @@ function plmShowLandmarkContextMenu(clientX, clientY, landmarkId) {
   }
   const item = personalLandmarksList.find((x) => x.id === landmarkId);
   if (!item) return;
+  plmClearLandmarkHoverLabel();
   plmInitLandmarkContextMenu();
   const menu = document.getElementById("tamPlmContextMenu");
   if (!menu) return;
@@ -5168,14 +5198,105 @@ function plmOnLandmarkOpenClick(e, landmarkId) {
   void openPersonalLandmarkMarkerEditor(landmarkId);
 }
 
-function plmAddMapLabelMarker(anchor, html, landmarkId) {
-  const icon = plmCreateMapLabelIcon(html);
-  const lm = L.marker([anchor.lat, anchor.lng], {
+/** Données d’affichage libellé (nom / description) ou null si rien à montrer. */
+function plmResolveLandmarkLabelDisplay(landmarkId) {
+  const item = personalLandmarksList.find((x) => x.id === landmarkId);
+  if (!item || !plmIsLandmarkVisibleOnMap(item)) return null;
+  if (item.groupId) {
+    const ref = plmLandmarkForGroupLabel(item.groupId);
+    if (!ref) return null;
+    const descText = plmLandmarkDescriptionText(ref);
+    if (!plmLandmarkDisplayName(ref) && !descText) return null;
+    return {
+      attach: ref,
+      html: plmBuildMapLabelHtml(ref),
+      landmarkId: ref.id,
+    };
+  }
+  const displayName = plmLandmarkDisplayName(item);
+  const descText = plmLandmarkDescriptionText(item);
+  if (!displayName && !descText) return null;
+  return {
+    attach: item,
+    html: plmBuildMapLabelHtml(item),
+    landmarkId: item.id,
+  };
+}
+
+function plmClearLandmarkHoverLabel() {
+  if (plmHoverLabelHideTimer) {
+    clearTimeout(plmHoverLabelHideTimer);
+    plmHoverLabelHideTimer = 0;
+  }
+  plmHoverLabelLandmarkId = null;
+  if (plmLabelsVisible) return;
+  personalLandmarkLabelsLayer.clearLayers();
+  if (map?.hasLayer(personalLandmarkLabelsLayer)) {
+    map.removeLayer(personalLandmarkLabelsLayer);
+  }
+}
+
+function plmScheduleClearLandmarkHoverLabel() {
+  if (plmLabelsVisible) return;
+  if (plmHoverLabelHideTimer) clearTimeout(plmHoverLabelHideTimer);
+  plmHoverLabelHideTimer = setTimeout(() => {
+    plmHoverLabelHideTimer = 0;
+    plmClearLandmarkHoverLabel();
+  }, 100);
+}
+
+function plmShowLandmarkHoverLabel(landmarkId) {
+  if (plmLabelsVisible || !plmLandmarksLayerVisible) return;
+  const spec = plmResolveLandmarkLabelDisplay(landmarkId);
+  if (!spec) {
+    plmClearLandmarkHoverLabel();
+    return;
+  }
+  if (plmHoverLabelHideTimer) {
+    clearTimeout(plmHoverLabelHideTimer);
+    plmHoverLabelHideTimer = 0;
+  }
+  if (plmHoverLabelLandmarkId === spec.landmarkId) {
+    return;
+  }
+  plmHoverLabelLandmarkId = spec.landmarkId;
+  personalLandmarkLabelsLayer.clearLayers();
+  if (!map.hasLayer(personalLandmarkLabelsLayer)) {
+    personalLandmarkLabelsLayer.addTo(map);
+  }
+  plmAddMapLabelMarker(spec.attach, spec.html, spec.landmarkId, {
+    hoverOnly: true,
+  });
+}
+
+function plmBindLandmarkHoverLabel(marker, landmarkId) {
+  marker.on("mouseover", () => {
+    plmShowLandmarkHoverLabel(landmarkId);
+  });
+  marker.on("mouseout", () => {
+    plmScheduleClearLandmarkHoverLabel();
+  });
+}
+
+function plmAddMapLabelMarker(item, html, landmarkId, opts) {
+  const o = opts || {};
+  const attach = plmLandmarkLabelAttachItem(item) || item;
+  if (!attach) return;
+  const marker = plmMarkerById?.get(attach.id);
+  const disp = plmDisplayLatLngForLandmark(attach);
+  const lat = marker ? marker.getLatLng().lat : disp.lat;
+  const lng = marker ? marker.getLatLng().lng : disp.lng;
+  if (!plmIsValidPlmLatLng(lat, lng)) return;
+  const icon = plmCreateMapLabelIcon(html, attach);
+  const lm = L.marker([lat, lng], {
     icon,
     interactive: true,
     bubblingMouseEvents: false,
     zIndexOffset: 420,
+    rotateWithView: plmMapHeadingUpActive(),
+    rotation: plmLandmarkIconRotationRad(attach),
   });
+  lm.__tamPlmLandmarkId = landmarkId;
   lm.on("mousedown touchstart", (e) => {
     L.DomEvent.stopPropagation(e);
   });
@@ -5183,6 +5304,18 @@ function plmAddMapLabelMarker(anchor, html, landmarkId) {
     plmOnLandmarkOpenClick(e, landmarkId);
   });
   plmBindLandmarkContextMenu(lm, landmarkId);
+  if (o.hoverOnly) {
+    lm.on("mouseover", () => {
+      if (plmHoverLabelHideTimer) {
+        clearTimeout(plmHoverLabelHideTimer);
+        plmHoverLabelHideTimer = 0;
+      }
+      plmHoverLabelLandmarkId = landmarkId;
+    });
+    lm.on("mouseout", () => {
+      plmScheduleClearLandmarkHoverLabel();
+    });
+  }
   lm.addTo(personalLandmarkLabelsLayer);
 }
 
@@ -5355,24 +5488,13 @@ function plmOnMarkerDragEnd(m, landmarkId, wasGroupDrag) {
  * (L’ancien « maintien avant drag » + désactivation du drag du marqueur créait des courses
  * souris / tactile / carte et un comportement alterné.)
  */
-function plmSyncGroupsLayoutToZoom(persist) {
+function plmSyncGroupsLayoutToZoom() {
   /*
-   * Ne pas recalculer ni enregistrer lat/lng au zoom pendant mission ou aperçu :
-   * le centre / cap de la carte ne correspondent pas au contexte d’édition des repères.
-   * (Démarrage en zoom max déclenchait zoomend → réécriture localStorage.)
+   * Au zoom : uniquement rafraîchir l’affichage (grille 30 px via plmDisplayLatLngForLandmark).
+   * Ne jamais recalculer ni sauvegarder lat/lng ici : le même gridQx/gridQy donne des
+   * coordonnées géo différentes selon le zoom si on « bake » depuis les pixels écran,
+   * ce qui déformait tous les repères au premier zoom arrière puis enregistrait le bazar.
    */
-  if (previewOnlyMode || plmIsLiveMissionForLandmarkDisplay()) {
-    redrawPersonalLandmarksLayer();
-    return;
-  }
-  if (plmMapUsesMagneticLayout()) {
-    plmApplyMagneticLayoutForAllGroups(false);
-    plmBakeAllGroupsLatLngFromGrid();
-    plmBakeSoloLandmarksMagneticClusters();
-    if (persist !== false) {
-      savePersonalLandmarksToStorage(true);
-    }
-  }
   redrawPersonalLandmarksLayer();
 }
 
@@ -5521,6 +5643,7 @@ function redrawPersonalLandmarksLayer() {
       L.DomEvent.stopPropagation(e);
     });
     m.on("dragstart", () => {
+      plmClearLandmarkHoverLabel();
       if (typeof m.closeTooltip === "function") {
         m.closeTooltip();
       }
@@ -5653,11 +5776,7 @@ function redrawPersonalLandmarksLayer() {
       plmPausedMapDrag = false;
     });
     if (!plmLabelsVisible) {
-      m.bindTooltip(plmLandmarkDisplayName(item) || "Repère", {
-        sticky: false,
-        direction: "top",
-        offset: [0, -34],
-      });
+      plmBindLandmarkHoverLabel(m, item.id);
     }
     m.addTo(personalLandmarksLayer);
   }
@@ -5670,17 +5789,23 @@ function redrawPersonalLandmarksLayer() {
 }
 
 function plmScheduleLabelsRefresh() {
-  if (!plmLabelsVisible && !plmZoneLabelsVisible) return;
+  if (!plmLabelsVisible && !plmZoneLabelsVisible && !plmHoverLabelLandmarkId) {
+    return;
+  }
   if (plmLabelsLayoutRaf) cancelAnimationFrame(plmLabelsLayoutRaf);
   plmLabelsLayoutRaf = requestAnimationFrame(() => {
     plmLabelsLayoutRaf = 0;
     if (plmLabelsVisible) plmRefreshLabelsLayer();
+    else if (plmHoverLabelLandmarkId) {
+      plmShowLandmarkHoverLabel(plmHoverLabelLandmarkId);
+    }
     if (plmZoneLabelsVisible) plmRefreshZoneLabels();
   });
 }
 
 function plmRefreshLabelsLayer() {
   if (!plmLabelsVisible || !plmLandmarksLayerVisible) return;
+  plmClearLandmarkHoverLabel();
   personalLandmarkLabelsLayer.clearLayers();
   plmGroupCapFilterCache.clear();
   const labeledGroups = new Set();
@@ -5690,22 +5815,14 @@ function plmRefreshLabelsLayer() {
     if (item.groupId) {
       if (labeledGroups.has(item.groupId)) continue;
       labeledGroups.add(item.groupId);
-      const ref = plmLandmarkForGroupLabel(item.groupId);
-      if (!ref) continue;
-      const descText = plmLandmarkDescriptionText(ref);
-      if (!String(ref.name ?? "").trim() && !descText) continue;
-      const anchor = plmGroupLabelTopLeftLatLng(item.groupId);
-      if (!anchor) continue;
-      plmAddMapLabelMarker(anchor, plmBuildMapLabelHtml(ref), ref.id);
+      const spec = plmResolveLandmarkLabelDisplay(item.id);
+      if (!spec) continue;
+      plmAddMapLabelMarker(spec.attach, spec.html, spec.landmarkId);
       continue;
     }
-    const displayName = plmLandmarkDisplayName(item);
-    const descText = plmLandmarkDescriptionText(item);
-    if (!displayName && !descText) continue;
-    const disp = plmDisplayLatLngForLandmark(item);
-    const anchor = plmLabelTopLeftLatLngBelowMarker(disp.lat, disp.lng);
-    if (!anchor) continue;
-    plmAddMapLabelMarker(anchor, plmBuildMapLabelHtml(item), item.id);
+    const spec = plmResolveLandmarkLabelDisplay(item.id);
+    if (!spec) continue;
+    plmAddMapLabelMarker(spec.attach, spec.html, spec.landmarkId);
   }
 }
 
@@ -5734,12 +5851,16 @@ function setPlmLabelsVisible(on) {
   if (want && !plmLandmarksLayerVisible) return;
   plmLabelsVisible = want;
   if (plmLabelsVisible) {
+    plmClearLandmarkHoverLabel();
     if (!map.hasLayer(personalLandmarkLabelsLayer)) {
       personalLandmarkLabelsLayer.addTo(map);
     }
     plmRefreshLabelsLayer();
-  } else if (map.hasLayer(personalLandmarkLabelsLayer)) {
-    map.removeLayer(personalLandmarkLabelsLayer);
+  } else {
+    plmClearLandmarkHoverLabel();
+    if (map.hasLayer(personalLandmarkLabelsLayer)) {
+      map.removeLayer(personalLandmarkLabelsLayer);
+    }
     personalLandmarkLabelsLayer.clearLayers();
   }
   syncPlmLabelsToggleUi();
@@ -6633,7 +6754,7 @@ if (plmSanitizeParentLinks()) {
 }
 loadPersonalZonesFromStorage();
 plmMigrateAllZonesToIndependentList();
-plmSyncGroupsLayoutToZoom(true);
+plmSyncGroupsLayoutToZoom();
 plmInstallZoneSelectionHandlers();
 plmApplyMapLayersVisibilityFromPrefs();
 
@@ -6657,7 +6778,7 @@ map.on("zoomend", () => {
     cancelAnimationFrame(plmZoomLayoutRaf);
     plmZoomLayoutRaf = 0;
   }
-  plmSyncGroupsLayoutToZoom(true);
+  plmSyncGroupsLayoutToZoom();
 });
 map.on("moveend", () => {
   plmScheduleLabelsRefresh();

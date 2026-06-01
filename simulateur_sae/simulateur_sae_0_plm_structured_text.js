@@ -1,5 +1,5 @@
 /**
- * Repères personnels : description structurée (V / L) et noms enregistrés.
+ * Repères personnels : description structurée (vitesses, INDES, INDIRE) et noms enregistrés.
  * Chargé avant simulateur_sae_1_state_mission.js
  */
 (function () {
@@ -18,6 +18,8 @@
       4: [...DEFAULT_INDEXES],
       5: [...DEFAULT_INDEXES],
     },
+    /** Lignes INDIR : libellés libres par numéro (1, 2, 4B, …), vide au départ. */
+    lineIndir: {},
     zones: ["Gare", "Moularès"],
     namePresets: [],
   };
@@ -28,6 +30,7 @@
       lineIndexes: Object.fromEntries(
         DEFAULT_LINE_NUMS.map((n) => [n, [...DEFAULT_CONFIG.lineIndexes[n]]]),
       ),
+      lineIndir: {},
       zones: [...DEFAULT_CONFIG.zones],
       namePresets: [],
     };
@@ -38,6 +41,171 @@
       .trim()
       .toUpperCase()
       .replace(/\s+/g, "");
+  }
+
+  function normalizeIndirContent(raw) {
+    return String(raw ?? "").trim();
+  }
+
+  /** Entre vitesses ou entre entrées « numéro : … » (ex. 50 km/h, 2: CO, 1: LB). */
+  const PLM_LIST_SEP = ", ";
+
+  /** Entre plusieurs libellés INDIRE sur une même ligne (ex. 2: D-G-TD). */
+  const PLM_INDIR_MULTI_SEP = "-";
+
+  function joinPlmList(parts) {
+    return (Array.isArray(parts) ? parts : [parts])
+      .map((p) => String(p ?? "").trim())
+      .filter(Boolean)
+      .join(PLM_LIST_SEP);
+  }
+
+  function joinPlmIndirMulti(parts) {
+    return (Array.isArray(parts) ? parts : [parts])
+      .map((p) => String(p ?? "").trim())
+      .filter(Boolean)
+      .join(PLM_INDIR_MULTI_SEP);
+  }
+
+  function splitPlmIndirMulti(raw) {
+    return String(raw ?? "")
+      .split(PLM_INDIR_MULTI_SEP)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  /** Découpe en respectant les libellés connus (ex. « 10 m » et « 20 m » dans « 10 m-20 m »). */
+  function splitPlmMultiByKnown(raw, known) {
+    const s = String(raw ?? "").trim();
+    if (!s) return [];
+    const list = [...new Set((known || []).map(String).filter(Boolean))];
+    if (!list.length) return splitPlmIndirMulti(s);
+    const sorted = list.sort((a, b) => b.length - a.length);
+    const parts = [];
+    let rest = s;
+    while (rest.length) {
+      let matched = false;
+      for (const k of sorted) {
+        if (rest === k) {
+          parts.push(k);
+          rest = "";
+          matched = true;
+          break;
+        }
+        if (rest.startsWith(k + PLM_INDIR_MULTI_SEP)) {
+          parts.push(k);
+          rest = rest.slice(k.length + PLM_INDIR_MULTI_SEP.length);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        const i = rest.indexOf(PLM_INDIR_MULTI_SEP);
+        if (i === -1) {
+          parts.push(rest.trim());
+          break;
+        }
+        parts.push(rest.slice(0, i).trim());
+        rest = rest.slice(i + 1);
+      }
+    }
+    return parts.filter(Boolean);
+  }
+
+  function asPlmMultiArray(value) {
+    if (value == null || value === "") return [];
+    if (Array.isArray(value)) {
+      return value.map((p) => String(p).trim()).filter(Boolean);
+    }
+    return splitPlmIndirMulti(String(value));
+  }
+
+  function asPlmSpeedArray(value) {
+    if (value == null || value === "") return [];
+    if (Array.isArray(value)) {
+      return value.map((p) => normalizeSpeedLabel(p)).filter(Boolean);
+    }
+    const s = String(value).trim();
+    if (!s) return [];
+    if (/km\s*\/?\s*h/i.test(s) && s.includes(PLM_INDIR_MULTI_SEP)) {
+      return splitPlmIndirMulti(s).map((p) => normalizeSpeedLabel(p)).filter(Boolean);
+    }
+    return s
+      .split(",")
+      .map((p) => normalizeSpeedLabel(p))
+      .filter(Boolean);
+  }
+
+  function stripLegacyDescLinePrefix(line) {
+    return String(line ?? "")
+      .replace(/^V(?:ITESSE)?\s*:/i, "")
+      .replace(/^L\s*:/i, "")
+      .replace(/^INDES\s*:/i, "")
+      .replace(/^INDIR(?:E)?\s*:/i, "")
+      .trim();
+  }
+
+  /** Extrait numéro de ligne + valeur brute (INDES / INDIRE). */
+  function parsePlmLineSegmentRaw(bit) {
+    const b = String(bit ?? "").trim();
+    if (!b) return null;
+    let m = b.match(/^(\d+[A-Za-z]?)\s*:\s*(.+)$/);
+    if (!m) m = b.match(/^(\d+[A-Za-z]?)\s*-\s*(.+)$/);
+    if (!m) return null;
+    const num = normalizeLineNum(m[1]);
+    const rawValue = String(m[2] ?? "").trim();
+    return num && rawValue ? { num, rawValue } : null;
+  }
+
+  function resolveLineSegment(num, rawValue, config) {
+    const val = String(rawValue ?? "").trim();
+    const indirKnown = config?.lineIndir?.[num] || [];
+    const indesKnown = config?.lineIndexes?.[num] || [];
+
+    if (val.includes(PLM_INDIR_MULTI_SEP)) {
+      return {
+        kind: "indir",
+        num,
+        values: splitPlmMultiByKnown(val, indirKnown),
+      };
+    }
+
+    const multiParts = splitPlmIndirMulti(val);
+    if (multiParts.length > 1) {
+      return {
+        kind: "indir",
+        num,
+        values: splitPlmMultiByKnown(val, indirKnown),
+      };
+    }
+
+    const code = normalizeCode(val);
+    const inIndirCatalog = indirKnown.some(
+      (k) => k === val || normalizeCode(k) === code,
+    );
+    if (inIndirCatalog && !indesKnown.includes(code)) {
+      return { kind: "indir", num, values: [val] };
+    }
+    if (indesKnown.includes(code)) {
+      return { kind: "indes", num, code };
+    }
+    if (/^[A-Za-z0-9]{1,8}$/.test(val.replace(/\s/g, "")) && val.length <= 8) {
+      return { kind: "indes", num, code };
+    }
+    return { kind: "indir", num, values: [normalizeIndirContent(val)] };
+  }
+
+  function parseSpeedTokens(bit) {
+    const b = String(bit ?? "").trim();
+    if (!b || parsePlmLineSegmentRaw(b)) return [];
+    if (/^(\d+[A-Za-z]?)\s*[:\-]/.test(b)) return [];
+    if (/km\s*\/?\s*h/i.test(b) && b.includes(PLM_INDIR_MULTI_SEP)) {
+      return splitPlmIndirMulti(b)
+        .map((p) => normalizeSpeedLabel(p))
+        .filter(Boolean);
+    }
+    const one = normalizeSpeedLabel(b);
+    return one ? [one] : [];
   }
 
   function normalizeSpeedLabel(raw) {
@@ -133,6 +301,22 @@
         }
         base.lineIndexes = loaded;
       }
+      if (p.lineIndir && typeof p.lineIndir === "object") {
+        const loadedIndir = {};
+        for (const key of Object.keys(p.lineIndir)) {
+          const n = normalizeLineNum(key);
+          if (!n) continue;
+          const list = p.lineIndir[key];
+          loadedIndir[n] = Array.isArray(list)
+            ? [
+                ...new Set(
+                  list.map(normalizeIndirContent).filter(Boolean),
+                ),
+              ]
+            : [];
+        }
+        base.lineIndir = loadedIndir;
+      }
       if (Array.isArray(p.zones) && p.zones.length) {
         base.zones = sortAlpha([
           ...new Set(
@@ -165,6 +349,7 @@
         JSON.stringify({
           speeds: cfg.speeds,
           lineIndexes: cfg.lineIndexes,
+          lineIndir: cfg.lineIndir,
           zones: cfg.zones,
           namePresets: cfg.namePresets,
         }),
@@ -178,7 +363,7 @@
   }
 
   function emptyDescState() {
-    return { v: null, lines: {} };
+    return { v: [], lines: {}, indir: {} };
   }
 
   /** Retire les lignes ZM: héritées (zones gérées dans la modale zone). */
@@ -190,49 +375,57 @@
       .trim();
   }
 
-  function parseDescription(text) {
+  function parseDescription(text, config) {
     const state = emptyDescState();
-    const lines = String(text ?? "").split(/\r?\n/);
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-      if (/^V\s*:/i.test(line)) {
-        state.v = line.replace(/^V\s*:/i, "").trim() || null;
-        continue;
-      }
-      if (/^ZM\s*:/i.test(line)) {
-        continue;
-      }
-      if (/^L\s*:/i.test(line)) {
-        const body = line.replace(/^L\s*:/i, "").trim();
-        for (const part of body.split(",")) {
-          const bit = part.trim();
-          const m = bit.match(/^(\d+[A-Za-z]?)\s*-\s*([A-Za-z0-9]+)$/);
-          if (m) {
-            const num = normalizeLineNum(m[1]);
-            const code = normalizeCode(m[2]);
-            if (num && code) state.lines[num] = code;
-          }
-        }
-      }
+    const cfg = config || loadConfig();
+    const body = stripStructuredZmLines(text);
+    if (!body) return state;
+
+    const parts = [];
+    for (const rawLine of body.split(/\r?\n/)) {
+      const line = stripLegacyDescLinePrefix(rawLine.trim());
+      if (!line || /^ZM\s*:/i.test(line)) continue;
+      parts.push(...line.split(",").map((p) => p.trim()).filter(Boolean));
     }
+
+    for (const bit of parts) {
+      const lineSeg = parsePlmLineSegmentRaw(bit);
+      if (lineSeg) {
+        const resolved = resolveLineSegment(lineSeg.num, lineSeg.rawValue, cfg);
+        if (resolved?.kind === "indes") state.lines[resolved.num] = resolved.code;
+        else if (resolved?.kind === "indir" && resolved.values?.length) {
+          state.indir[resolved.num] = resolved.values;
+        }
+        continue;
+      }
+      state.v.push(...parseSpeedTokens(bit));
+    }
+    state.v = [...new Set(state.v.map(normalizeSpeedLabel).filter(Boolean))];
     return state;
   }
 
   function formatDescription(state) {
-    const out = [];
-    if (state.v) out.push(`V: ${state.v}`);
-    const lineParts = Object.keys(state.lines)
-      .filter((n) => normalizeLineNum(n) && state.lines[n])
-      .sort((a, b) => {
-        const na = parseInt(a, 10);
-        const nb = parseInt(b, 10);
-        if (na !== nb) return na - nb;
-        return a.localeCompare(b);
-      })
-      .map((n) => `${n}-${state.lines[n]}`);
-    if (lineParts.length) out.push(`L: ${lineParts.join(", ")}`);
-    return out.join("\n");
+    const sortLineKeys = (a, b) => {
+      const na = parseInt(a, 10);
+      const nb = parseInt(b, 10);
+      if (na !== nb) return na - nb;
+      return a.localeCompare(b);
+    };
+    const chunks = [];
+    chunks.push(...asPlmSpeedArray(state.v));
+    for (const n of Object.keys(state.lines)
+      .filter((k) => normalizeLineNum(k) && state.lines[k])
+      .sort(sortLineKeys)) {
+      chunks.push(`${n}: ${state.lines[n]}`);
+    }
+    for (const n of Object.keys(state.indir)
+      .filter((k) => normalizeLineNum(k) && asPlmMultiArray(state.indir[k]).length)
+      .sort(sortLineKeys)) {
+      chunks.push(
+        `${n}: ${joinPlmIndirMulti(asPlmMultiArray(state.indir[n]))}`,
+      );
+    }
+    return joinPlmList(chunks);
   }
 
   function splitBatchInput(raw) {
@@ -284,6 +477,48 @@
       "Cochez l’élément concerné, puis utilisez S, M ou D.";
     const MSG_COCHER_INDES =
       "Cochez la destination sur cette ligne, puis utilisez S ou M.";
+    const MSG_COCHER_INDIRE =
+      "Cochez un ou plusieurs libellés sur cette ligne INDIRE, puis utilisez S ou M.";
+
+    function getVSelected() {
+      return asPlmSpeedArray(descState.v);
+    }
+
+    function setVSelected(arr) {
+      descState.v = arr.length ? [...arr] : [];
+    }
+
+    function getIndirSelected(num) {
+      const known = config.lineIndir[num] || [];
+      const raw = asPlmMultiArray(descState.indir[num]);
+      if (!raw.length) return [];
+      if (!known.length) return raw;
+      return splitPlmMultiByKnown(joinPlmIndirMulti(raw), known);
+    }
+
+    function setIndirSelected(num, arr) {
+      if (arr.length) descState.indir[num] = [...arr];
+      else delete descState.indir[num];
+    }
+
+    function reconcileDescState() {
+      descState.v = asPlmSpeedArray(descState.v);
+      for (const n of Object.keys(descState.indir)) {
+        const known = config.lineIndir[n] || [];
+        const normalized = splitPlmMultiByKnown(
+          joinPlmIndirMulti(asPlmMultiArray(descState.indir[n])),
+          known,
+        );
+        if (normalized.length) descState.indir[n] = normalized;
+        else delete descState.indir[n];
+      }
+    }
+
+    async function pickOneFromSelected(message, selected, defaultVal) {
+      if (!selected.length) return null;
+      if (selected.length === 1) return selected[0];
+      return promptPickOne(message, selected, defaultVal ?? selected[0]);
+    }
 
     async function confirmEffacer(label) {
       return confirmFn(`Êtes-vous sûr de vouloir effacer « ${label} » ?`);
@@ -318,6 +553,14 @@
       }
     }
 
+    function migrateDescIndirLineKey(from, to) {
+      if (!from || !to || from === to) return;
+      if (descState.indir[from]) {
+        descState.indir[to] = descState.indir[from];
+        delete descState.indir[from];
+      }
+    }
+
     function renameLineInConfig(from, to, overwrite) {
       if (from === to) return true;
       const next = { ...config.lineIndexes };
@@ -326,6 +569,17 @@
       delete next[from];
       config.lineIndexes = next;
       migrateDescLineKey(from, to);
+      return true;
+    }
+
+    function renameIndirLineInConfig(from, to, overwrite) {
+      if (from === to) return true;
+      const next = { ...config.lineIndir };
+      if (next[to] && !overwrite) return false;
+      next[to] = [...(next[from] || [])];
+      delete next[from];
+      config.lineIndir = next;
+      migrateDescIndirLineKey(from, to);
       return true;
     }
 
@@ -611,17 +865,26 @@
       );
       const boxV = document.createElement("div");
       boxV.className = "tam-plm-struct-box tam-plm-struct-box--chips";
-      renderRadioGroup({
-        container: boxV,
-        groupName: "plm-v",
-        items: config.speeds,
-        selected: descState.v,
-        onSelect: (item) => {
-          clearLegacyDesc();
-          descState.v = item || null;
-          syncDescField();
-        },
-      });
+      const vSelected = getVSelected();
+      for (const item of config.speeds) {
+        const id = `plm-v-${String(item).replace(/\W/g, "_")}`;
+        renderChipCheckbox(boxV, {
+          id,
+          labelText: item,
+          checked: vSelected.includes(item),
+          onChange: (cb) => {
+            clearLegacyDesc();
+            let sel = getVSelected();
+            if (cb.checked) {
+              if (!sel.includes(item)) sel = [...sel, item];
+            } else {
+              sel = sel.filter((x) => x !== item);
+            }
+            setVSelected(sel);
+            syncDescField();
+          },
+        });
+      }
       secV.appendChild(boxV);
       descPanel.appendChild(secV);
 
@@ -677,6 +940,69 @@
       }
       descPanel.appendChild(secL);
 
+      const secIndir = document.createElement("section");
+      secIndir.className = "tam-plm-struct-section";
+      secIndir.appendChild(
+        sectionHead("Lignes (INDIRE) :", {
+          a: addIndirLine,
+          s: delIndirLine,
+          m: modIndirLine,
+          d: dupIndirLine,
+        }),
+      );
+      const indirNums = getLineNums(config.lineIndir);
+      if (!indirNums.length) {
+        const emptyHint = document.createElement("p");
+        emptyHint.className = "tam-plm-struct-line-label";
+        emptyHint.textContent =
+          "Aucune ligne INDIRE : utilisez A pour ajouter 1, 2, 3, 4B, 5, etc.";
+        secIndir.appendChild(emptyHint);
+      }
+      for (const num of indirNums) {
+        const entries = config.lineIndir[num] || [];
+        const indirSelected = getIndirSelected(num);
+        const lineRow = document.createElement("div");
+        lineRow.className = "tam-plm-line-row";
+        const numEl = document.createElement("span");
+        numEl.className = "tam-plm-line-num";
+        numEl.textContent = `${num} :`;
+        lineRow.appendChild(numEl);
+        const box = document.createElement("div");
+        box.className = "tam-plm-struct-box tam-plm-struct-box--chips";
+        for (const entry of entries) {
+          const id = `plm-INDIR${num}-${String(entry).replace(/\W/g, "_")}`;
+          renderChipCheckbox(box, {
+            id,
+            labelText: entry,
+            checked: indirSelected.includes(entry),
+            onChange: (cb) => {
+              clearLegacyDesc();
+              let sel = getIndirSelected(num);
+              if (cb.checked) {
+                if (!sel.includes(entry)) sel = [...sel, entry];
+              } else {
+                sel = sel.filter((x) => x !== entry);
+              }
+              setIndirSelected(num, sel);
+              syncDescField();
+            },
+          });
+        }
+        lineRow.appendChild(box);
+        lineRow.appendChild(
+          asmTools(
+            {
+              a: () => addIndirDest(num),
+              s: () => delIndirDest(num),
+              m: () => modIndirDest(num),
+            },
+            { showDup: false },
+          ),
+        );
+        secIndir.appendChild(lineRow);
+      }
+      descPanel.appendChild(secIndir);
+
       syncDescField();
     }
 
@@ -694,41 +1020,59 @@
     }
 
     async function dupSpeed() {
-      if (!descState.v) {
+      const sel = getVSelected();
+      if (!sel.length) {
         alertFn(MSG_COCHER);
         return;
       }
-      const src = descState.v;
+      const src = await pickOneFromSelected(
+        "Vitesse à dupliquer dans le catalogue :",
+        sel,
+        sel[0],
+      );
+      if (!src) return;
       const newV = await promptFn("Libellé du doublon :", src);
       if (newV == null || !String(newV).trim()) return;
       const newT = normalizeSpeedLabel(newV);
       config.speeds = sortAlpha([...new Set([...config.speeds, newT])]);
-      descState.v = newT;
+      setVSelected([newT]);
       saveConfig(config);
       renderDescPanel();
     }
 
     async function delSpeed() {
       if (!config.speeds.length) return;
-      if (!descState.v) {
+      const sel = getVSelected();
+      if (!sel.length) {
         alertFn(MSG_COCHER);
         return;
       }
-      const t = descState.v;
+      const t = await pickOneFromSelected(
+        "Vitesse à retirer du catalogue :",
+        sel,
+        sel[0],
+      );
+      if (!t) return;
       if (!(await confirmEffacer(t))) return;
       config.speeds = config.speeds.filter((x) => x !== t);
-      descState.v = null;
+      setVSelected(sel.filter((x) => x !== t));
       saveConfig(config);
       renderDescPanel();
     }
 
     async function modSpeed() {
       if (!config.speeds.length) return;
-      if (!descState.v) {
+      const sel = getVSelected();
+      if (!sel.length) {
         alertFn(MSG_COCHER);
         return;
       }
-      const oldT = descState.v;
+      const oldT = await pickOneFromSelected(
+        "Vitesse à modifier :",
+        sel,
+        sel[0],
+      );
+      if (!oldT) return;
       if (!(await confirmModifier(oldT))) return;
       const newV = await promptFn("Nouveau libellé :", oldT);
       if (newV == null || !String(newV).trim()) return;
@@ -736,7 +1080,7 @@
       config.speeds = sortAlpha(
         config.speeds.map((x) => (x === oldT ? newT : x)),
       );
-      descState.v = newT;
+      setVSelected(sel.map((x) => (x === oldT ? newT : x)));
       saveConfig(config);
       renderDescPanel();
     }
@@ -876,6 +1220,164 @@
       renderDescPanel();
     }
 
+    async function addIndirLine() {
+      const raw = await promptFn(
+        "Numéro de la nouvelle ligne INDIRE (ex. 1, 4B) :",
+        "",
+      );
+      if (raw == null) return;
+      const n = normalizeLineNum(raw);
+      if (!n) return;
+      if (config.lineIndir[n]) {
+        alertFn(`La ligne INDIRE ${n} existe déjà.`);
+        return;
+      }
+      config.lineIndir[n] = [];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function delIndirLine() {
+      const lines = getLineNums(config.lineIndir);
+      if (!lines.length) return;
+      const n = normalizeLineNum(
+        await promptPickOne("Ligne INDIRE à supprimer :", lines, lines[0]),
+      );
+      if (!n) return;
+      if (
+        !(await confirmEffacer(
+          `la ligne INDIRE ${n} et tous ses libellés`,
+        ))
+      ) {
+        return;
+      }
+      delete config.lineIndir[n];
+      delete descState.indir[n];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function modIndirLine() {
+      const lines = getLineNums(config.lineIndir);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Ligne INDIRE à renommer :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn(
+        `Nouveau numéro pour la ligne INDIRE ${from} :`,
+        from,
+      );
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (to !== from && config.lineIndir[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne INDIRE ${to} existe déjà. Remplacer ses libellés par ceux de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      if (!renameIndirLineInConfig(from, to, true)) return;
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function dupIndirLine() {
+      const lines = getLineNums(config.lineIndir);
+      if (!lines.length) return;
+      const from = normalizeLineNum(
+        await promptPickOne("Dupliquer la ligne INDIRE :", lines, lines[0]),
+      );
+      if (!from) return;
+      const rawTo = await promptFn("Vers le numéro de ligne INDIRE :", "");
+      if (rawTo == null) return;
+      const to = normalizeLineNum(rawTo);
+      if (!to) return;
+      if (config.lineIndir[to]) {
+        if (
+          !(await confirmFn(
+            `La ligne INDIRE ${to} existe déjà. Écraser ses libellés par ceux de la ligne ${from} ?`,
+          ))
+        ) {
+          return;
+        }
+      }
+      config.lineIndir[to] = [...(config.lineIndir[from] || [])];
+      const fromSel = getIndirSelected(from);
+      if (fromSel.length) setIndirSelected(to, fromSel);
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function addIndirDest(lineNum) {
+      const raw = await promptFn(
+        `Libellés à ajouter sur la ligne INDIRE ${lineNum} (séparés par des virgules, ex. 10 m, via gare) :`,
+        "",
+      );
+      if (raw == null) return;
+      const batch = splitBatchInput(raw).map(normalizeIndirContent).filter(Boolean);
+      if (!batch.length) return;
+      const cur = config.lineIndir[lineNum] || [];
+      config.lineIndir[lineNum] = [...new Set([...cur, ...batch])];
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function delIndirDest(lineNum) {
+      const sel = getIndirSelected(lineNum);
+      if (!sel.length) {
+        alertFn(MSG_COCHER_INDIRE);
+        return;
+      }
+      const content = await pickOneFromSelected(
+        `Libellé coché à retirer (ligne INDIRE ${lineNum}) :`,
+        sel,
+        sel[0],
+      );
+      if (!content) return;
+      const label = `ligne INDIRE ${lineNum} — ${content}`;
+      if (!(await confirmEffacer(label))) return;
+      config.lineIndir[lineNum] = (config.lineIndir[lineNum] || []).filter(
+        (x) => x !== content,
+      );
+      setIndirSelected(
+        lineNum,
+        sel.filter((x) => x !== content),
+      );
+      saveConfig(config);
+      renderDescPanel();
+    }
+
+    async function modIndirDest(lineNum) {
+      const sel = getIndirSelected(lineNum);
+      if (!sel.length) {
+        alertFn(MSG_COCHER_INDIRE);
+        return;
+      }
+      const oldC = await pickOneFromSelected(
+        `Libellé coché à modifier (ligne INDIRE ${lineNum}) :`,
+        sel,
+        sel[0],
+      );
+      if (!oldC) return;
+      const label = `ligne INDIRE ${lineNum} — ${oldC}`;
+      if (!(await confirmModifier(label))) return;
+      const newV = await promptFn("Nouveau libellé :", oldC);
+      if (newV == null || !String(newV).trim()) return;
+      const newC = normalizeIndirContent(newV);
+      const list = config.lineIndir[lineNum] || [];
+      config.lineIndir[lineNum] = list.map((x) => (x === oldC ? newC : x));
+      setIndirSelected(
+        lineNum,
+        sel.map((x) => (x === oldC ? newC : x)),
+      );
+      saveConfig(config);
+      renderDescPanel();
+    }
+
     nameEl.addEventListener("input", onNameInput);
 
     return {
@@ -887,7 +1389,8 @@
         nameEl.value = n;
         legacyDescRaw = null;
         const raw = stripStructuredZmLines(String(description ?? "").trim());
-        descState = parseDescription(raw);
+        descState = parseDescription(raw, config);
+        reconcileDescState();
         if (raw && !formatDescription(descState)) {
           legacyDescRaw = raw;
           descEl.value = raw;
