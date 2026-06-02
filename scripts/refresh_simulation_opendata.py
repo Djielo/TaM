@@ -140,7 +140,9 @@ def main() -> int:
     if REPO_ROOT not in sys.path:
         sys.path.insert(0, REPO_ROOT)
     fetch_network_geojson_layers()
-    merge_gtfs_into(GTFS_DIR, (GTFS_PUBLIC_URBA, GTFS_PUBLIC_SUB))
+    # Urbain seul : le Suburbain concaténé duplique routes / headsigns / variantes
+    # (ex. ligne 1 : « Gare Sud France » ×6 au lieu de « MONTPELLIER - … » ×3).
+    merge_gtfs_into(GTFS_DIR, (GTFS_PUBLIC_URBA,))
     # Génération JSON (utilise gtfs_data/ + MMM_MMM_*.json à la racine)
     import build_simulator_data as bd  # pylint: disable=import-outside-toplevel
 
