@@ -33,9 +33,9 @@ def dedupe_patterns_by_branch_endpoints(patterns):
     """
     Garde une seule variante par branche GTFS (même sens, headsign, départ et arrivée).
 
-    Le flux Urbain actuel expose souvent deux séquences d'arrêts voisines (±1 arrêt)
-    pour la même mission (ex. T1 sens 0 : 6 variantes au lieu de 3).
-    On conserve la course la plus longue, puis la plus fréquente.
+    Le flux Urbain expose souvent une variante courte (tronçon tram direct) et une
+    longue avec arrêts de rebroussement (ex. Observatoire / Saint-Guilhem sur T1).
+    On conserve la course la plus courte, puis la plus fréquente.
     """
     buckets = {}
     for pattern in patterns:
@@ -50,10 +50,9 @@ def dedupe_patterns_by_branch_endpoints(patterns):
 
     kept = []
     for group in buckets.values():
-        best = max(
-            group,
-            key=lambda item: (item["stop_count"], item.get("trip_count", 0)),
-        )
+        min_stops = min(item["stop_count"] for item in group)
+        candidates = [item for item in group if item["stop_count"] == min_stops]
+        best = max(candidates, key=lambda item: item.get("trip_count", 0))
         kept.append(best)
     return kept
 
@@ -71,9 +70,9 @@ def renumber_pattern_variants(patterns, route_by_id):
         line_name = route_by_id[route_id]["route_short_name"]
         items.sort(
             key=lambda item: (
-                item["start_stop"],
                 item["stop_count"],
-                item.get("trip_count", 0),
+                item["start_stop"],
+                -item.get("trip_count", 0),
             )
         )
         for idx, pattern in enumerate(items, start=1):
