@@ -7934,36 +7934,11 @@ if (typeof tamRefreshGearPopover === "function") {
   tamRefreshGearPopover();
 }
 
-/** Ancien jeu GitHub Pages : headsigns courts, variantes en double (ex. ligne 1 sens 0 ×6). */
-function tamSimulationDatasetLooksOutdated(meta, patterns) {
-  const count =
-    Number(meta?.pattern_count) ||
-    (Array.isArray(patterns) ? patterns.length : 0);
-  if (count > 145) return true;
-  const line1 = (Array.isArray(patterns) ? patterns : []).filter(
-    (p) => String(p?.route_short_name || "") === "1",
-  );
-  if (!line1.length) return false;
-  return line1.some((p) => {
-    const h = String(p?.headsign || "");
-    return h.length > 0 && !h.includes("MONTPELLIER");
-  });
-}
-
 fetch(`./simulation_data.json?v=${Date.now()}`, { cache: "no-store" })
   .then((resp) => resp.json())
   .then((json) => {
     data = json;
     datasetDigestLoaded = String(json?.meta?.dataset_digest || "");
-    if (tamSimulationDatasetLooksOutdated(json?.meta, json?.patterns)) {
-      tamAppAlert(
-        "Données réseau probablement obsolètes (site GitHub Pages ou cache du navigateur).\n\n" +
-          "Pour aligner le téléphone sur le PC : ouvrez la même URL que sur le PC " +
-          "(ex. http://adresse-du-PC:8000/simulateur_sae.html avec serve_tam.py), " +
-          "ou régénérez simulation_data.json puis republiez le site.\n\n" +
-          "Aide → Données réseau : comparez l’empreinte (dataset_digest) entre les deux appareils.",
-      );
-    }
     updateLines();
     applyMapVisualProfile();
     refreshSavedDeviationSelectOptions();
