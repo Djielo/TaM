@@ -168,6 +168,14 @@ class TamHandler(SimpleHTTPRequestHandler):
         kwargs["directory"] = _REPO_ROOT
         super().__init__(*args, **kwargs)
 
+    def end_headers(self) -> None:
+        path = urllib.parse.urlparse(self.path).path.lower()
+        if path.endswith(
+            ("simulation_data.json", ".html", ".js", ".css")
+        ):
+            self.send_header("Cache-Control", "no-store, must-revalidate")
+        super().end_headers()
+
     def _send_json(self, status: int, payload: dict) -> None:
         blob = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
