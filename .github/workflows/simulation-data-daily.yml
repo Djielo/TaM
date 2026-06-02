@@ -4,7 +4,8 @@ name: Simulation — données Open Data (quotidien)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "1 1 * * *"
+    # ~4 h Paris (02:00 UTC été / 03:00 UTC hiver) — après le bouclage réseau ~3 h
+    - cron: "0 2 * * *"
 
 permissions:
   contents: write
