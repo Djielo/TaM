@@ -23,8 +23,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Générer simulation_data.json (Open Data)
-        run: python scripts/refresh_simulation_opendata.py
+      - name: Générer simulation_data.json (Urbain + Suburbain)
+        run: python scripts/refresh_simulation_opendata.py --avec-suburbain
 
       - name: Préparer le site statique
         run: |

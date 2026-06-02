@@ -3,15 +3,17 @@
 """
 Télécharge les données Open Data nécessaires et régénère simulation_data.json.
 
-- GTFS Urbain + Suburbain : fusion minimale des CSV (routes/trips/stop_times/stops)
+- GTFS Urbain (flux formation tram/bus TAM ; pas de concat Suburbain)
 - Tracés réseau (GeoJSON lignes) : Bus + Tram (pour un rendu carte « nickel »)
 
 Usage :
   python scripts/refresh_simulation_opendata.py
+  python scripts/refresh_simulation_opendata.py --avec-suburbain
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 import shutil
@@ -133,16 +135,29 @@ def fetch_network_geojson_layers() -> None:
         download(url, dest)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Régénère simulation_data.json depuis l’Open Data 3M.")
+    parser.add_argument(
+        "--avec-suburbain",
+        action="store_true",
+        help="Fusionne aussi le GTFS Suburbain (MàJ mensuelle complète).",
+    )
+    args = parser.parse_args(argv)
+
     os.chdir(REPO_ROOT)
     # Assure que les imports depuis la racine du dépôt fonctionnent aussi
     # quand ce script est exécuté via `python scripts/...` (CI inclus).
     if REPO_ROOT not in sys.path:
         sys.path.insert(0, REPO_ROOT)
     fetch_network_geojson_layers()
-    # Urbain seul : le Suburbain concaténé duplique routes / headsigns / variantes
-    # (ex. ligne 1 : « Gare Sud France » ×6 au lieu de « MONTPELLIER - … » ×3).
-    merge_gtfs_into(GTFS_DIR, (GTFS_PUBLIC_URBA,))
+    gtfs_urls: tuple[str, ...] = (GTFS_PUBLIC_URBA,)
+    if args.avec_suburbain:
+        gtfs_urls = (GTFS_PUBLIC_URBA, GTFS_PUBLIC_SUB)
+        print("Mode mensuel : GTFS Urbain + Suburbain.")
+    else:
+        print("Mode quotidien : GTFS Urbain seul.")
+    # Les doublons de variantes (ex. T1 ×6) sont fusionnés dans build_simulator_data.py.
+    merge_gtfs_into(GTFS_DIR, gtfs_urls)
     # Génération JSON (utilise gtfs_data/ + MMM_MMM_*.json à la racine)
     import build_simulator_data as bd  # pylint: disable=import-outside-toplevel
 

@@ -22,6 +22,7 @@ HOWTO_BACKUP_ECRASEMENT.md
 
 # Donnees locales Open Data (volumineux / non versionnees)
 gtfs_data/
+gtfs_data_bak_tmp/
 simulation_data.json
 
 # Sauvegardes personnelles simulateur (données locales, pas le dépôt)
