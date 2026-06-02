@@ -356,7 +356,7 @@ def _env_flag(name: str) -> bool:
 
 
 def simulation_data_needs_refresh() -> bool:
-    """Vrai si le JSON local est absent ou antérieur à la MàJ du jour (après 3 h, heure Paris)."""
+    """Vrai si le JSON local est absent ou antérieur à la MàJ du jour (après 4 h, heure Paris)."""
     if _env_flag("SERVE_TAM_SKIP_REFRESH"):
         return False
     if _env_flag("SERVE_TAM_FORCE_REFRESH"):
@@ -374,7 +374,7 @@ def simulation_data_needs_refresh() -> bool:
         return True
 
     now_paris = datetime.now(PARIS_TZ)
-    cutoff = now_paris.replace(hour=3, minute=0, second=0, microsecond=0)
+    cutoff = now_paris.replace(hour=4, minute=0, second=0, microsecond=0)
     if now_paris < cutoff:
         cutoff -= timedelta(days=1)
     return generated.astimezone(PARIS_TZ) < cutoff
@@ -385,7 +385,7 @@ def maybe_refresh_simulation_data_on_startup() -> None:
         print("Refresh Open Data : script introuvable, ignoré.")
         return
     if not simulation_data_needs_refresh():
-        print("Données réseau : déjà à jour pour aujourd'hui (après 3 h).")
+        print("Données réseau : déjà à jour pour aujourd'hui (après 4 h).")
         return
 
     argv = [sys.executable, str(REFRESH_SCRIPT)]
