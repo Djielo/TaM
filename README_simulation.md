@@ -32,8 +32,8 @@ Objectif : générer `simulation_data.json` **à distance** et publier un site s
 
 Workflows (dans `.github/workflows/`) :
 
-- `simulation-data-daily.yml` : MàJ quotidienne (rebuild + publication `gh-pages`)
-- `simulation-data-monthly.yml` : MàJ mensuelle (rebuild + publication `gh-pages`)
+- `simulation-data-daily.yml` : MàJ quotidienne — GTFS **Urbain** + tracés 3M → `gh-pages`
+- `simulation-data-monthly.yml` : MàJ mensuelle — GTFS **Urbain + Suburbain** + tracés 3M → `gh-pages`
 - `pages-sync-on-push.yml` : après push sur `master`, republie `gh-pages`
 
 Réglage GitHub : **Settings → Pages → Source = Deploy from a branch**, puis

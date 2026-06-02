@@ -29,6 +29,62 @@ def compute_dataset_digest(gtfs_dir_path):
     return joint
 
 
+def dedupe_patterns_by_branch_endpoints(patterns):
+    """
+    Garde une seule variante par branche GTFS (même sens, headsign, départ et arrivée).
+
+    Le flux Urbain actuel expose souvent deux séquences d'arrêts voisines (±1 arrêt)
+    pour la même mission (ex. T1 sens 0 : 6 variantes au lieu de 3).
+    On conserve la course la plus longue, puis la plus fréquente.
+    """
+    buckets = {}
+    for pattern in patterns:
+        key = (
+            pattern["route_id"],
+            pattern["direction_id"],
+            pattern["headsign"],
+            pattern["start_stop"],
+            pattern["end_stop"],
+        )
+        buckets.setdefault(key, []).append(pattern)
+
+    kept = []
+    for group in buckets.values():
+        best = max(
+            group,
+            key=lambda item: (item["stop_count"], item.get("trip_count", 0)),
+        )
+        kept.append(best)
+    return kept
+
+
+def renumber_pattern_variants(patterns, route_by_id):
+    """Réattribue Variante 1..n après fusion de doublons."""
+    groups = defaultdict(list)
+    for pattern in patterns:
+        groups[(pattern["route_id"], pattern["direction_id"], pattern["headsign"])].append(
+            pattern
+        )
+
+    renumbered = []
+    for (route_id, direction_id, headsign), items in groups.items():
+        line_name = route_by_id[route_id]["route_short_name"]
+        items.sort(
+            key=lambda item: (
+                item["start_stop"],
+                item["stop_count"],
+                item.get("trip_count", 0),
+            )
+        )
+        for idx, pattern in enumerate(items, start=1):
+            pattern["pattern_id"] = (
+                f"{line_name}-{direction_id}-{headsign or 'sans_terminus'}-V{idx}"
+            )
+            pattern["variant_name"] = f"Variante {idx}"
+            renumbered.append(pattern)
+    return renumbered
+
+
 def compute_pattern_signature(route_id, direction_id, headsign, stops_list):
     """Identifiant de contenu : route, sens métier GTFS et chaîne d'arrêts."""
     stop_ids = "|".join(str(s["stop_id"]) for s in stops_list)
@@ -254,6 +310,9 @@ def build_data():
             pattern["pattern_id"] = f"{line_name}-{direction_id}-{headsign or 'sans_terminus'}-V{idx}"
             pattern["variant_name"] = f"Variante {idx}"
             numbered_patterns.append(pattern)
+
+    numbered_patterns = dedupe_patterns_by_branch_endpoints(numbered_patterns)
+    numbered_patterns = renumber_pattern_variants(numbered_patterns, route_by_id)
 
     numbered_patterns.sort(
         key=lambda p: (

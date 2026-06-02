@@ -11,11 +11,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -154,6 +156,9 @@ def build_perturbations_payload() -> dict:
 
 
 _REPO_ROOT = str(Path(__file__).resolve().parent)
+SIMULATION_DATA_PATH = Path(_REPO_ROOT) / "simulation_data.json"
+REFRESH_SCRIPT = Path(_REPO_ROOT) / "scripts" / "refresh_simulation_opendata.py"
+PARIS_TZ = ZoneInfo("Europe/Paris")
 BACKUP_FILENAME = "tam_sauvegarde_simulateur.json"
 BACKUP_SECOURS_FILENAME = "tam_sauvegarde_simulateur_secours.json"
 BACKUP_PATH = Path(_REPO_ROOT) / BACKUP_FILENAME
@@ -346,8 +351,57 @@ class TamHandler(SimpleHTTPRequestHandler):
         self._send_json(404, {"error": "not_found"})
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def simulation_data_needs_refresh() -> bool:
+    """Vrai si le JSON local est absent ou antérieur à la MàJ du jour (après 3 h, heure Paris)."""
+    if _env_flag("SERVE_TAM_SKIP_REFRESH"):
+        return False
+    if _env_flag("SERVE_TAM_FORCE_REFRESH"):
+        return True
+    if not SIMULATION_DATA_PATH.is_file():
+        return True
+    try:
+        with SIMULATION_DATA_PATH.open(encoding="utf-8") as handle:
+            meta = json.load(handle).get("meta") or {}
+        generated_at = str(meta.get("generated_at") or "").strip()
+        if not generated_at:
+            return True
+        generated = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return True
+
+    now_paris = datetime.now(PARIS_TZ)
+    cutoff = now_paris.replace(hour=3, minute=0, second=0, microsecond=0)
+    if now_paris < cutoff:
+        cutoff -= timedelta(days=1)
+    return generated.astimezone(PARIS_TZ) < cutoff
+
+
+def maybe_refresh_simulation_data_on_startup() -> None:
+    if not REFRESH_SCRIPT.is_file():
+        print("Refresh Open Data : script introuvable, ignoré.")
+        return
+    if not simulation_data_needs_refresh():
+        print("Données réseau : déjà à jour pour aujourd'hui (après 3 h).")
+        return
+
+    argv = [sys.executable, str(REFRESH_SCRIPT)]
+    if _env_flag("SERVE_TAM_REFRESH_SUBURBAIN"):
+        argv.append("--avec-suburbain")
+    print("Données réseau : téléchargement Open Data (quelques secondes)…")
+    try:
+        subprocess.run(argv, cwd=_REPO_ROOT, check=True)
+        print("Données réseau : simulation_data.json régénéré.")
+    except subprocess.CalledProcessError as exc:
+        print(f"Données réseau : échec du refresh ({exc}). Le serveur démarre quand même.")
+
+
 def main() -> None:
     root = Path(_REPO_ROOT)
+    maybe_refresh_simulation_data_on_startup()
     print(f"Serving from: {root}")
     print(
         f"Listening on {HOST}:{PORT} — ouvrir : http://127.0.0.1:{PORT}/ "
