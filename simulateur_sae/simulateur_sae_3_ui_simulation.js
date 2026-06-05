@@ -4052,17 +4052,30 @@ function endpointGeometryScore(coords, start, end) {
   };
 }
 
-function getNetworkGeometryByLine(features, pattern) {
+function getNetworkGeometryByLine(features, pattern, opts) {
   if (!features.length) return null;
+  const o = opts || {};
 
   const line = String(pattern.route_short_name);
   const start = pattern.coordinates[0];
   const end = pattern.coordinates[pattern.coordinates.length - 1];
 
-  const candidates = features.filter(
+  let candidates = features.filter(
     (f) => String(f.line_code) === line && f.coordinates?.length > 1,
   );
   if (!candidates.length) return null;
+
+  if (o.requireExpectedWay) {
+    const expectedWay = expectedNetworkWayFromPattern(pattern);
+    if (expectedWay) {
+      const wayPool = candidates.filter(
+        (f) => parseTamNetworkSens(f.sens).way === expectedWay,
+      );
+      if (wayPool.length) {
+        candidates = wayPool;
+      }
+    }
+  }
 
   /** Au-delà de ce cumul (m), les écarts GTFS ne discriminent plus les voies (L3). */
   const STOP_SUM_LABEL_FALLBACK_M = 500;
@@ -4860,6 +4873,13 @@ function resetMapForNewContext(kind) {
   } catch (e) {
     // ignore
   }
+  try {
+    if (typeof tamRefreshTramNetworkOverviewLayer === "function") {
+      tamRefreshTramNetworkOverviewLayer();
+    }
+  } catch (e) {
+    // ignore
+  }
 
   // Si on quitte un contexte, on évite de laisser un bandeau "mission" affiché
   // tant qu’un nouvel affichage ne l’a pas explicitement mis à jour.
@@ -5147,6 +5167,269 @@ function refreshVoiceSelect() {
   voiceSelectEl.value = fr.length ? tryVal : "__auto__";
 }
 
+/** Vue réseau tram sur la carte d’accueil (hors mission). */
+let tamTramOverviewVisible = true;
+/** "0" = voie 1 (sens 0), "1" = voie 2 (sens 1). */
+let tamTramOverviewDirectionId = "0";
+let tamTramOverviewToggleEl = null;
+let tamTramOverviewVoieEl = null;
+let tamTramNetworkControlInstalled = false;
+const TAM_TRAM_OVERVIEW_POLYLINE_OPTS = {
+  weight: 5,
+  opacity: 0.88,
+  lineCap: "round",
+  lineJoin: "round",
+};
+
+function tamPatternStopIdSet(pattern) {
+  const ids = new Set();
+  for (const s of Array.isArray(pattern?.stops) ? pattern.stops : []) {
+    const id = String(s?.stop_id || "").trim();
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+function tamPatternStopCount(pattern) {
+  const n = Number(pattern?.stop_count);
+  if (Number.isFinite(n) && n > 0) return n;
+  return tamPatternStopIdSet(pattern).size;
+}
+
+function tamIsSubsetStopIds(subset, superset) {
+  if (!subset.size) return true;
+  for (const id of subset) {
+    if (!superset.has(id)) return false;
+  }
+  return true;
+}
+
+/** Garde les variantes non couvertes par une autre (même ligne, même sens). */
+function tamPruneTramPatternsByStopCoverage(patterns) {
+  const items = patterns.map((p) => ({
+    p,
+    ids: tamPatternStopIdSet(p),
+    n: tamPatternStopCount(p),
+  }));
+  const kept = [];
+  for (const item of items) {
+    let dominated = false;
+    for (const other of items) {
+      if (other.p === item.p) continue;
+      if (other.n < item.n) continue;
+      if (tamIsSubsetStopIds(item.ids, other.ids)) {
+        dominated = true;
+        break;
+      }
+    }
+    if (!dominated) kept.push(item.p);
+  }
+  return kept;
+}
+
+/**
+ * Une variante par branche réseau (ex. L3 : fourche Sorrièche → Lattes vs Pérols).
+ */
+function tamOverviewBranchKey(pattern) {
+  const start = String(pattern?.start_stop || "").trim();
+  const end = String(pattern?.end_stop || "").trim();
+  return `${start}|${end}`;
+}
+
+function tamPruneTramPatternsByBranch(patterns) {
+  const byBranch = new Map();
+  for (const p of patterns) {
+    const key = tamOverviewBranchKey(p);
+    const n = tamPatternStopCount(p);
+    const cur = byBranch.get(key);
+    if (!cur || n > tamPatternStopCount(cur)) {
+      byBranch.set(key, p);
+    }
+  }
+  return [...byBranch.values()];
+}
+
+function tamTramRepresentativePatternsForDirection(directionId) {
+  const dir = String(directionId) === "1" ? "1" : "0";
+  const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  const byLine = new Map();
+  for (const p of patterns) {
+    if (String(p?.route_type) !== "0") continue;
+    const code = String(p?.route_short_name || "").trim();
+    if (!code || !/^[1-5]$/.test(code)) continue;
+    const pDir = String(p?.direction_id ?? "").trim() === "1" ? "1" : "0";
+    if (pDir !== dir) continue;
+    if (!byLine.has(code)) byLine.set(code, []);
+    byLine.get(code).push(p);
+  }
+  const out = [];
+  for (const code of ["1", "2", "3", "4", "5"]) {
+    const group = byLine.get(code) || [];
+    if (!group.length) continue;
+    const pruned = tamPruneTramPatternsByStopCoverage(group);
+    out.push(...tamPruneTramPatternsByBranch(pruned));
+  }
+  return out;
+}
+
+function tamRouteColorForOverview(routeCode) {
+  const code = String(routeCode || "").trim();
+  const forced =
+    typeof forcedLineColor === "function" ? forcedLineColor(code) : null;
+  if (forced) return forced;
+  const item = (Array.isArray(lineOptionLookup) ? lineOptionLookup : []).find(
+    (x) => String(x?.route_short_name || "").trim() === code,
+  );
+  const hex =
+    typeof lineColorHex === "function"
+      ? lineColorHex(item?.route_color)
+      : null;
+  return hex || "#005ca9";
+}
+
+function tamCoordsForTramOverviewPattern(pattern) {
+  const tramGeom = getTramNetworkGeometry(pattern, {
+    requireExpectedWay: true,
+  });
+  if (tramGeom?.coords?.length >= 2) {
+    return tramGeom.coords.map((c) => [c[0], c[1]]);
+  }
+  const raw = Array.isArray(pattern?.coordinates) ? pattern.coordinates : [];
+  if (raw.length >= 2) {
+    return raw.map((c) => [c[0], c[1]]);
+  }
+  return [];
+}
+
+function tamMissionBlocksTramNetworkOverview() {
+  return (
+    !!currentPattern &&
+    Array.isArray(activeCoordinates) &&
+    activeCoordinates.length >= 2
+  );
+}
+
+function tamSyncTramOverviewToggleUi() {
+  if (!tamTramOverviewToggleEl) return;
+  const on = !!tamTramOverviewVisible;
+  tamTramOverviewToggleEl.textContent = "T";
+  tamTramOverviewToggleEl.classList.toggle("is-on", on);
+  tamTramOverviewToggleEl.classList.toggle("is-off", !on);
+  tamTramOverviewToggleEl.title = on
+    ? "Masquer les tracés tram sur la carte"
+    : "Afficher les tracés tram sur la carte";
+  tamTramOverviewToggleEl.setAttribute(
+    "aria-label",
+    tamTramOverviewToggleEl.title,
+  );
+  tamTramOverviewToggleEl.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+function tamSyncTramOverviewVoieUi() {
+  if (!tamTramOverviewVoieEl) return;
+  const v1 = tamTramOverviewDirectionId !== "1";
+  tamTramOverviewVoieEl.textContent = v1 ? "V1" : "V2";
+  tamTramOverviewVoieEl.title = v1
+    ? "Voie 1 — sens 0 (cliquer pour voie 2)"
+    : "Voie 2 — sens 1 (cliquer pour voie 1)";
+  tamTramOverviewVoieEl.setAttribute(
+    "aria-label",
+    tamTramOverviewVoieEl.title,
+  );
+}
+
+function tamSetTramOverviewVisible(on) {
+  tamTramOverviewVisible = !!on;
+  tamSyncTramOverviewToggleUi();
+  tamRefreshTramNetworkOverviewLayer();
+}
+
+function tamToggleTramOverviewVoie() {
+  tamTramOverviewDirectionId =
+    tamTramOverviewDirectionId === "1" ? "0" : "1";
+  tamSyncTramOverviewVoieUi();
+  tamRefreshTramNetworkOverviewLayer();
+}
+
+function tamRefreshTramNetworkOverviewLayer() {
+  if (
+    typeof tramNetworkOverviewLayer === "undefined" ||
+    !tramNetworkOverviewLayer ||
+    typeof map === "undefined" ||
+    !map
+  ) {
+    return;
+  }
+  tramNetworkOverviewLayer.clearLayers();
+  if (
+    !tamTramOverviewVisible ||
+    typeof data === "undefined" ||
+    !data ||
+    tamMissionBlocksTramNetworkOverview()
+  ) {
+    if (map.hasLayer(tramNetworkOverviewLayer)) {
+      map.removeLayer(tramNetworkOverviewLayer);
+    }
+    return;
+  }
+  const patterns = tamTramRepresentativePatternsForDirection(
+    tamTramOverviewDirectionId,
+  );
+  for (const p of patterns) {
+    const coords = tamCoordsForTramOverviewPattern(p);
+    if (coords.length < 2) continue;
+    L.polyline(coords, {
+      ...TAM_TRAM_OVERVIEW_POLYLINE_OPTS,
+      color: tamRouteColorForOverview(p.route_short_name),
+    }).addTo(tramNetworkOverviewLayer);
+  }
+  if (
+    tramNetworkOverviewLayer.getLayers().length &&
+    !map.hasLayer(tramNetworkOverviewLayer)
+  ) {
+    tramNetworkOverviewLayer.addTo(map);
+  }
+  if (
+    !tramNetworkOverviewLayer.getLayers().length &&
+    map.hasLayer(tramNetworkOverviewLayer)
+  ) {
+    map.removeLayer(tramNetworkOverviewLayer);
+  }
+}
+
+function tamInstallTramNetworkOverviewControl() {
+  if (tamTramNetworkControlInstalled || typeof L === "undefined" || !map) {
+    return;
+  }
+  const ctrl = L.control({ position: "topleft" });
+  ctrl.onAdd = function onAddTramNetworkCtrl() {
+    const wrap = L.DomUtil.create("div", "leaflet-bar tam-tram-network-control");
+    const aT = L.DomUtil.create("a", "tam-tram-network-toggle is-on", wrap);
+    aT.href = "#";
+    aT.setAttribute("role", "button");
+    tamTramOverviewToggleEl = aT;
+    const aV = L.DomUtil.create("a", "tam-tram-network-voie", wrap);
+    aV.href = "#";
+    aV.setAttribute("role", "button");
+    tamTramOverviewVoieEl = aV;
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.on(aT, "click", (ev) => {
+      L.DomEvent.preventDefault(ev);
+      tamSetTramOverviewVisible(!tamTramOverviewVisible);
+    });
+    L.DomEvent.on(aV, "click", (ev) => {
+      L.DomEvent.preventDefault(ev);
+      tamToggleTramOverviewVoie();
+    });
+    tamSyncTramOverviewToggleUi();
+    tamSyncTramOverviewVoieUi();
+    return wrap;
+  };
+  ctrl.addTo(map);
+  tamTramNetworkControlInstalled = true;
+  tamRefreshTramNetworkOverviewLayer();
+}
+
 function reverseCoordinates(coords) {
   const copy = [...coords];
   copy.reverse();
@@ -5157,8 +5440,12 @@ function getBusNetworkGeometry(pattern) {
   return getNetworkGeometryByLine(data?.bus_network_features || [], pattern);
 }
 
-function getTramNetworkGeometry(pattern) {
-  return getNetworkGeometryByLine(data?.tram_network_features || [], pattern);
+function getTramNetworkGeometry(pattern, opts) {
+  return getNetworkGeometryByLine(
+    data?.tram_network_features || [],
+    pattern,
+    opts,
+  );
 }
 
 function updateStopToStopOverlay() {
@@ -5256,6 +5543,9 @@ async function setMission(pattern, opts) {
   recomputeSkippedAndRedrawStopLayers();
 
   fullLine.setLatLngs(activeCoordinates);
+  if (typeof tamRefreshTramNetworkOverviewLayer === "function") {
+    tamRefreshTramNetworkOverviewLayer();
+  }
   doneLine.setLatLngs([activeCoordinates[0]]);
   // Reset explicite a chaque mission pour forcer le redraw du troncon actif.
   stopToStopLayer.clearLayers();
@@ -7940,6 +8230,9 @@ fetch(`./simulation_data.json?v=${Date.now()}`, { cache: "no-store" })
     data = json;
     datasetDigestLoaded = String(json?.meta?.dataset_digest || "");
     updateLines();
+    if (typeof tamRefreshTramNetworkOverviewLayer === "function") {
+      tamRefreshTramNetworkOverviewLayer();
+    }
     applyMapVisualProfile();
     refreshSavedDeviationSelectOptions();
     requestAnimationFrame(tickRaf);

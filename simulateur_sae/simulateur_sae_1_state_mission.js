@@ -4933,6 +4933,10 @@ function tamInstallBasemapToggleControl() {
   };
   ctrlZone.addTo(map);
 
+  if (typeof tamInstallTramNetworkOverviewControl === "function") {
+    tamInstallTramNetworkOverviewControl();
+  }
+
   tamBasemapExtrasControlsInstalled = true;
   if (typeof tamCloudApplyReaderUi === "function") tamCloudApplyReaderUi();
 }
@@ -4970,6 +4974,8 @@ const provisionalStopsLayer = L.layerGroup().addTo(map);
 const personalLandmarksLayer = L.layerGroup();
 /** Zones carte (cercle / rectangle), indépendantes des repères. */
 const personalZonesLayer = L.layerGroup();
+/** Tracés tram réseau (vue carte d’accueil, indépendant des missions). */
+const tramNetworkOverviewLayer = L.layerGroup();
 const personalLandmarkLabelsLayer = L.layerGroup();
 const personalZoneLabelsLayer = L.layerGroup();
 const PLM_ZONE_DEFAULT_WEIGHT = 3;
