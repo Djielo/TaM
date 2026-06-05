@@ -4950,7 +4950,7 @@ const navIcon = L.divIcon({
 let fullLine = L.polyline([], {
   color: "#005ca9",
   weight: 6,
-  opacity: 0.6,
+  opacity: 0.88,
 }).addTo(map);
 let doneLine = L.polyline([], {
   color: "#9aa3ad",

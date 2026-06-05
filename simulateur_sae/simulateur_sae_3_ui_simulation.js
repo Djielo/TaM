@@ -5542,6 +5542,9 @@ async function setMission(pattern, opts) {
   stopMetersAlong = buildStopMetersAlong(pattern);
   recomputeSkippedAndRedrawStopLayers();
 
+  fullLine.setStyle({
+    color: tamRouteColorForOverview(pattern.route_short_name),
+  });
   fullLine.setLatLngs(activeCoordinates);
   if (typeof tamRefreshTramNetworkOverviewLayer === "function") {
     tamRefreshTramNetworkOverviewLayer();
