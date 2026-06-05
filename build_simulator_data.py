@@ -33,9 +33,10 @@ def dedupe_patterns_by_branch_endpoints(patterns):
     """
     Garde une seule variante par branche GTFS (même sens, headsign, départ et arrivée).
 
-    Le flux Urbain expose souvent une variante courte (tronçon tram direct) et une
-    longue avec arrêts de rebroussement (ex. Observatoire / Saint-Guilhem sur T1).
-    On conserve la course la plus courte, puis la plus fréquente.
+    Deux cas dans le flux Urbain :
+    - Écart de 1–2 arrêts (ex. T1) : séquences quasi identiques → garder la plus courte.
+    - Écart plus large (ex. T4 boucle Peyrou 19 arr. vs raccourci Antigone 14 arr.) :
+      branches réelles différentes → garder la course la plus fréquente.
     """
     buckets = {}
     for pattern in patterns:
@@ -50,9 +51,14 @@ def dedupe_patterns_by_branch_endpoints(patterns):
 
     kept = []
     for group in buckets.values():
-        min_stops = min(item["stop_count"] for item in group)
-        candidates = [item for item in group if item["stop_count"] == min_stops]
-        best = max(candidates, key=lambda item: item.get("trip_count", 0))
+        stop_counts = [item["stop_count"] for item in group]
+        span = max(stop_counts) - min(stop_counts)
+        if span <= 2:
+            min_stops = min(stop_counts)
+            candidates = [item for item in group if item["stop_count"] == min_stops]
+            best = max(candidates, key=lambda item: item.get("trip_count", 0))
+        else:
+            best = max(group, key=lambda item: item.get("trip_count", 0))
         kept.append(best)
     return kept
 
@@ -96,6 +102,101 @@ def compute_pattern_signature(route_id, direction_id, headsign, stops_list):
         ]
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+# --- T4 : corrections métier sur le GTFS brut (courses partielles, quai Gare, raccourcis) ---
+T4_LEGACY_GARE_STOP_IDS = frozenset({"1192", "1235"})
+T4_GARE_REPUBLIQUE_BY_DIRECTION = {"0": "1706", "1": "1730"}
+T4_ANTIGONE_SHORTCUT_STOP_IDS = frozenset({"1090", "1091", "1104", "1105"})
+T4_LOOP_HEADSIGNS = frozenset({"Garcia Lorca A", "Garcia Lorca B"})
+T4_GARE_HEADSIGNS = frozenset({"Gare Saint-Roch A", "Gare Saint-Roch B"})
+T4_TERMINUS_GARCIA = "Garcia Lorca"
+
+
+def normalize_t4_stop_row(stop_row, direction_id, stops_by_id):
+    """
+    Sur la T4, l'arrêt desservi à la Gare est le quai République (1706/1730).
+    Les stop_id 1192/1235 pointent un autre quai GTFS (hors tracé officiel 3M).
+    """
+    sid = str(stop_row.get("stop_id", ""))
+    if sid not in T4_LEGACY_GARE_STOP_IDS:
+        return stop_row
+    repl = T4_GARE_REPUBLIQUE_BY_DIRECTION.get(str(direction_id or "").strip())
+    if not repl or repl not in stops_by_id:
+        return stop_row
+    canonical = stops_by_id[repl]
+    out = dict(stop_row)
+    out["stop_id"] = repl
+    out["stop_name"] = canonical["stop_name"]
+    out["lat"] = canonical["lat"]
+    out["lon"] = canonical["lon"]
+    return out
+
+
+def refresh_pattern_geometry_fields(pattern, stops_list):
+    pattern["stops"] = stops_list
+    pattern["stop_count"] = len(stops_list)
+    pattern["coordinates"] = [[s["lat"], s["lon"]] for s in stops_list]
+    pattern["start_stop"] = stops_list[0]["stop_name"]
+    pattern["end_stop"] = stops_list[-1]["stop_name"]
+    pattern["pattern_signature"] = compute_pattern_signature(
+        pattern["route_id"],
+        pattern["direction_id"],
+        pattern["headsign"],
+        stops_list,
+    )
+
+
+def is_official_t4_pattern(pattern):
+    """Parcours T4 exploités : boucles Garcia↔Garcia ou Garcia→Gare République."""
+    headsign = (pattern.get("headsign") or "").strip()
+    start = (pattern.get("start_stop") or "").strip()
+    end = (pattern.get("end_stop") or "").strip()
+    stop_ids = {str(s["stop_id"]) for s in pattern.get("stops") or []}
+
+    if stop_ids & T4_ANTIGONE_SHORTCUT_STOP_IDS:
+        return False
+
+    if headsign in T4_LOOP_HEADSIGNS:
+        return start == T4_TERMINUS_GARCIA and end == T4_TERMINUS_GARCIA
+
+    if headsign in T4_GARE_HEADSIGNS:
+        return start == T4_TERMINUS_GARCIA and "République" in end
+
+    return False
+
+
+def apply_t4_official_corrections(patterns, stops_by_id):
+    """
+    Normalise le quai Gare, écarte les courses partielles (ex. Observatoire→Garcia Lorca,
+    Nouveau Saint-Roch→Garcia Lorca) et les raccourcis Antigone, fusionne les doublons.
+    """
+    kept_other = [p for p in patterns if str(p.get("route_short_name", "")) != "4"]
+    t4_by_sequence = {}
+    for pattern in patterns:
+        if str(pattern.get("route_short_name", "")) != "4":
+            continue
+        direction_id = str(pattern.get("direction_id") or "").strip()
+        normalized = [
+            normalize_t4_stop_row(row, direction_id, stops_by_id)
+            for row in pattern.get("stops") or []
+        ]
+        if len(normalized) < 2:
+            continue
+        refresh_pattern_geometry_fields(pattern, normalized)
+        if not is_official_t4_pattern(pattern):
+            continue
+        seq_key = (
+            pattern["route_id"],
+            pattern["direction_id"],
+            pattern["headsign"],
+            tuple(str(s["stop_id"]) for s in normalized),
+        )
+        if seq_key in t4_by_sequence:
+            t4_by_sequence[seq_key]["trip_count"] += pattern.get("trip_count", 0)
+        else:
+            t4_by_sequence[seq_key] = pattern
+    return kept_other + list(t4_by_sequence.values())
 
 
 def read_csv(filename):
@@ -310,6 +411,7 @@ def build_data():
             pattern["variant_name"] = f"Variante {idx}"
             numbered_patterns.append(pattern)
 
+    numbered_patterns = apply_t4_official_corrections(numbered_patterns, stops_by_id)
     numbered_patterns = dedupe_patterns_by_branch_endpoints(numbered_patterns)
     numbered_patterns = renumber_pattern_variants(numbered_patterns, route_by_id)
 
