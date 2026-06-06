@@ -4967,6 +4967,8 @@ let manualDraftPoints = [];
 let manualDrawActive = false;
 /** Couche temporaire : segment actif entre l'arret courant et le suivant. */
 const stopToStopLayer = L.layerGroup().addTo(map);
+/** Repères courts des autres lignes tram aux croisements (zones de manœuvre). */
+const tamCrossingHintLayer = L.layerGroup().addTo(map);
 const allStopsLayer = L.layerGroup().addTo(map);
 const skippedStopsLayer = L.layerGroup().addTo(map);
 const provisionalStopsLayer = L.layerGroup().addTo(map);
