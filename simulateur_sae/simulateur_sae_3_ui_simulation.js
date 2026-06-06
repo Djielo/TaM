@@ -507,6 +507,8 @@ async function applyTraceForOpsMode(mode, opts) {
     zoom: map.getZoom(),
   });
   updateStopToStopOverlay();
+  rebuildTamCrossingHints();
+  updateTamCrossingHintOverlay(distanceAlongPathMeters);
   drawProvisionalStopsOverlay();
   updateManualDeviationVisual(mode);
   updateStats();
@@ -4304,12 +4306,91 @@ function pointAtDistanceMeters(d) {
 }
 
 function pathWindowBetweenMeters(d0, d1) {
-  const coords = activeCoordinates;
-  const cum = pathCumMeters;
+  return pathWindowOnPolyline(
+    activeCoordinates,
+    pathCumMeters,
+    pathTotalMeters,
+    d0,
+    d1,
+  );
+}
+
+function buildCumMetersForCoords(coords) {
+  const cum = [0];
+  if (!coords || coords.length < 2) {
+    return cum;
+  }
+  for (let i = 0; i < coords.length - 1; i++) {
+    cum.push(
+      cum[i] + L.latLng(coords[i]).distanceTo(L.latLng(coords[i + 1])),
+    );
+  }
+  return cum;
+}
+
+function pointAtDistanceOnPolyline(coords, cum, total, d) {
+  if (!coords || coords.length < 2 || !cum.length) {
+    return coords && coords[0] ? coords[0] : [43.61, 3.88];
+  }
+  if (d <= 0) {
+    return coords[0];
+  }
+  if (d >= total) {
+    return coords[coords.length - 1];
+  }
+  let lo = 0;
+  let hi = cum.length - 1;
+  while (lo < hi - 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (cum[mid] < d) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  const i = lo;
+  const a = coords[i];
+  const b = coords[i + 1];
+  const d0 = cum[i];
+  const d1 = cum[i + 1];
+  const segM = d1 - d0;
+  const t = segM < 1e-6 ? 0 : (d - d0) / segM;
+  return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+}
+
+function projectLatLngOntoPolyline(lat, lng, coords, cum) {
+  if (!coords || coords.length < 2 || !cum.length) {
+    return { alongMeters: 0, crossTrackMeters: Number.POSITIVE_INFINITY };
+  }
+  const s = L.latLng(lat, lng);
+  let bestAlong = 0;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p0 = L.latLng(coords[i]);
+    const p1 = L.latLng(coords[i + 1]);
+    const dLat = p1.lat - p0.lat;
+    const dLng = p1.lng - p0.lng;
+    const len2 = dLat * dLat + dLng * dLng;
+    let t = 0;
+    if (len2 >= 1e-18) {
+      const a0 = s.lat - p0.lat;
+      const b0 = s.lng - p0.lng;
+      t = Math.max(0, Math.min(1, (a0 * dLat + b0 * dLng) / len2));
+    }
+    const proj = L.latLng(p0.lat + t * dLat, p0.lng + t * dLng);
+    const d = s.distanceTo(proj);
+    if (d < bestD) {
+      bestD = d;
+      bestAlong = cum[i] + t * (cum[i + 1] - cum[i]);
+    }
+  }
+  return { alongMeters: bestAlong, crossTrackMeters: bestD };
+}
+
+function pathWindowOnPolyline(coords, cum, total, d0, d1) {
   if (!coords || coords.length < 2 || !cum.length) {
     return [];
   }
-  const total = pathTotalMeters;
   const from = Math.max(0, Math.min(total, d0));
   const to = Math.max(0, Math.min(total, d1));
   if (Math.abs(to - from) < 1e-3) {
@@ -4317,17 +4398,195 @@ function pathWindowBetweenMeters(d0, d1) {
   }
   const lo = Math.min(from, to);
   const hi = Math.max(from, to);
-  const pts = [pointAtDistanceMeters(lo)];
+  const pts = [pointAtDistanceOnPolyline(coords, cum, total, lo)];
   for (let i = 1; i < coords.length - 1; i++) {
     if (cum[i] > lo && cum[i] < hi) {
       pts.push(coords[i]);
     }
   }
-  pts.push(pointAtDistanceMeters(hi));
+  pts.push(pointAtDistanceOnPolyline(coords, cum, total, hi));
   if (from > to) {
     pts.reverse();
   }
   return pts;
+}
+
+const TAM_CROSSING_HINT_HALF_SEGMENT_M = 150;
+const TAM_CROSSING_HINT_CLOSE_M = 20;
+const TAM_CROSSING_HINT_SAMPLE_STEP_M = 15;
+const TAM_CROSSING_HINT_PREVIEW_BEFORE_M = 80;
+const TAM_CROSSING_HINT_POLYLINE_OPTS = {
+  weight: 5,
+  opacity: 0.9,
+  lineCap: "round",
+  lineJoin: "round",
+};
+
+let tamCrossingHints = [];
+
+function clearTamCrossingHintOverlay() {
+  tamCrossingHints = [];
+  if (typeof tamCrossingHintLayer !== "undefined" && tamCrossingHintLayer?.clearLayers) {
+    tamCrossingHintLayer.clearLayers();
+  }
+}
+
+function rebuildTamCrossingHints() {
+  tamCrossingHints = [];
+  const missionLine = String(currentPattern?.route_short_name || "").trim();
+  const coords = activeCoordinates;
+  if (
+    !missionLine ||
+    String(currentPattern?.route_type) !== "0" ||
+    !coords ||
+    coords.length < 2 ||
+    pathTotalMeters <= 0
+  ) {
+    return;
+  }
+
+  const features = Array.isArray(data?.tram_network_features)
+    ? data.tram_network_features
+    : [];
+  if (!features.length) {
+    return;
+  }
+
+  const otherByLine = new Map();
+  for (const feature of features) {
+    const code = String(feature?.line_code || "").trim();
+    if (!code || code === missionLine || !feature?.coordinates?.length) {
+      continue;
+    }
+    if (!otherByLine.has(code)) {
+      otherByLine.set(code, []);
+    }
+    const fCoords = feature.coordinates;
+    const fCum = buildCumMetersForCoords(fCoords);
+    const fTotal = fCum[fCum.length - 1] || 0;
+    const packed = { feature, coords: fCoords, cum: fCum, total: fTotal };
+    otherByLine.get(code).push(packed);
+  }
+  if (!otherByLine.size) {
+    return;
+  }
+
+  const samples = [];
+  for (
+    let dM = 0;
+    dM <= pathTotalMeters + 1e-3;
+    dM += TAM_CROSSING_HINT_SAMPLE_STEP_M
+  ) {
+    const pt = pointAtDistanceOnPolyline(coords, pathCumMeters, pathTotalMeters, dM);
+    const byLine = {};
+    for (const [lineCode, pool] of otherByLine.entries()) {
+      let best = null;
+      for (const packed of pool) {
+        const hit = projectLatLngOntoPolyline(
+          pt[0],
+          pt[1],
+          packed.coords,
+          packed.cum,
+        );
+        if (!best || hit.crossTrackMeters < best.crossTrackMeters) {
+          best = { ...hit, packed };
+        }
+      }
+      if (best) {
+        byLine[lineCode] = best;
+      }
+    }
+    samples.push({ dM, byLine });
+  }
+
+  for (const lineCode of otherByLine.keys()) {
+    let zoneStart = null;
+    let zoneEnd = null;
+    let zoneBestDist = Number.POSITIVE_INFINITY;
+    let zoneBestSample = null;
+
+    const flushZone = () => {
+      if (zoneStart == null || !zoneBestSample) {
+        zoneStart = null;
+        zoneEnd = null;
+        zoneBestDist = Number.POSITIVE_INFINITY;
+        zoneBestSample = null;
+        return;
+      }
+      const packed = zoneBestSample.packed;
+      const centerAlongOther = zoneBestSample.alongMeters;
+      const segCoords = pathWindowOnPolyline(
+        packed.coords,
+        packed.cum,
+        packed.total,
+        centerAlongOther - TAM_CROSSING_HINT_HALF_SEGMENT_M,
+        centerAlongOther + TAM_CROSSING_HINT_HALF_SEGMENT_M,
+      );
+      if (segCoords.length >= 2) {
+        tamCrossingHints.push({
+          lineCode,
+          showFromM: Math.max(
+            0,
+            zoneStart - TAM_CROSSING_HINT_PREVIEW_BEFORE_M,
+          ),
+          showUntilM: zoneEnd,
+          segCoords,
+          color: tamRouteColorForOverview(lineCode),
+        });
+      }
+      zoneStart = null;
+      zoneEnd = null;
+      zoneBestDist = Number.POSITIVE_INFINITY;
+      zoneBestSample = null;
+    };
+
+    for (const sample of samples) {
+      const hit = sample.byLine[lineCode];
+      const close = hit && hit.crossTrackMeters <= TAM_CROSSING_HINT_CLOSE_M;
+      if (close) {
+        if (zoneStart == null) {
+          zoneStart = sample.dM;
+        }
+        zoneEnd = sample.dM;
+        if (hit.crossTrackMeters < zoneBestDist) {
+          zoneBestDist = hit.crossTrackMeters;
+          zoneBestSample = hit;
+        }
+      } else if (zoneStart != null) {
+        flushZone();
+      }
+    }
+    flushZone();
+  }
+}
+
+function updateTamCrossingHintOverlay(dNow) {
+  if (
+    typeof tamCrossingHintLayer === "undefined" ||
+    !tamCrossingHintLayer?.clearLayers
+  ) {
+    return;
+  }
+  tamCrossingHintLayer.clearLayers();
+  if (!currentPattern || !tamCrossingHints.length) {
+    return;
+  }
+  const d = Number(dNow);
+  if (!Number.isFinite(d)) {
+    return;
+  }
+  for (const hint of tamCrossingHints) {
+    if (d < hint.showFromM || d > hint.showUntilM) {
+      continue;
+    }
+    if (!hint.segCoords || hint.segCoords.length < 2) {
+      continue;
+    }
+    L.polyline(hint.segCoords, {
+      ...TAM_CROSSING_HINT_POLYLINE_OPTS,
+      color: hint.color || "#005ca9",
+    }).addTo(tamCrossingHintLayer);
+  }
 }
 
 function trimActivePathToPatternStops(pattern) {
@@ -4463,6 +4722,7 @@ function updateMapNavigation(opt) {
   if (typeof plmOnMissionPositionUpdate === "function") {
     plmOnMissionPositionUpdate(d, pos[0], pos[1]);
   }
+  updateTamCrossingHintOverlay(d);
 }
 
 function currentStopIndexForDistance(d) {
@@ -4823,6 +5083,13 @@ function resetMapForNewContext(kind) {
     }
     if (typeof doneLine !== "undefined" && doneLine?.setLatLngs) {
       doneLine.setLatLngs([]);
+    }
+  } catch (e) {
+    // ignore
+  }
+  try {
+    if (typeof clearTamCrossingHintOverlay === "function") {
+      clearTamCrossingHintOverlay();
     }
   } catch (e) {
     // ignore
@@ -5555,6 +5822,7 @@ async function setMission(pattern, opts) {
   stopToStopLayer.__tamSegIdx = -1;
 
   updateStopToStopOverlay();
+  rebuildTamCrossingHints();
 
   if (!previewOnlyMode) {
     applyMapHeadingCapMode(true);
