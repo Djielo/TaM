@@ -64,6 +64,8 @@
     lineCmr: PLM_LINE_CMR_SEED,
     zones: ["Gare", "Moularès"],
     namePresets: [],
+    /** Couleur par libellé de titre enregistré (optionnel). */
+    namePresetColors: {},
   };
 
   function cloneDefaults() {
@@ -86,7 +88,48 @@
       ),
       zones: [...DEFAULT_CONFIG.zones],
       namePresets: [],
+      namePresetColors: {},
     };
+  }
+
+  function ensureNamePresetColors(cfg) {
+    if (!cfg.namePresetColors || typeof cfg.namePresetColors !== "object") {
+      cfg.namePresetColors = {};
+    }
+    return cfg.namePresetColors;
+  }
+
+  function plmNormalizeStoredColorHex(raw) {
+    const t = String(raw ?? "").trim();
+    return /^#[0-9A-Fa-f]{6}$/.test(t) ? t : "";
+  }
+
+  /** Couleur d’une variante de titre (CMR exclu : pastille ligne). */
+  function plmResolveTitleOptionColor(option, titleColorHex, fullTitle) {
+    const opt = String(option ?? "").trim();
+    const cfg = loadConfig();
+    const map = ensureNamePresetColors(cfg);
+    const fromOpt = plmNormalizeStoredColorHex(map[opt]);
+    if (fromOpt) return fromOpt;
+    const full = String(fullTitle ?? "").trim();
+    const fromFull = plmNormalizeStoredColorHex(map[full]);
+    if (fromFull) return fromFull;
+    return plmNormalizeStoredColorHex(titleColorHex) || "";
+  }
+
+  function plmApplyTitleColorStyleToPill(pill, option, titleColorHex, fullTitle) {
+    if (!pill || pill.classList.contains("tam-plm-desc-title-pill--cmr")) return;
+    const hex = plmResolveTitleOptionColor(option, titleColorHex, fullTitle);
+    if (
+      !hex ||
+      typeof window.tamPlmTitlePillColorInlineStyle !== "function"
+    ) {
+      return;
+    }
+    const st = window.tamPlmTitlePillColorInlineStyle(hex);
+    if (!st) return;
+    pill.classList.add("tam-plm-desc-title-pill--colored");
+    pill.setAttribute("style", st);
   }
 
   const PLM_CMR_CNRS = "CMR CNRS";
@@ -221,6 +264,16 @@
     const tail = s.slice(start).trim();
     if (tail) parts.push(tail);
     return parts;
+  }
+
+  /** Variantes de titre (virgules structurelles, parenthèses respectées). */
+  function plmTitleOptionsFromString(title) {
+    const full = String(title ?? "").trim();
+    if (!full) return [];
+    const parts = splitPlmStructuralList(full)
+      .map((bit) => plmUnquoteUserToken(bit).trim())
+      .filter(Boolean);
+    return parts.length ? parts : [full];
   }
 
   function joinPlmList(parts) {
@@ -571,6 +624,15 @@
           ...new Set(presetSrc.map((z) => String(z).trim()).filter(Boolean)),
         ]);
       }
+      if (p.namePresetColors && typeof p.namePresetColors === "object") {
+        const colors = {};
+        for (const key of Object.keys(p.namePresetColors)) {
+          const label = String(key).trim();
+          const hx = plmNormalizeStoredColorHex(p.namePresetColors[key]);
+          if (label && hx) colors[label] = hx;
+        }
+        base.namePresetColors = colors;
+      }
       if (p.lineCmr && typeof p.lineCmr === "object") {
         const loadedCmr = {};
         for (const key of Object.keys(p.lineCmr)) {
@@ -606,6 +668,7 @@
           lineCmr: cfg.lineCmr,
           zones: cfg.zones,
           namePresets: cfg.namePresets,
+          namePresetColors: ensureNamePresetColors(cfg),
         }),
       );
     } catch (e) {
@@ -916,6 +979,8 @@
    *   confirm?: (message: string) => Promise<boolean>,
    *   alert?: (message: string) => void,
    *   onLabelPreviewChange?: () => void,
+   *   getTitleColorHex?: () => string,
+   *   setTitleColorHex?: (hex: string) => void,
    * }} opts
    */
   function createStructuredTextUi(opts) {
@@ -940,6 +1005,8 @@
         window.alert(msg);
       });
     const onLabelPreviewChange = opts.onLabelPreviewChange;
+    const getTitleColorHex = opts.getTitleColorHex;
+    const setTitleColorHex = opts.setTitleColorHex;
 
     function getCmrCatalogLines(preset) {
       return plmCmrCatalogLinesForName(preset, config);
@@ -968,7 +1035,7 @@
       if (namePick.kind === "preset" && namePick.value) {
         return String(namePick.value).trim();
       }
-      return "";
+      return String(nameEl.value ?? "").trim();
     }
 
     /** Titre standard ↔ CMR uniquement (pas vitesse / INDES / INDIR). */
@@ -980,10 +1047,30 @@
       cmrPick = { kind: "none" };
     }
 
+    function persistTitleColorForActivePreset(hex) {
+      const h = plmNormalizeStoredColorHex(hex);
+      if (!h) return;
+      if (namePick.kind !== "preset" || !namePick.value) return;
+      ensureNamePresetColors(config)[namePick.value] = h;
+      saveConfig(config);
+    }
+
     function notifyLabelPreview() {
       if (onLabelPreviewChange) onLabelPreviewChange();
     }
 
+    function currentTitleColorHex() {
+      if (typeof getTitleColorHex !== "function") return "";
+      return plmNormalizeStoredColorHex(getTitleColorHex());
+    }
+
+    function syncTitleColorHex(hex) {
+      persistTitleColorForActivePreset(hex);
+      if (descPreview && legacyDescRaw == null) {
+        renderDescPreviewFromState();
+      }
+      notifyLabelPreview();
+    }
     const MSG_COCHER =
       "Cochez l’élément concerné, puis utilisez S, M ou D.";
     const MSG_COCHER_INDES =
@@ -1183,6 +1270,14 @@
       pill.textContent = full;
       pill.title = full;
       applyCmrTitlePillStyle(pill, full);
+      if (!pill.classList.contains("tam-plm-desc-title-pill--cmr")) {
+        plmApplyTitleColorStyleToPill(
+          pill,
+          full,
+          currentTitleColorHex(),
+          getCommittedTitle(),
+        );
+      }
       row.appendChild(pill);
     }
 
@@ -1217,7 +1312,9 @@
           const row = document.createElement("div");
           row.className =
             "tam-plm-desc-preview-row tam-plm-desc-preview-row--title";
-          appendTitlePill(row, title);
+          for (const opt of plmTitleOptionsFromString(title)) {
+            appendTitlePill(row, opt);
+          }
           descPreview.appendChild(row);
         }
         if (legacyBody) {
@@ -1232,7 +1329,9 @@
         const titleRow = document.createElement("div");
         titleRow.className =
           "tam-plm-desc-preview-row tam-plm-desc-preview-row--title";
-        appendTitlePill(titleRow, title);
+        for (const opt of plmTitleOptionsFromString(title)) {
+          appendTitlePill(titleRow, opt);
+        }
         descPreview.appendChild(titleRow);
       }
       if (isDescStateEmpty()) return;
@@ -1303,11 +1402,8 @@
     function syncNameFromPick() {
       if (cmrPick.kind === "cmr" && cmrPick.value) {
         nameEl.value = String(cmrPick.value);
-      } else {
-        nameEl.value =
-          namePick.kind === "preset" && namePick.value
-            ? String(namePick.value)
-            : "";
+      } else if (namePick.kind === "preset" && namePick.value) {
+        nameEl.value = String(namePick.value);
       }
       if (descPreview && legacyDescRaw == null) {
         renderDescPreviewFromState();
@@ -1362,6 +1458,12 @@
         if (cb.checked) {
           clearCmrPick();
           namePick = { kind: "preset", value: preset };
+          const saved = plmNormalizeStoredColorHex(
+            ensureNamePresetColors(config)[preset],
+          );
+          if (saved && typeof setTitleColorHex === "function") {
+            setTitleColorHex(saved);
+          }
         } else if (
           namePick.kind === "preset" &&
           namePick.value === preset
@@ -1491,11 +1593,13 @@
 
     async function addNamePreset() {
       const raw = await promptFn(
-        "Noms à ajouter (séparés par des virgules, ex. Auto, CMU Hornière) :",
+        "Noms à ajouter (virgule entre variantes ; à l’intérieur des parenthèses, la virgule est conservée) :",
         "",
       );
       if (raw == null) return;
-      const batch = splitBatchInput(raw);
+      const batch = splitPlmStructuralList(raw)
+        .map((bit) => plmUnquoteUserToken(bit).trim())
+        .filter(Boolean);
       if (!batch.length) return;
       const cmrBatch = batch.filter((x) => isCmrStyleNamePreset(x));
       const stdBatch = batch.filter((x) => !isCmrStyleNamePreset(x));
@@ -1528,6 +1632,11 @@
       config.namePresets = sortNamePresets([
         ...new Set([...config.namePresets, newT]),
       ]);
+      const colors = ensureNamePresetColors(config);
+      if (colors[src]) {
+        colors[newT] = colors[src];
+        delete colors[src];
+      }
       namePick = { kind: "preset", value: newT };
       syncNameFromPick();
       saveConfig(config);
@@ -1543,6 +1652,8 @@
       const t = namePick.value;
       if (!(await confirmEffacer(t))) return;
       config.namePresets = config.namePresets.filter((x) => x !== t);
+      const colors = ensureNamePresetColors(config);
+      if (colors[t]) delete colors[t];
       namePick = { kind: "none" };
       nameEl.value = "";
       saveConfig(config);
@@ -1563,6 +1674,11 @@
       config.namePresets = sortNamePresets(
         config.namePresets.map((x) => (x === oldT ? newT : x)),
       );
+      const colors = ensureNamePresetColors(config);
+      if (colors[oldT]) {
+        colors[newT] = colors[oldT];
+        delete colors[oldT];
+      }
       namePick = { kind: "preset", value: newT };
       syncNameFromPick();
       saveConfig(config);
@@ -2414,6 +2530,19 @@
       renderDescPanel();
     }
 
+    function onNameInput() {
+      clearNamePick();
+      clearCmrPick();
+      renderNamePanel();
+      renderCmrPanel();
+      if (descPreview && legacyDescRaw == null) {
+        renderDescPreviewFromState();
+      }
+      notifyLabelPreview();
+    }
+
+    nameEl.addEventListener("input", onNameInput);
+
     return {
       setInitial(name, description) {
         const n = String(name ?? "").trim();
@@ -2425,9 +2554,15 @@
           }
           if (cmrPick.kind === "none" && config.namePresets.includes(n)) {
             namePick = { kind: "preset", value: n };
+            const saved = plmNormalizeStoredColorHex(
+              ensureNamePresetColors(config)[n],
+            );
+            if (saved && typeof setTitleColorHex === "function") {
+              setTitleColorHex(saved);
+            }
           }
         }
-        nameEl.value = getCommittedTitle() || "";
+        nameEl.value = getCommittedTitle() || n || "";
         legacyDescRaw = null;
         const raw = plmStripTitleFromDescriptionRaw(
           stripStructuredZmLines(String(description ?? "").trim()),
@@ -2460,7 +2595,9 @@
         syncDescField();
         syncNameFromPick();
       },
+      syncTitleColorHex,
       destroy() {
+        nameEl.removeEventListener("input", onNameInput);
         namePanel.innerHTML = "";
         if (speedPanel) speedPanel.innerHTML = "";
         if (cmrPanel) cmrPanel.innerHTML = "";
@@ -2692,8 +2829,8 @@
     };
   }
 
-  function plmTitlePillHtmlString(title) {
-    const full = String(title ?? "").trim();
+  function plmSingleTitlePillHtmlString(option, titleColorHex, fullTitle) {
+    const full = String(option ?? "").trim();
     if (!full) return "";
     const escFull = plmEscapeHtmlForDisplay(full);
     if (isCmrStyleNamePreset(full)) {
@@ -2712,7 +2849,32 @@
         }
       }
     }
+    const colorHex = plmResolveTitleOptionColor(
+      full,
+      titleColorHex,
+      fullTitle,
+    );
+    if (
+      colorHex &&
+      typeof window.tamPlmTitlePillColorInlineStyle === "function"
+    ) {
+      const st = window.tamPlmTitlePillColorInlineStyle(colorHex);
+      if (st) {
+        return `<span class="tam-plm-desc-title-pill tam-plm-desc-title-pill--colored" style="${st}" title="${escFull}">${escFull}</span>`;
+      }
+    }
     return `<span class="tam-plm-desc-title-pill" title="${escFull}">${escFull}</span>`;
+  }
+
+  function plmTitlePillHtmlString(title, titleColorHex) {
+    const options = plmTitleOptionsFromString(title);
+    if (!options.length) return "";
+    const fullTitle = String(title ?? "").trim();
+    return options
+      .map((opt) =>
+        plmSingleTitlePillHtmlString(opt, titleColorHex, fullTitle),
+      )
+      .join("");
   }
 
   function plmEscapeHtmlForDisplay(s) {
