@@ -876,6 +876,12 @@
         overflow: visible;
         text-overflow: clip;
       }
+      .tam-plm-map-label__title-row .tam-plm-desc-title-pill + .tam-plm-desc-title-pill {
+        margin-top: 2px;
+      }
+      .tam-plm-desc-preview-row--title .tam-plm-desc-title-pill + .tam-plm-desc-title-pill {
+        margin-top: 3px;
+      }
       .tam-plm-map-label__desc {
         margin: 0;
         font-size: 11px;
@@ -1623,6 +1629,21 @@
       }
       .tam-plm-desc-title-pill--cmr:not([style*="background"]) {
         background: #c5cdd6;
+      }
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
+        > .tam-plm-pickers__section,
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
+        > .tam-plm-title-color-row {
+        flex: 0 0 auto;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .app-personal-landmark-dialog
+        .tam-plm-tab-panel[data-plm-tab-panel="name"]:not([hidden])
+        > .tam-plm-title-color-row {
+        margin-bottom: 0;
       }
       /* CMR multi-lignes : blanc (priorité sur le gris des titres standards) */
       .tam-plm-desc-title-pill--cmr-multi,
@@ -4961,6 +4982,18 @@
               id="appPersonalLandmarkDialogNamePanel"
               class="tam-plm-struct-panel"
               aria-label="Titre : libellés enregistrés"
+            ></div>
+            <p
+              class="app-personal-landmark-dialog__label tam-plm-pickers__section"
+              id="appPersonalLandmarkDialogTitleColorHeading"
+            >
+              Couleur du titre
+            </p>
+            <div
+              class="tam-plm-color-row tam-plm-title-color-row"
+              id="appPersonalLandmarkDialogTitleColors"
+              role="group"
+              aria-labelledby="appPersonalLandmarkDialogTitleColorHeading"
             ></div>
           </div>
           <div

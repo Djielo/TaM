@@ -4411,10 +4411,15 @@ function pathWindowOnPolyline(coords, cum, total, d0, d1) {
   return pts;
 }
 
-const TAM_CROSSING_HINT_HALF_SEGMENT_M = 150;
+/** Marge unique (m) : tronçon sur l’autre voie ±M ; affichage mission [croisement−M … croisement+M]. */
+const TAM_CROSSING_HINT_M = 50;
 const TAM_CROSSING_HINT_CLOSE_M = 20;
 const TAM_CROSSING_HINT_SAMPLE_STEP_M = 15;
-const TAM_CROSSING_HINT_PREVIEW_BEFORE_M = 80;
+/**
+ * Au-delà de cette longueur sur la mission, les voies sont considérées communes
+ * (même tracé) : pas de repère — seulement les croisements ponctuels.
+ */
+const TAM_CROSSING_HINT_MAX_MISSION_ZONE_M = 70;
 const TAM_CROSSING_HINT_POLYLINE_OPTS = {
   weight: 5,
   opacity: 0.9,
@@ -4423,6 +4428,17 @@ const TAM_CROSSING_HINT_POLYLINE_OPTS = {
 };
 
 let tamCrossingHints = [];
+
+function buildCrossingHintSegmentOnOtherLine(packed, junctionAlong) {
+  const m = TAM_CROSSING_HINT_M;
+  return pathWindowOnPolyline(
+    packed.coords,
+    packed.cum,
+    packed.total,
+    junctionAlong - m,
+    junctionAlong + m,
+  );
+}
 
 function clearTamCrossingHintOverlay() {
   tamCrossingHints = [];
@@ -4504,53 +4520,63 @@ function rebuildTamCrossingHints() {
     let zoneEnd = null;
     let zoneBestDist = Number.POSITIVE_INFINITY;
     let zoneBestSample = null;
+    let zonePacked = null;
+    let zoneCrossingMissionM = 0;
 
-    const flushZone = () => {
-      if (zoneStart == null || !zoneBestSample) {
-        zoneStart = null;
-        zoneEnd = null;
-        zoneBestDist = Number.POSITIVE_INFINITY;
-        zoneBestSample = null;
-        return;
-      }
-      const packed = zoneBestSample.packed;
-      const centerAlongOther = zoneBestSample.alongMeters;
-      const segCoords = pathWindowOnPolyline(
-        packed.coords,
-        packed.cum,
-        packed.total,
-        centerAlongOther - TAM_CROSSING_HINT_HALF_SEGMENT_M,
-        centerAlongOther + TAM_CROSSING_HINT_HALF_SEGMENT_M,
-      );
-      if (segCoords.length >= 2) {
-        tamCrossingHints.push({
-          lineCode,
-          showFromM: Math.max(
-            0,
-            zoneStart - TAM_CROSSING_HINT_PREVIEW_BEFORE_M,
-          ),
-          showUntilM: zoneEnd,
-          segCoords,
-          color: tamRouteColorForOverview(lineCode),
-        });
-      }
+    const resetZone = () => {
       zoneStart = null;
       zoneEnd = null;
       zoneBestDist = Number.POSITIVE_INFINITY;
       zoneBestSample = null;
+      zonePacked = null;
+      zoneCrossingMissionM = 0;
+    };
+
+    const flushZone = () => {
+      if (zoneStart == null || !zoneBestSample || !zonePacked) {
+        resetZone();
+        return;
+      }
+      const zoneLen = zoneEnd - zoneStart;
+      if (zoneLen > TAM_CROSSING_HINT_MAX_MISSION_ZONE_M) {
+        resetZone();
+        return;
+      }
+      const m = TAM_CROSSING_HINT_M;
+      const crossingM = zoneCrossingMissionM;
+      const segCoords = buildCrossingHintSegmentOnOtherLine(
+        zonePacked,
+        zoneBestSample.alongMeters,
+      );
+      if (segCoords.length >= 2) {
+        tamCrossingHints.push({
+          lineCode,
+          showFromM: Math.max(0, crossingM - m),
+          showUntilM: Math.min(pathTotalMeters, crossingM + m),
+          segCoords,
+          color: tamRouteColorForOverview(lineCode),
+        });
+      }
+      resetZone();
     };
 
     for (const sample of samples) {
       const hit = sample.byLine[lineCode];
       const close = hit && hit.crossTrackMeters <= TAM_CROSSING_HINT_CLOSE_M;
       if (close) {
+        if (zoneStart != null && zonePacked && hit.packed !== zonePacked) {
+          flushZone();
+        }
         if (zoneStart == null) {
           zoneStart = sample.dM;
+          zonePacked = hit.packed;
         }
         zoneEnd = sample.dM;
         if (hit.crossTrackMeters < zoneBestDist) {
           zoneBestDist = hit.crossTrackMeters;
           zoneBestSample = hit;
+          zonePacked = hit.packed;
+          zoneCrossingMissionM = sample.dM;
         }
       } else if (zoneStart != null) {
         flushZone();

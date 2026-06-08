@@ -393,7 +393,7 @@ function plmBuildMapLabelHtml(item) {
   }
   let inner = "";
   if (title && typeof window.plmTitlePillHtmlString === "function") {
-    inner += `<div class="tam-plm-map-label__title-row">${window.plmTitlePillHtmlString(title)}</div>`;
+    inner += `<div class="tam-plm-map-label__title-row">${window.plmTitlePillHtmlString(title, item?.titleColorHex)}</div>`;
   }
   if (desc) {
     const descHtml =
@@ -1490,6 +1490,10 @@ function plmCommitDialogSave(r) {
         ? normalizePlmColorHex(prev.colorHex)
         : normalizePlmColorHex(r.colorHex),
     };
+    const titleColorHex = adding
+      ? normalizePlmTitleColorHex(prev.titleColorHex)
+      : normalizePlmTitleColorHex(r.titleColorHex);
+    if (titleColorHex) row.titleColorHex = titleColorHex;
     delete row.hideName;
     if (finalGroupId) row.groupId = finalGroupId;
     if (prev.parentId) {
@@ -1541,6 +1545,8 @@ function plmCommitDialogSave(r) {
     iconId: normalizePlmIconId(r.iconId),
     colorHex: normalizePlmColorHex(r.colorHex),
   };
+  const newTitleColor = normalizePlmTitleColorHex(r.titleColorHex);
+  if (newTitleColor) row.titleColorHex = newTitleColor;
   delete row.hideName;
   row.iconBearingDeg = plmCaptureLandmarkIconBearingDeg();
   if (snapped.snapped && snapped.anchorLandmarkId) {
@@ -3351,10 +3357,29 @@ function getPlmColorCatalog() {
   ];
 }
 
+/** Style inline pastille titre (fond + texte contrasté). */
+function tamPlmTitlePillColorInlineStyle(bgHex) {
+  const bg = normalizePlmColorHex(bgHex);
+  const fg = plmContrastIconOnBackground(bg);
+  return `background-color:${bg};color:${fg};border:1px solid rgba(0,0,0,0.12)`;
+}
+
+if (typeof window !== "undefined") {
+  window.getPlmColorCatalog = getPlmColorCatalog;
+  window.tamPlmTitlePillColorInlineStyle = tamPlmTitlePillColorInlineStyle;
+}
+
 function normalizePlmColorHex(raw) {
   const t = String(raw ?? "").trim();
   if (/^#[0-9A-Fa-f]{6}$/.test(t)) return t;
   return PLM_DEFAULT_COLOR_NEW;
+}
+
+/** Couleur titre repère (optionnelle — vide = pastille grise par défaut). */
+function normalizePlmTitleColorHex(raw) {
+  const t = String(raw ?? "").trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(t)) return t;
+  return "";
 }
 
 function normalizePlmIconId(raw) {
@@ -5351,6 +5376,8 @@ function plmDuplicateLandmarkFromId(sourceId) {
     iconId: normalizePlmIconId(src.iconId),
     colorHex: normalizePlmColorHex(src.colorHex),
   };
+  const dupTitleColor = normalizePlmTitleColorHex(src.titleColorHex);
+  if (dupTitleColor) row.titleColorHex = dupTitleColor;
   if (plmLandmarkHasIconBearing(src)) {
     row.iconBearingDeg = plmNormalizeBearingDeg(Number(src.iconBearingDeg));
   }
@@ -5387,6 +5414,8 @@ function plmDuplicateGroupFromId(sourceGroupId) {
       colorHex: normalizePlmColorHex(mem.colorHex),
       groupId: newGroupId,
     };
+    const memTitleColor = normalizePlmTitleColorHex(mem.titleColorHex);
+    if (memTitleColor) dupRow.titleColorHex = memTitleColor;
     if (plmLandmarkHasIconBearing(mem)) {
       dupRow.iconBearingDeg = plmNormalizeBearingDeg(Number(mem.iconBearingDeg));
     }
@@ -5911,6 +5940,8 @@ function loadPersonalLandmarksFromStorage() {
               iconId,
               colorHex,
             };
+            const titleColorHex = normalizePlmTitleColorHex(x?.titleColorHex);
+            if (titleColorHex) row.titleColorHex = titleColorHex;
             if (groupIdRaw) row.groupId = groupIdRaw;
             if (parentIdRaw) row.parentId = parentIdRaw;
             if (slotRaw) row.slot = slotRaw;
@@ -6827,6 +6858,9 @@ function openPersonalLandmarkDialog(spec) {
     const favIconsEl = document.getElementById("appPersonalLandmarkDialogFavIcons");
     const allIconsEl = document.getElementById("appPersonalLandmarkDialogAllIcons");
     const colorsEl = document.getElementById("appPersonalLandmarkDialogColors");
+    const titleColorsEl = document.getElementById(
+      "appPersonalLandmarkDialogTitleColors",
+    );
     const favCapEl = document.getElementById("appPersonalLandmarkDialogFavCap");
     const capBandEl = document.getElementById("appPersonalLandmarkDialogCapBand");
     const settingsBtn = document.getElementById("appPersonalLandmarkDialogSettingsBtn");
@@ -6885,6 +6919,10 @@ function openPersonalLandmarkDialog(spec) {
     try {
     closePlmLandmarkSettingsPopover();
     const mode = spec.mode === "edit" ? "edit" : "create";
+    const editItemEarly =
+      mode === "edit" && spec.id
+        ? personalLandmarksList.find((x) => x.id === spec.id)
+        : null;
     const plmPick = {
       iconId: normalizePlmIconId(
         spec.iconId != null ? spec.iconId : PLM_DEFAULT_ICON_ID,
@@ -6892,8 +6930,14 @@ function openPersonalLandmarkDialog(spec) {
       colorHex: normalizePlmColorHex(
         spec.colorHex != null ? spec.colorHex : PLM_DEFAULT_COLOR_NEW,
       ),
+      titleColorHex: normalizePlmTitleColorHex(
+        spec.titleColorHex != null
+          ? spec.titleColorHex
+          : editItemEarly?.titleColorHex,
+      ),
     };
     let activePlmTab = "icon";
+    let plmTextUi = null;
 
     function syncPlmPickerSelectionUi() {
       dlg.querySelectorAll(".tam-plm-icon-btn[data-plm-icon]").forEach((btn) => {
@@ -6904,6 +6948,16 @@ function openPersonalLandmarkDialog(spec) {
         const hx = btn.getAttribute("data-plm-color");
         btn.classList.toggle("selected", hx === plmPick.colorHex);
       });
+    }
+
+    function syncPlmTitleColorSelectionUi() {
+      if (!titleColorsEl) return;
+      titleColorsEl
+        .querySelectorAll(".tam-plm-color-btn[data-plm-title-color]")
+        .forEach((btn) => {
+          const hx = btn.getAttribute("data-plm-title-color");
+          btn.classList.toggle("selected", hx === plmPick.titleColorHex);
+        });
     }
 
     function renderIconButtons(container, ids) {
@@ -6936,6 +6990,22 @@ function openPersonalLandmarkDialog(spec) {
       }
     }
 
+    function renderTitleColorButtons() {
+      if (!titleColorsEl) return;
+      titleColorsEl.innerHTML = "";
+      for (const c of getPlmColorCatalog()) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "tam-plm-color-btn";
+        btn.dataset.plmTitleColor = c.hex;
+        btn.title = c.label;
+        btn.setAttribute("aria-label", c.label);
+        btn.style.backgroundColor = c.hex;
+        titleColorsEl.appendChild(btn);
+      }
+      syncPlmTitleColorSelectionUi();
+    }
+
     function rebuildPlmIconGrids() {
       const cap = getPlmFavoritesCap();
       const favIds = getPlmOrderedFavoriteIconIds(cap);
@@ -6966,6 +7036,17 @@ function openPersonalLandmarkDialog(spec) {
           cb.getAttribute("data-plm-color"),
         );
         syncPlmPickerSelectionUi();
+        return;
+      }
+      const tcb = ev.target.closest(".tam-plm-color-btn[data-plm-title-color]");
+      if (tcb) {
+        plmPick.titleColorHex = normalizePlmTitleColorHex(
+          tcb.getAttribute("data-plm-title-color"),
+        );
+        syncPlmTitleColorSelectionUi();
+        if (plmTextUi?.syncTitleColorHex) {
+          plmTextUi.syncTitleColorHex(plmPick.titleColorHex);
+        }
       }
     }
 
@@ -7062,6 +7143,7 @@ function openPersonalLandmarkDialog(spec) {
       capBandEl.value = String(getPlmCapFilterBandM());
     }
     rebuildPlmIconGrids();
+    renderTitleColorButtons();
     plmActivatePersonalLandmarkDialogTab(dlg, activePlmTab);
     dlg.addEventListener("click", onPlmDlgClick);
     dlg.addEventListener("click", onPlmTabClick);
@@ -7094,7 +7176,6 @@ function openPersonalLandmarkDialog(spec) {
     nameIn.value = initialName;
     descIn.value = initialDesc;
 
-    let plmTextUi = null;
     if (typeof window.plmCreateStructuredTextUi === "function") {
       plmTextUi = window.plmCreateStructuredTextUi({
         nameEl: nameIn,
@@ -7105,6 +7186,11 @@ function openPersonalLandmarkDialog(spec) {
         indesPanel,
         indirPanel,
         descPreview,
+        getTitleColorHex: () => plmPick.titleColorHex,
+        setTitleColorHex: (hex) => {
+          plmPick.titleColorHex = normalizePlmTitleColorHex(hex);
+          syncPlmTitleColorSelectionUi();
+        },
         prompt: (message, defaultValue) =>
           showAppPromptDialog(TAM_APP_DIALOG_TITLE, message, defaultValue ?? ""),
         confirm: (message) =>
@@ -7171,6 +7257,7 @@ function openPersonalLandmarkDialog(spec) {
         description,
         iconId: plmPick.iconId,
         colorHex: plmPick.colorHex,
+        titleColorHex: plmPick.titleColorHex,
         slots: [],
       });
     }
@@ -7236,6 +7323,7 @@ async function openPersonalLandmarkMarkerEditor(id) {
     description: plmLandmarkDescriptionText(item),
     iconId: item.iconId,
     colorHex: item.colorHex,
+    titleColorHex: item.titleColorHex,
   });
   if (r.action === "cancel") return;
   if (r.action === "save" && r.id) {
@@ -7342,6 +7430,7 @@ map.on("click", async (ev) => {
         description: r.description,
         iconId: r.iconId,
         colorHex: r.colorHex,
+        titleColorHex: r.titleColorHex,
         groupId: r.groupId,
         slots: r.slots || [],
       });
