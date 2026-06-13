@@ -229,11 +229,20 @@
   }
 
   /**
-   * Découpe la liste structurée (virgule + espace entre blocs), sans couper
+   * Normalise virgules / espaces saisis au clavier (mobile : virgule pleine chasse, etc.).
+   */
+  function plmNormalizeStructuralInput(raw) {
+    return String(raw ?? "")
+      .replace(/[\uFF0C\u060C\uFE50\uFE51\u201A\u201E]/g, ",")
+      .replace(/\u00A0/g, " ");
+  }
+
+  /**
+   * Découpe la liste structurée (virgule entre blocs), sans couper
    * à l’intérieur des guillemets ni des parenthèses.
    */
   function splitPlmStructuralList(raw) {
-    const s = String(raw ?? "");
+    const s = plmNormalizeStructuralInput(raw);
     if (!s.trim()) return [];
     const parts = [];
     let quote = null;
@@ -1593,26 +1602,36 @@
 
     async function addNamePreset() {
       const raw = await promptFn(
-        "Noms à ajouter (virgule entre variantes ; à l’intérieur des parenthèses, la virgule est conservée) :",
+        "Titre à ajouter (virgules entre variantes affichées l’une sous l’autre ; à l’intérieur des parenthèses, la virgule est conservée) :",
         "",
       );
       if (raw == null) return;
-      const batch = splitPlmStructuralList(raw)
+      const full = plmUnquoteUserToken(
+        plmNormalizeStructuralInput(raw).trim(),
+      );
+      if (!full) return;
+      const parts = splitPlmStructuralList(full)
         .map((bit) => plmUnquoteUserToken(bit).trim())
         .filter(Boolean);
-      if (!batch.length) return;
-      const cmrBatch = batch.filter((x) => isCmrStyleNamePreset(x));
-      const stdBatch = batch.filter((x) => !isCmrStyleNamePreset(x));
-      if (stdBatch.length) {
-        config.namePresets = sortNamePresets([
-          ...new Set([...config.namePresets, ...stdBatch]),
-        ]);
-      }
-      if (cmrBatch.length) {
+      const cmrBatch = parts.filter((x) => isCmrStyleNamePreset(x));
+      const isAllCmr =
+        parts.length > 0 && cmrBatch.length === parts.length;
+
+      if (isAllCmr) {
         const lineNum = getLineNums(config.lineCmr)[0] || "1";
         if (!config.lineCmr[lineNum]) config.lineCmr[lineNum] = [];
         config.lineCmr[lineNum] = sortNamePresets([
           ...new Set([...(config.lineCmr[lineNum] || []), ...cmrBatch]),
+        ]);
+      } else if (!isCmrStyleNamePreset(full)) {
+        config.namePresets = sortNamePresets([
+          ...new Set([...config.namePresets, full]),
+        ]);
+      } else {
+        const lineNum = getLineNums(config.lineCmr)[0] || "1";
+        if (!config.lineCmr[lineNum]) config.lineCmr[lineNum] = [];
+        config.lineCmr[lineNum] = sortNamePresets([
+          ...new Set([...(config.lineCmr[lineNum] || []), full]),
         ]);
       }
       saveConfig(config);
@@ -2971,4 +2990,6 @@
   window.plmStripTitleFromDescriptionRaw = plmStripTitleFromDescriptionRaw;
   window.plmCreateStructuredTextUi = createStructuredTextUi;
   window.plmCreateZoneNamePickerUi = createZoneNamePickerUi;
+  /** Révision parseur titres (vérification cache mobile : doit être ≥ 2). */
+  window.TAM_PLM_TITLE_PARSER_REV = 3;
 })();

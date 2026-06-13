@@ -5551,13 +5551,17 @@
         });
       })();
     </script>
-    <script src="simulateur_sae/tam_cloud_config.example.js"></script>
-    <script src="simulateur_sae/tam_cloud_config.js"></script>
-    <script src="simulateur_sae/simulateur_sae_0_personal_landmarks_catalog.js"></script>
-    <script src="simulateur_sae/simulateur_sae_0_plm_structured_text.js"></script>
-    <script src="simulateur_sae/simulateur_sae_1_state_mission.js"></script>
-    <script src="simulateur_sae/simulateur_sae_2_deviations.js"></script>
-    <script src="simulateur_sae/simulateur_sae_4_cloud_supabase.js"></script>
-    <script src="simulateur_sae/simulateur_sae_3_ui_simulation.js"></script>
+    <!-- Incrémenter TAM_SIM_ASSET_V à chaque déploiement (évite cache JS obsolète sur mobile). -->
+    <script>
+      window.TAM_SIM_ASSET_V = "20260605-plm3";
+    </script>
+    <script src="simulateur_sae/tam_cloud_config.example.js?v=20260605-plm3"></script>
+    <script src="simulateur_sae/tam_cloud_config.js?v=20260605-plm3"></script>
+    <script src="simulateur_sae/simulateur_sae_0_personal_landmarks_catalog.js?v=20260605-plm3"></script>
+    <script src="simulateur_sae/simulateur_sae_0_plm_structured_text.js?v=20260605-plm3"></script>
+    <script src="simulateur_sae/simulateur_sae_1_state_mission.js?v=20260605-plm3"></script>
+    <script src="simulateur_sae/simulateur_sae_2_deviations.js?v=20260605-plm3"></script>
+    <script src="simulateur_sae/simulateur_sae_4_cloud_supabase.js?v=20260605-plm3"></script>
+    <script src="simulateur_sae/simulateur_sae_3_ui_simulation.js?v=20260605-plm3"></script>
   </body>
 </html>
