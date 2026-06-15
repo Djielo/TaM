@@ -24,6 +24,10 @@ let tamStopRailSuppressInnerClickUntil = 0;
 let tamStopRailMapCloseWired = false;
 /** Cache des correspondances par arrêt (clé stop_id et nom normalisé). */
 let tamStopRailCorrespondenceByStop = null;
+/** Polylignes tram réseau 3M par ligne (T1…T5). */
+let tamTramNetworkPolylinesByLine = null;
+/** Arrêt tram : écart max (m) à la voie Open Data pour une correspondance affichée. */
+const TAM_TRAM_STOP_NETWORK_MAX_CROSS_M = 100;
 /** Temps de parcours issus du GTFS (voyage représentatif du pattern) pour le rail. */
 let tamStopRailGtfsSchedule = { ok: false, legSec: [], cumArriveSec: [] };
 /** Cache court des ETA temps réel (popups correspondances sur le rail, etc.). */
@@ -986,6 +990,103 @@ function addStopCorrespondenceEntry(store, key, routeItem) {
   }
 }
 
+function isTamTramLineCode(code) {
+  const n = Number(String(code || "").trim());
+  return Number.isInteger(n) && n >= 1 && n <= 5;
+}
+
+function getTamTramNetworkPolylinesByLine() {
+  if (tamTramNetworkPolylinesByLine) {
+    return tamTramNetworkPolylinesByLine;
+  }
+  const map = new Map();
+  const features = Array.isArray(data?.tram_network_features)
+    ? data.tram_network_features
+    : [];
+  for (const feature of features) {
+    const code = String(feature?.line_code || "").trim();
+    const coords = feature?.coordinates;
+    if (!code || !coords || coords.length < 2) {
+      continue;
+    }
+    if (!map.has(code)) {
+      map.set(code, []);
+    }
+    map.get(code).push(coords);
+  }
+  tamTramNetworkPolylinesByLine = map;
+  return tamTramNetworkPolylinesByLine;
+}
+
+function minCrossTrackMetersToTramNetwork(lineCode, lat, lon) {
+  const polylines = getTamTramNetworkPolylinesByLine().get(
+    String(lineCode || "").trim(),
+  );
+  if (!polylines?.length) {
+    return 0;
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return Infinity;
+  }
+  let bestDeg = Infinity;
+  for (const coords of polylines) {
+    const d = minDistPointToPolyline([lat, lon], coords);
+    if (d < bestDeg) {
+      bestDeg = d;
+    }
+  }
+  return bestDeg * 111000;
+}
+
+/** Correspondance tram : la voie 3M de la ligne passe à l’arrêt (pas une branche GTFS hors tracé). */
+function tramLineServesStopOnNetwork(lineCode, stopObj) {
+  if (!isTamTramLineCode(lineCode)) {
+    return true;
+  }
+  const lat = Number(stopObj?.lat);
+  const lon = Number(stopObj?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return false;
+  }
+  return (
+    minCrossTrackMetersToTramNetwork(lineCode, lat, lon) <=
+    TAM_TRAM_STOP_NETWORK_MAX_CROSS_M
+  );
+}
+
+/** Repère croisement : une autre ligne tram dessert un arrêt proche ET sur sa voie réseau. */
+function otherTramLineServesNearLatLng(lineCode, lat, lon, radiusM) {
+  if (!isTamTramLineCode(lineCode)) {
+    return true;
+  }
+  const patterns = Array.isArray(data?.patterns) ? data.patterns : [];
+  const code = String(lineCode || "").trim();
+  for (const p of patterns) {
+    if (String(p?.route_short_name || "").trim() !== code) {
+      continue;
+    }
+    for (const st of p?.stops || []) {
+      const dist = approximateGeoDistMeters(
+        lat,
+        lon,
+        Number(st?.lat),
+        Number(st?.lon),
+      );
+      if (!Number.isFinite(dist) || dist > radiusM) {
+        continue;
+      }
+      if (tramLineServesStopOnNetwork(code, st)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function crossingHintAllowedForOtherLine(lineCode, missionLat, missionLon) {
+  return otherTramLineServesNearLatLng(lineCode, missionLat, missionLon, 35);
+}
+
 function ensureTamStopRailCorrespondenceCache() {
   if (tamStopRailCorrespondenceByStop) {
     return tamStopRailCorrespondenceByStop;
@@ -1048,7 +1149,10 @@ function getStopCorrespondenceLines(stopObj) {
   }
   const filtered = [...merged.values()].filter((item) => {
     const code = String(item?.route_short_name || "").trim();
-    return code && code !== currentRouteCode;
+    if (!code || code === currentRouteCode) {
+      return false;
+    }
+    return tramLineServesStopOnNetwork(code, stopObj);
   });
   return sortLineItemsForDisplay(filtered);
 }
@@ -1060,6 +1164,189 @@ function styleStopCorrespondenceBadge(el, routeItem) {
   el.style.fontSize = "10px";
   el.style.fontWeight = "700";
   el.style.lineHeight = "1.1";
+}
+
+/** Fenêtre d’affichage carte (m) autour de chaque arrêt desservi. */
+const TAM_STOP_CORR_MAP_BEFORE_M = 25;
+const TAM_STOP_CORR_MAP_AFTER_M = 25;
+/** Décalage latéral (px écran) depuis l’axe du tracé actif (pas le point GTFS). */
+const TAM_STOP_CORR_MAP_LINE_OFFSET_PX = 20;
+let tamStopCorrMapStopIdx = -1;
+
+function isMapAtMissionDetailZoom() {
+  if (!map || typeof map.getZoom !== "function") return false;
+  const z = map.getZoom();
+  const maxZ =
+    typeof map.getMaxZoom === "function"
+      ? map.getMaxZoom()
+      : typeof PLM_MAP_MAX_ZOOM === "number"
+        ? PLM_MAP_MAX_ZOOM
+        : 19;
+  return z >= maxZ - 0.05;
+}
+
+/**
+ * Libellés sur norotatePane (comme les noms de zones) : jamais rotateWithView.
+ * Ancrage latéral depuis l’axe du tracé ; hauteur centrée sur l’arrêt GTFS.
+ */
+function tamStopCorrMapLabelPose(lat, lon, alongM) {
+  if (!map) {
+    return { latLng: L.latLng(lat, lon), iconAnchor: [0, 0] };
+  }
+  const axis = pointAtDistanceMeters(alongM);
+  const pAxis = map.latLngToContainerPoint(L.latLng(axis[0], axis[1]));
+  const pStop = map.latLngToContainerPoint(L.latLng(lat, lon));
+  const cap =
+    typeof plmMapHeadingUpActive === "function" && plmMapHeadingUpActive();
+  let dx = TAM_STOP_CORR_MAP_LINE_OFFSET_PX;
+  let dy = 0;
+  if (!cap) {
+    const brg = getTrackBearingDeg(alongM);
+    const brgRad = ((brg + 90) * Math.PI) / 180;
+    dx = Math.sin(brgRad) * TAM_STOP_CORR_MAP_LINE_OFFSET_PX;
+    dy = -Math.cos(brgRad) * TAM_STOP_CORR_MAP_LINE_OFFSET_PX;
+  }
+  const pPerp = L.point(pAxis.x + dx, pAxis.y + dy);
+  const pAnchor = L.point(pPerp.x, pStop.y);
+  return {
+    latLng: map.containerPointToLatLng(pAnchor),
+    iconAnchor: [0, 0],
+  };
+}
+
+function buildStopCorrespondenceMapLabelHtml(stopObj) {
+  const correspondences = getStopCorrespondenceLines(stopObj);
+  const name = String(stopObj?.stop_name || stopObj?.name || "-").trim();
+  const wrap = document.createElement("div");
+  wrap.className = "tam-stop-corr-map-label__card";
+  const title = document.createElement("div");
+  title.className = "tam-stop-corr-map-label__name";
+  title.textContent = name;
+  wrap.appendChild(title);
+  if (correspondences.length) {
+    const pills = document.createElement("div");
+    pills.className = "tam-stop-corr-map-label__pills";
+    for (const lineItem of correspondences) {
+      const badge = document.createElement("span");
+      badge.className = "tam-stop-corr-map-label__pill mission-context-pill";
+      badge.textContent = displayLineLabel(lineItem);
+      styleStopCorrespondenceBadge(badge, lineItem);
+      pills.appendChild(badge);
+    }
+    wrap.appendChild(pills);
+  }
+  return wrap.outerHTML;
+}
+
+function findStopIndexForCorrespondenceMapLabel(d) {
+  if (!currentPattern?.stops?.length || !stopMetersAlong.length) return -1;
+  if (!isMapAtMissionDetailZoom()) return -1;
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < currentPattern.stops.length; i++) {
+    const st = currentPattern.stops[i];
+    const sid = String(st?.stop_id || "");
+    if (skippedStopIdSet.has(sid)) continue;
+    const m = stopMetersAlong[i];
+    if (!Number.isFinite(m)) continue;
+    if (
+      d < m - TAM_STOP_CORR_MAP_BEFORE_M ||
+      d > m + TAM_STOP_CORR_MAP_AFTER_M
+    ) {
+      continue;
+    }
+    const dist = Math.abs(d - m);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+function clearStopCorrespondenceMapLabels() {
+  tamStopCorrMapStopIdx = -1;
+  if (
+    typeof stopCorrespondenceLabelsLayer !== "undefined" &&
+    stopCorrespondenceLabelsLayer?.clearLayers
+  ) {
+    stopCorrespondenceLabelsLayer.clearLayers();
+  }
+}
+
+function tamStopCorrMapApplyMarkerView(marker, lat, lon, alongM, html) {
+  const pose = tamStopCorrMapLabelPose(lat, lon, alongM);
+  marker.setLatLng(pose.latLng);
+  marker.setIcon(
+    L.divIcon({
+      className: "tam-stop-corr-map-label",
+      html,
+      iconAnchor: pose.iconAnchor,
+    }),
+  );
+  marker.options.rotateWithView = false;
+  if (typeof marker.setRotation === "function") marker.setRotation(0);
+  if (typeof marker.update === "function") marker.update();
+}
+
+/** Mode Cap / rotation carte : recalcul du décalage écran (comme plmRefreshZoneLabels). */
+function syncStopCorrespondenceMapLabelView() {
+  if (tamStopCorrMapStopIdx >= 0) {
+    updateStopCorrespondenceMapLabels(distanceAlongPathMeters || 0);
+  }
+}
+
+function updateStopCorrespondenceMapLabels(d) {
+  if (
+    typeof stopCorrespondenceLabelsLayer === "undefined" ||
+    !stopCorrespondenceLabelsLayer?.clearLayers ||
+    !map
+  ) {
+    return;
+  }
+  if (!currentPattern?.stops?.length) {
+    clearStopCorrespondenceMapLabels();
+    return;
+  }
+  const idx = findStopIndexForCorrespondenceMapLabel(d);
+  if (idx < 0) {
+    if (tamStopCorrMapStopIdx >= 0) clearStopCorrespondenceMapLabels();
+    return;
+  }
+  const st = currentPattern.stops[idx];
+  const lat = Number(st?.lat);
+  const lon = Number(st?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    clearStopCorrespondenceMapLabels();
+    return;
+  }
+  const html = buildStopCorrespondenceMapLabelHtml(st);
+  if (!html) {
+    clearStopCorrespondenceMapLabels();
+    return;
+  }
+  const alongM = stopMetersAlong[idx] || 0;
+  const layers = stopCorrespondenceLabelsLayer.getLayers?.() || [];
+  const existing = layers[0];
+  if (tamStopCorrMapStopIdx === idx && existing) {
+    tamStopCorrMapApplyMarkerView(existing, lat, lon, alongM, html);
+    return;
+  }
+  stopCorrespondenceLabelsLayer.clearLayers();
+  tamStopCorrMapStopIdx = idx;
+  const pose = tamStopCorrMapLabelPose(lat, lon, alongM);
+  const marker = L.marker(pose.latLng, {
+    icon: L.divIcon({
+      className: "tam-stop-corr-map-label",
+      html,
+      iconAnchor: pose.iconAnchor,
+    }),
+    interactive: false,
+    bubblingMouseEvents: false,
+    zIndexOffset: 410,
+    rotateWithView: false,
+  }).addTo(stopCorrespondenceLabelsLayer);
+  if (typeof marker.setRotation === "function") marker.setRotation(0);
 }
 
 function stopMatchesPatternStop(stopObj, patternStop) {
@@ -4180,12 +4467,26 @@ function getNetworkGeometryByLine(features, pattern, opts) {
       STOP_SUM_GEO_TIGHT_M,
     );
     if (best) {
-      return {
-        coords: best.geom.coords,
-        nom_ligne: best.candidate.nom_ligne,
-        sens: best.sens.raw || best.candidate.sens || "",
-        reversed: best.geom.reversed,
-      };
+      const firstStop = pattern?.stops?.[0];
+      let firstCrossM = 0;
+      if (firstStop) {
+        const cumBest = buildCumMetersForCoords(best.geom.coords);
+        const pr = projectLatLngOntoPolyline(
+          firstStop.lat,
+          firstStop.lon,
+          best.geom.coords,
+          cumBest,
+        );
+        firstCrossM = pr.crossTrackMeters;
+      }
+      if (firstCrossM <= TAM_NETWORK_PARTIAL_SLICE_MAX_CROSS_M) {
+        return {
+          coords: best.geom.coords,
+          nom_ligne: best.candidate.nom_ligne,
+          sens: best.sens.raw || best.candidate.sens || "",
+          reversed: best.geom.reversed,
+        };
+      }
     }
   }
 
@@ -4578,6 +4879,12 @@ function branchSegSeparatingFromMission(packed, junctionM) {
 }
 
 function pushTamJunctionHint(lineCode, junctionM, packed) {
+  const pt = pointAtDistanceMeters(junctionM);
+  if (
+    !crossingHintAllowedForOtherLine(lineCode, pt[0], pt[1])
+  ) {
+    return;
+  }
   const seg = branchSegSeparatingFromMission(packed, junctionM);
   if (!seg) {
     return;
@@ -4770,6 +5077,13 @@ function rebuildTamCrossingHints() {
       }
       const zoneLen = zoneEnd - zoneStart;
       if (zoneLen > TAM_CROSSING_HINT_MAX_MISSION_ZONE_M) {
+        resetZone();
+        return;
+      }
+      const pt = pointAtDistanceMeters(zoneCrossingMissionM);
+      if (
+        !crossingHintAllowedForOtherLine(lineCode, pt[0], pt[1])
+      ) {
         resetZone();
         return;
       }
@@ -4979,6 +5293,7 @@ function updateMapNavigation(opt) {
     plmOnMissionPositionUpdate(d, pos[0], pos[1]);
   }
   updateTamCrossingHintOverlay(d);
+  updateStopCorrespondenceMapLabels(d);
 }
 
 function currentStopIndexForDistance(d) {
@@ -5346,6 +5661,9 @@ function resetMapForNewContext(kind) {
   try {
     if (typeof clearTamCrossingHintOverlay === "function") {
       clearTamCrossingHintOverlay();
+    }
+    if (typeof clearStopCorrespondenceMapLabels === "function") {
+      clearStopCorrespondenceMapLabels();
     }
   } catch (e) {
     // ignore
@@ -8733,6 +9051,8 @@ fetch(`./simulation_data.json?v=${Date.now()}`, { cache: "no-store" })
   .then((resp) => resp.json())
   .then((json) => {
     data = json;
+    tamTramNetworkPolylinesByLine = null;
+    tamStopRailCorrespondenceByStop = null;
     datasetDigestLoaded = String(json?.meta?.dataset_digest || "");
     updateLines();
     if (typeof tamRefreshTramNetworkOverviewLayer === "function") {

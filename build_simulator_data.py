@@ -74,13 +74,23 @@ def renumber_pattern_variants(patterns, route_by_id):
     renumbered = []
     for (route_id, direction_id, headsign), items in groups.items():
         line_name = route_by_id[route_id]["route_short_name"]
-        items.sort(
-            key=lambda item: (
-                item["stop_count"],
-                item["start_stop"],
-                -item.get("trip_count", 0),
+        is_tram = str(route_by_id[route_id].get("route_type", "")) == "0"
+        if is_tram:
+            items.sort(
+                key=lambda item: (
+                    -item.get("trip_count", 0),
+                    -item["stop_count"],
+                    item["start_stop"],
+                )
             )
-        )
+        else:
+            items.sort(
+                key=lambda item: (
+                    item["stop_count"],
+                    item["start_stop"],
+                    -item.get("trip_count", 0),
+                )
+            )
         for idx, pattern in enumerate(items, start=1):
             pattern["pattern_id"] = (
                 f"{line_name}-{direction_id}-{headsign or 'sans_terminus'}-V{idx}"
@@ -283,6 +293,98 @@ def parse_network_features(raw_geojson, line_key_candidates):
     return features
 
 
+TRAM_NETWORK_MAX_START_CROSS_M = 120.0
+# Courses GTFS rattachées à une ligne tram mais dont le départ n’est pas sur la voie 3M.
+TRAM_BLOCKED_BRANCH_STARTS = frozenset(
+    {
+        ("1", "observatoire"),
+    }
+)
+
+
+def _point_to_segment_dist_deg(px, py, ax, ay, bx, by):
+    dx = bx - ax
+    dy = by - ay
+    if abs(dx) < 1e-12 and abs(dy) < 1e-12:
+        return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+    qx = ax + t * dx
+    qy = ay + t * dy
+    return ((px - qx) ** 2 + (py - qy) ** 2) ** 0.5
+
+
+def min_cross_track_meters_to_polylines(lat, lon, polylines):
+    if not polylines:
+        return 0.0
+    best_deg = float("inf")
+    for coords in polylines:
+        if not coords or len(coords) < 2:
+            continue
+        for i in range(len(coords) - 1):
+            a = coords[i]
+            b = coords[i + 1]
+            d = _point_to_segment_dist_deg(lat, lon, a[0], a[1], b[0], b[1])
+            if d < best_deg:
+                best_deg = d
+    if best_deg == float("inf"):
+        return float("inf")
+    return best_deg * 111000.0
+
+
+def fold_stop_label(text):
+    import unicodedata
+
+    s = unicodedata.normalize("NFD", str(text or ""))
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    return s.lower().strip()
+
+
+def tram_features_by_line(tram_network_features):
+    grouped = defaultdict(list)
+    for feature in tram_network_features or []:
+        code = str(feature.get("line_code") or "").strip()
+        coords = feature.get("coordinates") or []
+        if code and len(coords) >= 2:
+            grouped[code].append(coords)
+    return grouped
+
+
+def pattern_start_cross_track_m(pattern, tram_by_line):
+    line = str(pattern.get("route_short_name") or "").strip()
+    stops = pattern.get("stops") or []
+    if not line or not stops:
+        return 0.0
+    first = stops[0]
+    try:
+        lat = float(first.get("lat"))
+        lon = float(first.get("lon"))
+    except (TypeError, ValueError):
+        return float("inf")
+    return min_cross_track_meters_to_polylines(lat, lon, tram_by_line.get(line, []))
+
+
+def is_tram_pattern_kept(pattern, route_by_id, tram_by_line):
+    route = route_by_id.get(pattern.get("route_id"), {})
+    if str(route.get("route_type", "")) != "0":
+        return True
+    line = str(pattern.get("route_short_name") or "").strip()
+    start_key = fold_stop_label(pattern.get("start_stop"))
+    if (line, start_key) in TRAM_BLOCKED_BRANCH_STARTS:
+        return False
+    cross_m = pattern_start_cross_track_m(pattern, tram_by_line)
+    return cross_m <= TRAM_NETWORK_MAX_START_CROSS_M
+
+
+def apply_tram_network_alignment_filter(patterns, route_by_id, tram_network_features):
+    """Écarte les courses tram dont le départ GTFS est hors voie Open Data (ex. T1 Observatoire)."""
+    tram_by_line = tram_features_by_line(tram_network_features)
+    kept = []
+    for pattern in patterns:
+        if is_tram_pattern_kept(pattern, route_by_id, tram_by_line):
+            kept.append(pattern)
+    return kept
+
+
 def build_data():
     routes = read_csv("routes.txt")
     trips = read_csv("trips.txt")
@@ -413,6 +515,15 @@ def build_data():
 
     numbered_patterns = apply_t4_official_corrections(numbered_patterns, stops_by_id)
     numbered_patterns = dedupe_patterns_by_branch_endpoints(numbered_patterns)
+
+    raw_bus_network = read_network_geojson("MMM_MMM_BusLigne.json")
+    raw_tram_network = read_network_geojson("MMM_MMM_LigneTram.json")
+    bus_network_features = parse_network_features(raw_bus_network, ["num_commercial", "num_exploitation"])
+    tram_network_features = parse_network_features(raw_tram_network, ["num_exploitation", "num_commercial"])
+
+    numbered_patterns = apply_tram_network_alignment_filter(
+        numbered_patterns, route_by_id, tram_network_features
+    )
     numbered_patterns = renumber_pattern_variants(numbered_patterns, route_by_id)
 
     numbered_patterns.sort(
@@ -424,11 +535,6 @@ def build_data():
             p["stop_count"],
         )
     )
-
-    raw_bus_network = read_network_geojson("MMM_MMM_BusLigne.json")
-    raw_tram_network = read_network_geojson("MMM_MMM_LigneTram.json")
-    bus_network_features = parse_network_features(raw_bus_network, ["num_commercial", "num_exploitation"])
-    tram_network_features = parse_network_features(raw_tram_network, ["num_exploitation", "num_commercial"])
 
     dataset_digest = compute_dataset_digest(GTFS_DIR)
 
