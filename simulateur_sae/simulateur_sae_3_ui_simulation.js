@@ -4054,6 +4054,75 @@ function endpointGeometryScore(coords, start, end) {
   };
 }
 
+/** Écart latéral max (m) pour ancrer une mission partielle sur la voie réseau. */
+const TAM_NETWORK_PARTIAL_SLICE_MAX_CROSS_M = 120;
+
+/**
+ * Extrait le tronçon de voie entre le premier et le dernier arrêt GTFS
+ * (missions partielles, ex. L2 Sabines ↔ Comédie sur la polyligne ligne entière).
+ */
+function sliceNetworkPolylineForPattern(polylineCoords, pattern) {
+  const stops = pattern?.stops;
+  if (!polylineCoords || polylineCoords.length < 2 || !stops?.length) {
+    return null;
+  }
+  const cum = buildCumMetersForCoords(polylineCoords);
+  const total = cum[cum.length - 1] || 0;
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  const p0 = projectLatLngOntoPolyline(
+    first.lat,
+    first.lon,
+    polylineCoords,
+    cum,
+  );
+  const p1 = projectLatLngOntoPolyline(
+    last.lat,
+    last.lon,
+    polylineCoords,
+    cum,
+  );
+  if (
+    p0.crossTrackMeters > TAM_NETWORK_PARTIAL_SLICE_MAX_CROSS_M ||
+    p1.crossTrackMeters > TAM_NETWORK_PARTIAL_SLICE_MAX_CROSS_M
+  ) {
+    return null;
+  }
+  const sliced = pathWindowOnPolyline(
+    polylineCoords,
+    cum,
+    total,
+    p0.alongMeters,
+    p1.alongMeters,
+  );
+  return sliced.length >= 2 ? sliced : null;
+}
+
+function pickBestNetworkGeometryCandidate(scored, stopSumLabelFallbackM, stopSumGeoTightM) {
+  if (!scored.length) return null;
+  const bestStops = Math.min(...scored.map((s) => s.stopsScore));
+  let pool = scored;
+  if (bestStops > stopSumLabelFallbackM) {
+    const maxLabel = Math.max(...scored.map((s) => s.labelScore));
+    if (maxLabel >= 4) {
+      pool = scored.filter((s) => s.labelScore >= maxLabel - 1);
+    }
+  } else {
+    pool = scored.filter(
+      (s) => s.stopsScore <= bestStops + stopSumGeoTightM,
+    );
+  }
+  if (!pool.length) {
+    pool = scored;
+  }
+  return pool.reduce((a, b) =>
+    a.stopsScore + (a.geomScore || 0) * 5000 <=
+    b.stopsScore + (b.geomScore || 0) * 5000
+      ? a
+      : b,
+  );
+}
+
 function getNetworkGeometryByLine(features, pattern, opts) {
   if (!features.length) return null;
   const o = opts || {};
@@ -4098,39 +4167,64 @@ function getNetworkGeometryByLine(features, pattern, opts) {
       candidate,
       sens,
       geom,
+      geomScore: geom.score,
       stopsScore: patternStopsAlignmentScore(geom.coords, pattern),
       labelScore: scoreNetworkFeatureLabelMatch(candidate, pattern),
     });
   }
-  if (!scored.length) return null;
 
-  const bestStops = Math.min(...scored.map((s) => s.stopsScore));
-  let pool = scored;
-  if (bestStops > STOP_SUM_LABEL_FALLBACK_M) {
-    const maxLabel = Math.max(...scored.map((s) => s.labelScore));
-    if (maxLabel >= 4) {
-      pool = scored.filter((s) => s.labelScore >= maxLabel - 1);
-    }
-  } else {
-    pool = scored.filter(
-      (s) => s.stopsScore <= bestStops + STOP_SUM_GEO_TIGHT_M,
+  if (scored.length) {
+    const best = pickBestNetworkGeometryCandidate(
+      scored,
+      STOP_SUM_LABEL_FALLBACK_M,
+      STOP_SUM_GEO_TIGHT_M,
     );
-  }
-  if (!pool.length) {
-    pool = scored;
+    if (best) {
+      return {
+        coords: best.geom.coords,
+        nom_ligne: best.candidate.nom_ligne,
+        sens: best.sens.raw || best.candidate.sens || "",
+        reversed: best.geom.reversed,
+      };
+    }
   }
 
-  const best = pool.reduce((a, b) =>
-    a.stopsScore + a.geom.score * 5000 <= b.stopsScore + b.geom.score * 5000
-      ? a
-      : b,
+  if (!o.allowPartialSlice) {
+    return null;
+  }
+
+  const partialScored = [];
+  for (const candidate of candidates) {
+    const sens = parseTamNetworkSens(candidate.sens);
+    partialScored.push({
+      candidate,
+      sens,
+      geomScore: 0,
+      stopsScore: patternStopsAlignmentScore(candidate.coordinates, pattern),
+      labelScore: scoreNetworkFeatureLabelMatch(candidate, pattern),
+    });
+  }
+  const bestPartial = pickBestNetworkGeometryCandidate(
+    partialScored,
+    STOP_SUM_LABEL_FALLBACK_M,
+    STOP_SUM_GEO_TIGHT_M,
   );
-
+  if (!bestPartial) {
+    return null;
+  }
+  const sliced = sliceNetworkPolylineForPattern(
+    bestPartial.candidate.coordinates,
+    pattern,
+  );
+  if (!sliced) {
+    return null;
+  }
   return {
-    coords: best.geom.coords,
-    nom_ligne: best.candidate.nom_ligne,
-    sens: best.sens.raw || best.candidate.sens || "",
-    reversed: best.geom.reversed,
+    coords: sliced,
+    nom_ligne: bestPartial.candidate.nom_ligne,
+    sens: bestPartial.sens.raw || bestPartial.candidate.sens || "",
+    reversed: false,
+    partial: true,
   };
 }
 
@@ -5734,10 +5828,15 @@ function getBusNetworkGeometry(pattern) {
 }
 
 function getTramNetworkGeometry(pattern, opts) {
+  const o = {
+    requireExpectedWay: true,
+    allowPartialSlice: true,
+    ...(opts || {}),
+  };
   return getNetworkGeometryByLine(
     data?.tram_network_features || [],
     pattern,
-    opts,
+    o,
   );
 }
 
@@ -5803,6 +5902,16 @@ async function setMission(pattern, opts) {
     activeCoordinates = busGeom.coords;
     const sensNote = busGeom.sens ? `, ${busGeom.sens}` : "";
     traceSource = `Réseau bus 3M (${busGeom.nom_ligne || "ligne"}${sensNote})`;
+  } else if (isTram) {
+    activeCoordinates = [];
+    traceSource = "Réseau tram indisponible";
+    console.warn(
+      "Tracé réseau tram introuvable pour la mission",
+      pattern.pattern_id || pattern.route_short_name,
+    );
+    tamAppAlert(
+      "Tracé tram réseau indisponible pour cette mission. Vérifiez les données Open Data (LigneTram) et rechargez simulation_data.json.",
+    );
   } else {
     activeCoordinates = await fetchRoadGeometry(pattern);
     if (activeCoordinates.length && activeCoordinates !== pattern.coordinates) {
