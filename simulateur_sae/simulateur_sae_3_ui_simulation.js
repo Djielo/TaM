@@ -6963,9 +6963,7 @@ const HUD_ICON_SCRUB_BACK =
 const HUD_ICON_SCRUB_FWD =
   '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7l5 5-5 5M13 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-const MAP_HUD_TAP_SPEED_SEQUENCE = [1, 2, 3];
-const MAP_HUD_SCRUB_HOLD_MS = 380;
-const MAP_HUD_SCRUB_HOLD_SPEED = 10;
+const MAP_HUD_TAP_SPEED_SEQUENCE = [1, 2, 3, 10];
 
 function cycleMapHudTapSpeed(current) {
   const idx = MAP_HUD_TAP_SPEED_SEQUENCE.indexOf(current);
@@ -6975,15 +6973,12 @@ function cycleMapHudTapSpeed(current) {
 }
 
 function getEffectiveSimSpeedMult() {
-  if (simScrubHold) {
-    return MAP_HUD_SCRUB_HOLD_SPEED;
-  }
   return simDirection >= 0 ? simSpeedForward : simSpeedBackward;
 }
 
 function syncSimSpeedFromHud() {
   speed = getEffectiveSimSpeedMult();
-  if (speedSelect && simDirection >= 0 && !simScrubHold) {
+  if (speedSelect && simDirection >= 0) {
     const v = String(simSpeedForward);
     if (speedSelect.querySelector(`option[value="${v}"]`)) {
       speedSelect.value = v;
@@ -6991,140 +6986,108 @@ function syncSimSpeedFromHud() {
   }
 }
 
+function cycleMapHudSpeedForDirection(direction) {
+  if (direction > 0) {
+    simSpeedForward = cycleMapHudTapSpeed(simSpeedForward);
+    simDirection = 1;
+  } else {
+    simSpeedBackward = cycleMapHudTapSpeed(simSpeedBackward);
+    simDirection = -1;
+  }
+  syncSimSpeedFromHud();
+}
+
+function applyMapHudScrubTap(direction) {
+  if (previewOnlyMode || driveMode === DRIVE_MODE.REAL) {
+    return;
+  }
+  if (!currentPattern || pathTotalMeters <= 0) {
+    return;
+  }
+
+  const isActiveDir = simDirection === direction;
+  const pending = mapHudScrubPendingDirection;
+
+  if (running && !isActiveDir) {
+    running = false;
+    lastRafTime = 0;
+    mapHudScrubPendingDirection = direction;
+    refreshMapHudScrubLabels();
+    refreshMapMissionHudState();
+    return;
+  }
+
+  if (!running && pending === direction) {
+    mapHudScrubPendingDirection = 0;
+    simDirection = direction;
+    syncSimSpeedFromHud();
+    if (
+      typeof blockMissionResumeIfUnsavedDeviation === "function" &&
+      blockMissionResumeIfUnsavedDeviation()
+    ) {
+      return;
+    }
+    running = true;
+    refreshMapHudScrubLabels();
+    refreshMapMissionHudState();
+    refreshMapSpeedHud();
+    return;
+  }
+
+  if (!running && pending !== 0 && pending !== direction) {
+    mapHudScrubPendingDirection = direction;
+    refreshMapHudScrubLabels();
+    refreshMapMissionHudState();
+    return;
+  }
+
+  cycleMapHudSpeedForDirection(direction);
+  refreshMapHudScrubLabels();
+  refreshMapMissionHudState();
+}
+
 function refreshMapHudScrubLabels() {
   const revB = document.getElementById("mapHudRewindBtn");
   const fwdB = document.getElementById("mapHudFastFwdBtn");
   if (!revB || !fwdB) return;
 
-  const revMult = simScrubHold && simDirection < 0
-    ? MAP_HUD_SCRUB_HOLD_SPEED
-    : simSpeedBackward;
-  const fwdMult = simScrubHold && simDirection > 0
-    ? MAP_HUD_SCRUB_HOLD_SPEED
-    : simSpeedForward;
+  const revMult = simSpeedBackward;
+  const fwdMult = simSpeedForward;
 
   const revLabel = revB.querySelector(".map-mission-hud__scrub-speed");
   const fwdLabel = fwdB.querySelector(".map-mission-hud__scrub-speed");
   if (revLabel) revLabel.textContent = `×${revMult}`;
   if (fwdLabel) fwdLabel.textContent = `×${fwdMult}`;
 
-  const revHold = simScrubHold && simDirection < 0;
-  const fwdHold = simScrubHold && simDirection > 0;
-  revB.classList.toggle("map-mission-hud__btn--scrub-hold", revHold);
-  fwdB.classList.toggle("map-mission-hud__btn--scrub-hold", fwdHold);
+  revB.classList.toggle(
+    "map-mission-hud__btn--scrub-pending",
+    mapHudScrubPendingDirection === -1,
+  );
+  fwdB.classList.toggle(
+    "map-mission-hud__btn--scrub-pending",
+    mapHudScrubPendingDirection === 1,
+  );
   revB.classList.toggle(
     "map-mission-hud__btn--scrub-active",
-    !revHold && simDirection < 0 && running,
+    simDirection < 0 && running,
   );
   fwdB.classList.toggle(
     "map-mission-hud__btn--scrub-active",
-    !fwdHold && simDirection > 0 && running,
+    simDirection > 0 && running,
   );
 
   revB.setAttribute("aria-label", `Recul rapide ×${revMult}`);
   fwdB.setAttribute("aria-label", `Avance rapide ×${fwdMult}`);
-  revB.title = `Recul rapide (×${revMult}) — tap ×1/×2/×3, maintien ×10`;
-  fwdB.title = `Avance rapide (×${fwdMult}) — tap ×1/×2/×3, maintien ×10`;
+  revB.title = `Recul rapide (×${revMult}) — tap ×1, ×2, ×3, ×10`;
+  fwdB.title = `Avance rapide (×${fwdMult}) — tap ×1, ×2, ×3, ×10`;
 }
 
 function setupMapHudScrubButton(btn, direction) {
   if (!btn) return;
-  let holdTimer = null;
-  let holdActive = false;
-
-  const clearHoldTimer = () => {
-    if (holdTimer != null) {
-      clearTimeout(holdTimer);
-      holdTimer = null;
-    }
-  };
-
-  const beginHoldScrub = () => {
-    clearHoldTimer();
-    if (holdActive || previewOnlyMode || driveMode === DRIVE_MODE.REAL) {
-      return;
-    }
-    holdActive = true;
-    simScrubHold = true;
-    simDirection = direction;
-    syncSimSpeedFromHud();
-    if (
-      currentPattern &&
-      pathTotalMeters > 0 &&
-      !running &&
-      typeof blockMissionResumeIfUnsavedDeviation === "function" &&
-      blockMissionResumeIfUnsavedDeviation()
-    ) {
-      simScrubHold = false;
-      holdActive = false;
-      return;
-    }
-    if (currentPattern && pathTotalMeters > 0) {
-      running = true;
-    }
-    refreshMapHudScrubLabels();
-    refreshMapMissionHudState();
-  };
-
-  const endHoldScrub = (didTap) => {
-    clearHoldTimer();
-    if (holdActive) {
-      holdActive = false;
-      simScrubHold = false;
-      syncSimSpeedFromHud();
-      refreshMapHudScrubLabels();
-      refreshMapSpeedHud();
-      return;
-    }
-    if (!didTap) return;
-    if (direction > 0) {
-      simSpeedForward = cycleMapHudTapSpeed(simSpeedForward);
-      simDirection = 1;
-    } else {
-      simSpeedBackward = cycleMapHudTapSpeed(simSpeedBackward);
-      simDirection = -1;
-    }
-    syncSimSpeedFromHud();
-    refreshMapHudScrubLabels();
-  };
-
-  btn.addEventListener("pointerdown", (ev) => {
-    if (ev.button !== 0 && ev.pointerType === "mouse") return;
+  btn.addEventListener("click", (ev) => {
     ev.preventDefault();
-    btn.setPointerCapture(ev.pointerId);
-    clearHoldTimer();
-    holdTimer = setTimeout(beginHoldScrub, MAP_HUD_SCRUB_HOLD_MS);
-  });
-
-  const onPointerEnd = (ev) => {
-    const wasTap = holdTimer != null;
-    clearHoldTimer();
-    if (btn.hasPointerCapture(ev.pointerId)) {
-      btn.releasePointerCapture(ev.pointerId);
-    }
-    endHoldScrub(wasTap && !holdActive);
-  };
-
-  btn.addEventListener("pointerup", onPointerEnd);
-  btn.addEventListener("pointercancel", (ev) => {
-    clearHoldTimer();
-    if (holdActive) {
-      holdActive = false;
-      simScrubHold = false;
-      syncSimSpeedFromHud();
-      refreshMapHudScrubLabels();
-    }
-    if (btn.hasPointerCapture(ev.pointerId)) {
-      btn.releasePointerCapture(ev.pointerId);
-    }
-  });
-  btn.addEventListener("lostpointercapture", () => {
-    if (holdActive) {
-      holdActive = false;
-      simScrubHold = false;
-      syncSimSpeedFromHud();
-      refreshMapHudScrubLabels();
-    }
+    ev.stopPropagation();
+    applyMapHudScrubTap(direction);
   });
 }
 function refreshMapSpeedHud() {
@@ -7317,9 +7280,9 @@ function togglePauseResumeMission() {
   running = !running;
   if (!running) {
     lastRafTime = 0;
-    simScrubHold = false;
     syncSimSpeedFromHud();
   } else {
+    mapHudScrubPendingDirection = 0;
     syncSimSpeedFromHud();
   }
   refreshMapMissionHudState();
@@ -7820,7 +7783,7 @@ function tickRaf(now) {
         if (running) {
           running = false;
           lastRafTime = 0;
-          simScrubHold = false;
+          mapHudScrubPendingDirection = 0;
           syncSimSpeedFromHud();
           refreshMapMissionHudState();
         }
@@ -7855,7 +7818,7 @@ startBtn.addEventListener("click", () => {
     simSpeedForward = 1;
   }
   simSpeedBackward = 1;
-  simScrubHold = false;
+  mapHudScrubPendingDirection = 0;
   syncSimSpeedFromHud();
   const token = ++previewMissionToken;
   running = false;

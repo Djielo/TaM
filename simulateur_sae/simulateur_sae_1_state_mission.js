@@ -25,11 +25,11 @@ let previewOnlyMode = false;
 let speed = 1;
 /** Sens simulation HUD carte : 1 = avant, -1 = arrière. */
 let simDirection = 1;
-/** Multiplicateurs au tap (×1, ×2, ×3) — avance et recul indépendants. */
+/** Multiplicateurs au tap (×1, ×2, ×3, ×10) — avance et recul indépendants. */
 let simSpeedForward = 1;
 let simSpeedBackward = 1;
-/** true pendant un maintien sur avance/recul rapide (×10). */
-let simScrubHold = false;
+/** Changement de sens demandé : pause d’abord, 2ᵉ tap sur le bouton opposé pour repartir. */
+let mapHudScrubPendingDirection = 0;
 /** rAF : vitesse en m/s réelle, pas "un pas par sommet" (croisements). */
 let lastRafTime = 0;
 /** Mètres par seconde (à x1) : la simulation ne dépend plus de la densité des sommets. */
