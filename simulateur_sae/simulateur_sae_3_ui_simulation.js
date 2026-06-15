@@ -4511,9 +4511,16 @@ const TAM_CROSSING_HINT_CLOSE_M = 20;
 const TAM_CROSSING_HINT_SAMPLE_STEP_M = 15;
 /**
  * Au-delà de cette longueur sur la mission, les voies sont considérées communes
- * (même tracé) : pas de repère — seulement les croisements ponctuels.
+ * (même tracé) : pas de repère croisement — voir jonctions (fusion / séparation).
  */
 const TAM_CROSSING_HINT_MAX_MISSION_ZONE_M = 70;
+/** Même tracé que la mission active (écart latéral max). */
+const TAM_JUNCTION_COINCIDENT_M = 4;
+const TAM_JUNCTION_BRANCH_M = 50;
+/** Fenêtre d’affichage mission autour du point de jonction (convergence et divergence). */
+const TAM_JUNCTION_SHOW_BEFORE_M = 50;
+const TAM_JUNCTION_SHOW_AFTER_M = 50;
+
 const TAM_CROSSING_HINT_POLYLINE_OPTS = {
   weight: 5,
   opacity: 0.9,
@@ -4522,6 +4529,123 @@ const TAM_CROSSING_HINT_POLYLINE_OPTS = {
 };
 
 let tamCrossingHints = [];
+
+function alongOtherAtMissionM(packed, dM) {
+  const pt = pointAtDistanceOnPolyline(
+    activeCoordinates,
+    pathCumMeters,
+    pathTotalMeters,
+    dM,
+  );
+  return projectLatLngOntoPolyline(
+    pt[0],
+    pt[1],
+    packed.coords,
+    packed.cum,
+  ).alongMeters;
+}
+
+function crossTrackMissionAtLatLng(lat, lng) {
+  return projectLatLngOntoActivePath(lat, lng).crossTrackMeters;
+}
+
+function branchSegSeparatingFromMission(packed, junctionM) {
+  const { coords, cum, total } = packed;
+  const alongJ = alongOtherAtMissionM(packed, junctionM);
+  const m = TAM_JUNCTION_BRANCH_M;
+  const minSep = 8;
+  let bestSign = null;
+  let bestSep = -1;
+  for (const sign of [1, -1]) {
+    const tipAlong = alongJ + sign * m;
+    if (tipAlong < 0 || tipAlong > total) {
+      continue;
+    }
+    const tip = pointAtDistanceOnPolyline(coords, cum, total, tipAlong);
+    const sep = crossTrackMissionAtLatLng(tip[0], tip[1]);
+    if (sep > bestSep) {
+      bestSep = sep;
+      bestSign = sign;
+    }
+  }
+  if (bestSign == null || bestSep < minSep) {
+    return null;
+  }
+  const lo = bestSign > 0 ? alongJ : alongJ - m;
+  const hi = bestSign > 0 ? alongJ + m : alongJ;
+  const seg = pathWindowOnPolyline(coords, cum, total, lo, hi);
+  return seg.length >= 2 ? seg : null;
+}
+
+function pushTamJunctionHint(lineCode, junctionM, packed) {
+  const seg = branchSegSeparatingFromMission(packed, junctionM);
+  if (!seg) {
+    return;
+  }
+  pushTamCrossingHint(
+    lineCode,
+    Math.max(0, junctionM - TAM_JUNCTION_SHOW_BEFORE_M),
+    Math.min(pathTotalMeters, junctionM + TAM_JUNCTION_SHOW_AFTER_M),
+    seg,
+  );
+}
+
+/**
+ * Jonctions : tronçons où la mission et une autre voie ont les mêmes coordonnées
+ * (écart ≤ 4 m sur la polyligne la plus proche), puis ne les ont plus.
+ */
+function rebuildTamJunctionHints(samples, otherByLine) {
+  for (const lineCode of otherByLine.keys()) {
+    let zoneStart = null;
+    let zoneEnd = null;
+    let zonePacked = null;
+
+    const resetZone = () => {
+      zoneStart = null;
+      zoneEnd = null;
+      zonePacked = null;
+    };
+
+    const flushZone = () => {
+      if (zoneStart == null || zoneEnd == null || !zonePacked) {
+        resetZone();
+        return;
+      }
+      const len = zoneEnd - zoneStart;
+      if (len <= TAM_CROSSING_HINT_MAX_MISSION_ZONE_M) {
+        resetZone();
+        return;
+      }
+      pushTamJunctionHint(lineCode, zoneStart, zonePacked);
+      pushTamJunctionHint(lineCode, zoneEnd, zonePacked);
+      resetZone();
+    };
+
+    for (const sample of samples) {
+      const hit = sample.byLine[lineCode];
+      const coincident =
+        hit && hit.crossTrackMeters <= TAM_JUNCTION_COINCIDENT_M;
+      if (coincident) {
+        if (
+          zoneStart != null &&
+          zonePacked &&
+          hit.packed !== zonePacked
+        ) {
+          flushZone();
+        }
+        if (zoneStart == null) {
+          zoneStart = sample.dM;
+          zonePacked = hit.packed;
+        }
+        zoneEnd = sample.dM;
+        zonePacked = hit.packed;
+      } else if (zoneStart != null) {
+        flushZone();
+      }
+    }
+    flushZone();
+  }
+}
 
 function buildCrossingHintSegmentOnOtherLine(packed, junctionAlong) {
   const m = TAM_CROSSING_HINT_M;
@@ -4532,6 +4656,19 @@ function buildCrossingHintSegmentOnOtherLine(packed, junctionAlong) {
     junctionAlong - m,
     junctionAlong + m,
   );
+}
+
+function pushTamCrossingHint(lineCode, showFromM, showUntilM, segCoords) {
+  if (!segCoords || segCoords.length < 2) {
+    return;
+  }
+  tamCrossingHints.push({
+    lineCode,
+    showFromM,
+    showUntilM,
+    segCoords,
+    color: tamRouteColorForOverview(lineCode),
+  });
 }
 
 function clearTamCrossingHintOverlay() {
@@ -4606,7 +4743,7 @@ function rebuildTamCrossingHints() {
         byLine[lineCode] = best;
       }
     }
-    samples.push({ dM, byLine });
+    samples.push({ dM, pt, byLine });
   }
 
   for (const lineCode of otherByLine.keys()) {
@@ -4642,15 +4779,12 @@ function rebuildTamCrossingHints() {
         zonePacked,
         zoneBestSample.alongMeters,
       );
-      if (segCoords.length >= 2) {
-        tamCrossingHints.push({
-          lineCode,
-          showFromM: Math.max(0, crossingM - m),
-          showUntilM: Math.min(pathTotalMeters, crossingM + m),
-          segCoords,
-          color: tamRouteColorForOverview(lineCode),
-        });
-      }
+      pushTamCrossingHint(
+        lineCode,
+        Math.max(0, crossingM - m),
+        Math.min(pathTotalMeters, crossingM + m),
+        segCoords,
+      );
       resetZone();
     };
 
@@ -4678,6 +4812,8 @@ function rebuildTamCrossingHints() {
     }
     flushZone();
   }
+
+  rebuildTamJunctionHints(samples, otherByLine);
 }
 
 function updateTamCrossingHintOverlay(dNow) {
