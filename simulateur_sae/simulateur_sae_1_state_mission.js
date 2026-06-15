@@ -4997,6 +4997,8 @@ const tamCrossingHintLayer = L.layerGroup().addTo(map);
 const allStopsLayer = L.layerGroup().addTo(map);
 const skippedStopsLayer = L.layerGroup().addTo(map);
 const provisionalStopsLayer = L.layerGroup().addTo(map);
+/** Libellé arrêt + correspondances (fenêtre d’approche, zoom max). */
+const stopCorrespondenceLabelsLayer = L.layerGroup().addTo(map);
 /** Repères personnels (carrefours, points d’intérêt) — persistance locale. */
 const personalLandmarksLayer = L.layerGroup();
 /** Zones carte (cercle / rectangle), indépendantes des repères. */
@@ -6403,6 +6405,7 @@ function syncPlmLabelsToggleUi() {
   if (!el) return;
   if (plmLabelsVisible) {
     el.classList.add("is-on");
+    el.classList.remove("is-off");
     el.title = "Masquer les libellés des repères (noms et descriptions)";
     el.setAttribute(
       "aria-label",
@@ -6410,6 +6413,7 @@ function syncPlmLabelsToggleUi() {
     );
   } else {
     el.classList.remove("is-on");
+    el.classList.add("is-off");
     el.title = "Afficher les libellés des repères (noms et descriptions)";
     el.setAttribute(
       "aria-label",
@@ -6482,10 +6486,12 @@ function syncPlmZoneLabelsToggleUi() {
   if (!el) return;
   if (plmZoneLabelsVisible) {
     el.classList.add("is-on");
+    el.classList.remove("is-off");
     el.title = "Masquer les noms des zones";
     el.setAttribute("aria-label", "Masquer les noms des zones sur la carte.");
   } else {
     el.classList.remove("is-on");
+    el.classList.add("is-off");
     el.title = "Afficher les noms des zones";
     el.setAttribute(
       "aria-label",
@@ -7362,6 +7368,9 @@ map.on("zoom", () => {
 });
 map.on("rotate", () => {
   plmSyncLandmarkMarkerRotations();
+  if (typeof syncStopCorrespondenceMapLabelView === "function") {
+    syncStopCorrespondenceMapLabelView();
+  }
   plmScheduleMagneticRedraw();
   plmScheduleLabelsRefresh();
 });
@@ -7376,6 +7385,9 @@ map.on("zoomend", () => {
 map.on("moveend", () => {
   plmScheduleLabelsRefresh();
   plmScheduleZoneMissionHudRefresh();
+  if (typeof syncStopCorrespondenceMapLabelView === "function") {
+    syncStopCorrespondenceMapLabelView();
+  }
 });
 
 function normalizeProvisionalStopNameInput(raw) {
@@ -7696,6 +7708,9 @@ function applyMapVisualProfile() {
   drawProvisionalStopsOverlay();
   stopToStopLayer.__tamSegIdx = -1;
   updateStopToStopOverlay();
+  if (typeof updateStopCorrespondenceMapLabels === "function") {
+    updateStopCorrespondenceMapLabels(distanceAlongPathMeters || 0);
+  }
 }
 
 /** Liste déroulante des portions chaînées (ordre des validations). */
