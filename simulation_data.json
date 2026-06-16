@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-06-15T18:16:26Z",
-    "dataset_digest": "69e50474bcb4b5cd3bc8b2c685e65c3fa8bdbbb892a1d7a7c4a271416cdfe273",
+    "generated_at": "2026-06-16T03:10:32Z",
+    "dataset_digest": "a5035cefcd166a836f02de27104f78faaad24ce77313afa6a023c01974195c7d",
     "route_count": 51,
     "pattern_count": 94,
     "bus_network_feature_count": 91,
@@ -23,7 +23,7 @@
       "start_stop": "Mosson",
       "end_stop": "Gare Sud de France",
       "stop_count": 31,
-      "trip_count": 683,
+      "trip_count": 623,
       "coordinates": [
         [
           43.616276,
@@ -156,248 +156,248 @@
           "stop_name": "Mosson",
           "lat": 43.616276,
           "lon": 3.819789,
-          "arrival_time": "04:27:00",
-          "departure_time": "04:27:00"
+          "arrival_time": "05:44:00",
+          "departure_time": "05:44:00"
         },
         {
           "stop_id": "1764",
           "stop_name": "Stade de la Mosson",
           "lat": 43.621262,
           "lon": 3.817394,
-          "arrival_time": "04:30:00",
-          "departure_time": "04:30:00"
+          "arrival_time": "05:47:00",
+          "departure_time": "05:47:00"
         },
         {
           "stop_id": "1072",
           "stop_name": "Halles de la Paillade",
           "lat": 43.627563,
           "lon": 3.817533,
-          "arrival_time": "04:32:15",
-          "departure_time": "04:32:15"
+          "arrival_time": "05:49:15",
+          "departure_time": "05:49:15"
         },
         {
           "stop_id": "1073",
           "stop_name": "Saint-Paul",
           "lat": 43.63065,
           "lon": 3.821091,
-          "arrival_time": "04:34:00",
-          "departure_time": "04:34:00"
+          "arrival_time": "05:51:00",
+          "departure_time": "05:51:00"
         },
         {
           "stop_id": "1074",
           "stop_name": "Hauts de Massane",
           "lat": 43.636276,
           "lon": 3.82271,
-          "arrival_time": "04:36:00",
-          "departure_time": "04:36:00"
+          "arrival_time": "05:53:00",
+          "departure_time": "05:53:00"
         },
         {
           "stop_id": "1075",
           "stop_name": "Euromédecine",
           "lat": 43.638973,
           "lon": 3.827707,
-          "arrival_time": "04:38:00",
-          "departure_time": "04:38:00"
+          "arrival_time": "05:54:00",
+          "departure_time": "05:54:00"
         },
         {
           "stop_id": "1076",
           "stop_name": "Malbosc - Domaine d'Ô",
           "lat": 43.634602,
           "lon": 3.833199,
-          "arrival_time": "04:40:00",
-          "departure_time": "04:40:00"
+          "arrival_time": "05:56:00",
+          "departure_time": "05:56:00"
         },
         {
           "stop_id": "1077",
           "stop_name": "Château d'Ô",
           "lat": 43.631615,
           "lon": 3.843084,
-          "arrival_time": "04:43:00",
-          "departure_time": "04:43:00"
+          "arrival_time": "05:59:00",
+          "departure_time": "05:59:00"
         },
         {
           "stop_id": "1078",
           "stop_name": "Occitanie Hôpitaux - Facultés",
           "lat": 43.634624,
           "lon": 3.848486,
-          "arrival_time": "04:45:00",
-          "departure_time": "04:45:00"
+          "arrival_time": "06:01:00",
+          "departure_time": "06:01:00"
         },
         {
           "stop_id": "1079",
           "stop_name": "Hôpital Lapeyronie",
           "lat": 43.631653,
           "lon": 3.852578,
-          "arrival_time": "04:46:15",
-          "departure_time": "04:46:15"
+          "arrival_time": "06:02:15",
+          "departure_time": "06:02:15"
         },
         {
           "stop_id": "1080",
           "stop_name": "Université Montpellier - Triolet",
           "lat": 43.629135,
           "lon": 3.861595,
-          "arrival_time": "04:48:41",
-          "departure_time": "04:48:41"
+          "arrival_time": "06:04:41",
+          "departure_time": "06:04:41"
         },
         {
           "stop_id": "1081",
           "stop_name": "Saint-Éloi",
           "lat": 43.626991,
           "lon": 3.865696,
-          "arrival_time": "04:50:00",
-          "departure_time": "04:50:00"
+          "arrival_time": "06:06:00",
+          "departure_time": "06:06:00"
         },
         {
           "stop_id": "1082",
           "stop_name": "Boutonnet - Cité des Arts",
           "lat": 43.622589,
           "lon": 3.868091,
-          "arrival_time": "04:52:10",
-          "departure_time": "04:52:10"
+          "arrival_time": "06:08:10",
+          "departure_time": "06:08:10"
         },
         {
           "stop_id": "1083",
           "stop_name": "Stade Philippidès",
           "lat": 43.618992,
           "lon": 3.869479,
-          "arrival_time": "04:53:50",
-          "departure_time": "04:53:50"
+          "arrival_time": "06:09:50",
+          "departure_time": "06:09:50"
         },
         {
           "stop_id": "1084",
           "stop_name": "Albert 1er - Saint-Charles",
           "lat": 43.616489,
           "lon": 3.874089,
-          "arrival_time": "04:56:00",
-          "departure_time": "04:56:00"
+          "arrival_time": "06:12:00",
+          "departure_time": "06:12:00"
         },
         {
           "stop_id": "1085",
           "stop_name": "Louis Blanc - Agora de la Danse",
           "lat": 43.614723,
           "lon": 3.878124,
-          "arrival_time": "04:58:17",
-          "departure_time": "04:58:17"
+          "arrival_time": "06:14:17",
+          "departure_time": "06:14:17"
         },
         {
           "stop_id": "1086",
           "stop_name": "Corum",
           "lat": 43.614197,
           "lon": 3.88181,
-          "arrival_time": "05:00:00",
-          "departure_time": "05:00:00"
+          "arrival_time": "06:16:00",
+          "departure_time": "06:16:00"
         },
         {
           "stop_id": "1087",
           "stop_name": "Comédie",
           "lat": 43.608398,
           "lon": 3.87976,
-          "arrival_time": "05:03:00",
-          "departure_time": "05:03:00"
+          "arrival_time": "06:19:00",
+          "departure_time": "06:19:00"
         },
         {
           "stop_id": "1088",
           "stop_name": "Gare Saint-Roch",
           "lat": 43.605759,
           "lon": 3.880159,
-          "arrival_time": "05:05:00",
-          "departure_time": "05:05:00"
+          "arrival_time": "06:21:00",
+          "departure_time": "06:21:00"
         },
         {
           "stop_id": "1752",
           "stop_name": "Du Guesclin",
           "lat": 43.607128,
           "lon": 3.883264,
-          "arrival_time": "05:07:03",
-          "departure_time": "05:07:03"
+          "arrival_time": "06:23:03",
+          "departure_time": "06:23:03"
         },
         {
           "stop_id": "1090",
           "stop_name": "Antigone",
           "lat": 43.608578,
           "lon": 3.886681,
-          "arrival_time": "05:09:22",
-          "departure_time": "05:09:22"
+          "arrival_time": "06:25:22",
+          "departure_time": "06:25:22"
         },
         {
           "stop_id": "1091",
           "stop_name": "Léon Blum",
           "lat": 43.608906,
           "lon": 3.890154,
-          "arrival_time": "05:11:00",
-          "departure_time": "05:11:00"
+          "arrival_time": "06:27:00",
+          "departure_time": "06:27:00"
         },
         {
           "stop_id": "1092",
           "stop_name": "Place de l'Europe",
           "lat": 43.607349,
           "lon": 3.893959,
-          "arrival_time": "05:13:00",
-          "departure_time": "05:13:00"
+          "arrival_time": "06:29:00",
+          "departure_time": "06:29:00"
         },
         {
           "stop_id": "1093",
           "stop_name": "Rives du Lez",
           "lat": 43.604218,
           "lon": 3.894876,
-          "arrival_time": "05:15:00",
-          "departure_time": "05:15:00"
+          "arrival_time": "06:31:00",
+          "departure_time": "06:31:00"
         },
         {
           "stop_id": "1094",
           "stop_name": "Moularès (Hôtel de Ville)",
           "lat": 43.600594,
           "lon": 3.895519,
-          "arrival_time": "05:17:05",
-          "departure_time": "05:17:05"
+          "arrival_time": "06:33:05",
+          "departure_time": "06:33:05"
         },
         {
           "stop_id": "1095",
           "stop_name": "Port Marianne",
           "lat": 43.601658,
           "lon": 3.899865,
-          "arrival_time": "05:19:00",
-          "departure_time": "05:19:00"
+          "arrival_time": "06:35:00",
+          "departure_time": "06:35:00"
         },
         {
           "stop_id": "1652",
           "stop_name": "Mondial 98",
           "lat": 43.602757,
           "lon": 3.904077,
-          "arrival_time": "05:20:06",
-          "departure_time": "05:20:06"
+          "arrival_time": "06:36:06",
+          "departure_time": "06:36:06"
         },
         {
           "stop_id": "1096",
           "stop_name": "Millénaire",
           "lat": 43.603344,
           "lon": 3.909969,
-          "arrival_time": "05:21:33",
-          "departure_time": "05:21:33"
+          "arrival_time": "06:37:33",
+          "departure_time": "06:37:33"
         },
         {
           "stop_id": "1540",
           "stop_name": "Place de France",
           "lat": 43.603718,
           "lon": 3.915744,
-          "arrival_time": "05:23:00",
-          "departure_time": "05:23:00"
+          "arrival_time": "06:39:00",
+          "departure_time": "06:39:00"
         },
         {
           "stop_id": "1097",
           "stop_name": "Odysseum",
           "lat": 43.603802,
           "lon": 3.920373,
-          "arrival_time": "05:24:00",
-          "departure_time": "05:24:00"
+          "arrival_time": "06:40:00",
+          "departure_time": "06:40:00"
         },
         {
           "stop_id": "2446",
           "stop_name": "Gare Sud de France",
           "lat": 43.597034,
           "lon": 3.922103,
-          "arrival_time": "05:27:00",
-          "departure_time": "05:27:00"
+          "arrival_time": "06:43:00",
+          "departure_time": "06:43:00"
         }
       ],
       "variant_name": "Variante 1"
@@ -1055,7 +1055,7 @@
       "start_stop": "Gare Sud de France",
       "end_stop": "Mosson",
       "stop_count": 31,
-      "trip_count": 712,
+      "trip_count": 655,
       "coordinates": [
         [
           43.597054,
@@ -1188,248 +1188,248 @@
           "stop_name": "Gare Sud de France",
           "lat": 43.597054,
           "lon": 3.92214,
-          "arrival_time": "04:50:01",
-          "departure_time": "04:50:01"
+          "arrival_time": "06:10:01",
+          "departure_time": "06:10:01"
         },
         {
           "stop_id": "1098",
           "stop_name": "Odysseum",
           "lat": 43.603813,
           "lon": 3.92041,
-          "arrival_time": "04:52:00",
-          "departure_time": "04:52:00"
+          "arrival_time": "06:12:00",
+          "departure_time": "06:12:00"
         },
         {
           "stop_id": "1541",
           "stop_name": "Place de France",
           "lat": 43.603752,
           "lon": 3.915733,
-          "arrival_time": "04:54:00",
-          "departure_time": "04:54:00"
+          "arrival_time": "06:14:00",
+          "departure_time": "06:14:00"
         },
         {
           "stop_id": "1099",
           "stop_name": "Millénaire",
           "lat": 43.603378,
           "lon": 3.90997,
-          "arrival_time": "04:55:24",
-          "departure_time": "04:55:24"
+          "arrival_time": "06:15:24",
+          "departure_time": "06:15:24"
         },
         {
           "stop_id": "1653",
           "stop_name": "Mondial 98",
           "lat": 43.602783,
           "lon": 3.904065,
-          "arrival_time": "04:56:50",
-          "departure_time": "04:56:50"
+          "arrival_time": "06:16:50",
+          "departure_time": "06:16:50"
         },
         {
           "stop_id": "1100",
           "stop_name": "Port Marianne",
           "lat": 43.601521,
           "lon": 3.899342,
-          "arrival_time": "04:58:00",
-          "departure_time": "04:58:00"
+          "arrival_time": "06:18:00",
+          "departure_time": "06:18:00"
         },
         {
           "stop_id": "1101",
           "stop_name": "Moularès (Hôtel de Ville)",
           "lat": 43.60062,
           "lon": 3.895557,
-          "arrival_time": "04:59:50",
-          "departure_time": "04:59:50"
+          "arrival_time": "06:19:50",
+          "departure_time": "06:19:50"
         },
         {
           "stop_id": "1102",
           "stop_name": "Rives du Lez",
           "lat": 43.604225,
           "lon": 3.894913,
-          "arrival_time": "05:02:00",
-          "departure_time": "05:02:00"
+          "arrival_time": "06:22:00",
+          "departure_time": "06:22:00"
         },
         {
           "stop_id": "1103",
           "stop_name": "Place de l'Europe",
           "lat": 43.607353,
           "lon": 3.89391,
-          "arrival_time": "05:03:00",
-          "departure_time": "05:03:00"
+          "arrival_time": "06:23:00",
+          "departure_time": "06:23:00"
         },
         {
           "stop_id": "1104",
           "stop_name": "Léon Blum",
           "lat": 43.608944,
           "lon": 3.890155,
-          "arrival_time": "05:06:00",
-          "departure_time": "05:06:00"
+          "arrival_time": "06:26:00",
+          "departure_time": "06:26:00"
         },
         {
           "stop_id": "1105",
           "stop_name": "Antigone",
           "lat": 43.608582,
           "lon": 3.886631,
-          "arrival_time": "05:07:54",
-          "departure_time": "05:07:54"
+          "arrival_time": "06:27:54",
+          "departure_time": "06:27:54"
         },
         {
           "stop_id": "1751",
           "stop_name": "Du Guesclin",
           "lat": 43.607136,
           "lon": 3.883227,
-          "arrival_time": "05:10:37",
-          "departure_time": "05:10:37"
+          "arrival_time": "06:30:37",
+          "departure_time": "06:30:37"
         },
         {
           "stop_id": "1107",
           "stop_name": "Gare Saint-Roch",
           "lat": 43.605766,
           "lon": 3.880209,
-          "arrival_time": "05:13:00",
-          "departure_time": "05:13:00"
+          "arrival_time": "06:33:00",
+          "departure_time": "06:33:00"
         },
         {
           "stop_id": "1108",
           "stop_name": "Comédie",
           "lat": 43.608372,
           "lon": 3.879797,
-          "arrival_time": "05:15:00",
-          "departure_time": "05:15:00"
+          "arrival_time": "06:35:00",
+          "departure_time": "06:35:00"
         },
         {
           "stop_id": "1109",
           "stop_name": "Corum",
           "lat": 43.614231,
           "lon": 3.881786,
-          "arrival_time": "05:18:00",
-          "departure_time": "05:18:00"
+          "arrival_time": "06:38:00",
+          "departure_time": "06:38:00"
         },
         {
           "stop_id": "1110",
           "stop_name": "Louis Blanc - Agora de la Danse",
           "lat": 43.61475,
           "lon": 3.878125,
-          "arrival_time": "05:19:43",
-          "departure_time": "05:19:43"
+          "arrival_time": "06:39:43",
+          "departure_time": "06:39:43"
         },
         {
           "stop_id": "1111",
           "stop_name": "Albert 1er - Saint-Charles",
           "lat": 43.616516,
           "lon": 3.874127,
-          "arrival_time": "05:22:00",
-          "departure_time": "05:22:00"
+          "arrival_time": "06:42:00",
+          "departure_time": "06:42:00"
         },
         {
           "stop_id": "1112",
           "stop_name": "Stade Philippidès",
           "lat": 43.618992,
           "lon": 3.869516,
-          "arrival_time": "05:24:09",
-          "departure_time": "05:24:09"
+          "arrival_time": "06:43:48",
+          "departure_time": "06:43:48"
         },
         {
           "stop_id": "1113",
           "stop_name": "Boutonnet - Cité des Arts",
           "lat": 43.622597,
           "lon": 3.86814,
-          "arrival_time": "05:25:49",
-          "departure_time": "05:25:49"
+          "arrival_time": "06:45:11",
+          "departure_time": "06:45:11"
         },
         {
           "stop_id": "1114",
           "stop_name": "Saint-Éloi",
           "lat": 43.62701,
           "lon": 3.865734,
-          "arrival_time": "05:28:00",
-          "departure_time": "05:28:00"
+          "arrival_time": "06:47:00",
+          "departure_time": "06:47:00"
         },
         {
           "stop_id": "1115",
           "stop_name": "Université Montpellier - Triolet",
           "lat": 43.629154,
           "lon": 3.861571,
-          "arrival_time": "05:29:20",
-          "departure_time": "05:29:20"
+          "arrival_time": "06:48:20",
+          "departure_time": "06:48:20"
         },
         {
           "stop_id": "1116",
           "stop_name": "Hôpital Lapeyronie",
           "lat": 43.631672,
           "lon": 3.852603,
-          "arrival_time": "05:31:46",
-          "departure_time": "05:31:46"
+          "arrival_time": "06:50:46",
+          "departure_time": "06:50:46"
         },
         {
           "stop_id": "1117",
           "stop_name": "Occitanie Hôpitaux - Facultés",
           "lat": 43.63464,
           "lon": 3.848511,
-          "arrival_time": "05:33:00",
-          "departure_time": "05:33:00"
+          "arrival_time": "06:52:00",
+          "departure_time": "06:52:00"
         },
         {
           "stop_id": "1118",
           "stop_name": "Château d'Ô",
           "lat": 43.631615,
           "lon": 3.843047,
-          "arrival_time": "05:35:00",
-          "departure_time": "05:35:00"
+          "arrival_time": "06:54:00",
+          "departure_time": "06:54:00"
         },
         {
           "stop_id": "1119",
           "stop_name": "Malbosc - Domaine d'Ô",
           "lat": 43.634621,
           "lon": 3.833225,
-          "arrival_time": "05:37:00",
-          "departure_time": "05:37:00"
+          "arrival_time": "06:56:00",
+          "departure_time": "06:56:00"
         },
         {
           "stop_id": "1120",
           "stop_name": "Euromédecine",
           "lat": 43.639004,
           "lon": 3.827682,
-          "arrival_time": "05:39:00",
-          "departure_time": "05:39:00"
+          "arrival_time": "06:58:00",
+          "departure_time": "06:58:00"
         },
         {
           "stop_id": "1121",
           "stop_name": "Hauts de Massane",
           "lat": 43.636276,
           "lon": 3.82266,
-          "arrival_time": "05:41:00",
-          "departure_time": "05:41:00"
+          "arrival_time": "07:00:00",
+          "departure_time": "07:00:00"
         },
         {
           "stop_id": "1122",
           "stop_name": "Saint-Paul",
           "lat": 43.630688,
           "lon": 3.821092,
-          "arrival_time": "05:43:00",
-          "departure_time": "05:43:00"
+          "arrival_time": "07:02:00",
+          "departure_time": "07:02:00"
         },
         {
           "stop_id": "1123",
           "stop_name": "Halles de la Paillade",
           "lat": 43.627563,
           "lon": 3.817483,
-          "arrival_time": "05:44:18",
-          "departure_time": "05:44:18"
+          "arrival_time": "07:03:18",
+          "departure_time": "07:03:18"
         },
         {
           "stop_id": "1765",
           "stop_name": "Stade de la Mosson",
           "lat": 43.621254,
           "lon": 3.817357,
-          "arrival_time": "05:46:00",
-          "departure_time": "05:46:00"
+          "arrival_time": "07:05:00",
+          "departure_time": "07:05:00"
         },
         {
           "stop_id": "1071",
           "stop_name": "Mosson",
           "lat": 43.616276,
           "lon": 3.819789,
-          "arrival_time": "05:48:00",
-          "departure_time": "05:48:00"
+          "arrival_time": "07:07:00",
+          "departure_time": "07:07:00"
         }
       ],
       "variant_name": "Variante 1"
@@ -1623,7 +1623,7 @@
       "start_stop": "Saint-Paul",
       "end_stop": "Mosson",
       "stop_count": 4,
-      "trip_count": 119,
+      "trip_count": 114,
       "coordinates": [
         [
           43.630688,
@@ -2387,7 +2387,7 @@
       "start_stop": "Cimetière Saint-Lazare",
       "end_stop": "Celleneuve",
       "stop_count": 24,
-      "trip_count": 443,
+      "trip_count": 424,
       "coordinates": [
         [
           43.625851,
@@ -2695,7 +2695,7 @@
       "start_stop": "Celleneuve",
       "end_stop": "Cimetière Saint-Lazare",
       "stop_count": 26,
-      "trip_count": 448,
+      "trip_count": 428,
       "coordinates": [
         [
           43.615944,
@@ -3027,7 +3027,7 @@
       "start_stop": "Tournezy",
       "end_stop": "La Martelle",
       "stop_count": 32,
-      "trip_count": 750,
+      "trip_count": 720,
       "coordinates": [
         [
           43.579121,
@@ -3431,7 +3431,7 @@
       "start_stop": "La Martelle",
       "end_stop": "Tournezy",
       "stop_count": 29,
-      "trip_count": 738,
+      "trip_count": 708,
       "coordinates": [
         [
           43.607407,
@@ -3799,7 +3799,7 @@
       "start_stop": "Occitanie Hôpitaux - Facultés",
       "end_stop": "Charles de Gaulle",
       "stop_count": 21,
-      "trip_count": 344,
+      "trip_count": 329,
       "coordinates": [
         [
           43.634617,
@@ -4071,7 +4071,7 @@
       "start_stop": "Occitanie Hôpitaux - Facultés",
       "end_stop": "Charles de Gaulle",
       "stop_count": 20,
-      "trip_count": 341,
+      "trip_count": 326,
       "coordinates": [
         [
           43.634617,
@@ -4331,7 +4331,7 @@
       "start_stop": "Charles de Gaulle",
       "end_stop": "Occitanie Hôpitaux - Facultés",
       "stop_count": 20,
-      "trip_count": 341,
+      "trip_count": 326,
       "coordinates": [
         [
           43.628231,
@@ -4591,7 +4591,7 @@
       "start_stop": "Charles de Gaulle",
       "end_stop": "Occitanie Hôpitaux - Facultés",
       "stop_count": 21,
-      "trip_count": 344,
+      "trip_count": 329,
       "coordinates": [
         [
           43.628231,
@@ -4863,7 +4863,7 @@
       "start_stop": "Place de l'Europe",
       "end_stop": "Léon Blum",
       "stop_count": 29,
-      "trip_count": 563,
+      "trip_count": 540,
       "coordinates": [
         [
           43.608185,
@@ -5231,7 +5231,7 @@
       "start_stop": "Léon Blum",
       "end_stop": "Place de l'Europe",
       "stop_count": 30,
-      "trip_count": 561,
+      "trip_count": 538,
       "coordinates": [
         [
           43.609295,
@@ -5967,7 +5967,7 @@
       "start_stop": "Sabines",
       "end_stop": "Gare Sud de France",
       "stop_count": 44,
-      "trip_count": 734,
+      "trip_count": 704,
       "coordinates": [
         [
           43.583691,
@@ -6859,7 +6859,7 @@
       "start_stop": "Gare Sud de France",
       "end_stop": "Sabines",
       "stop_count": 43,
-      "trip_count": 745,
+      "trip_count": 714,
       "coordinates": [
         [
           43.596237,
@@ -7395,7 +7395,7 @@
       "start_stop": "Port Marianne",
       "end_stop": "Charles de Gaulle",
       "stop_count": 14,
-      "trip_count": 683,
+      "trip_count": 653,
       "coordinates": [
         [
           43.602905,
@@ -7583,7 +7583,7 @@
       "start_stop": "Charles de Gaulle",
       "end_stop": "Port Marianne",
       "stop_count": 14,
-      "trip_count": 683,
+      "trip_count": 653,
       "coordinates": [
         [
           43.627342,
@@ -7771,7 +7771,7 @@
       "start_stop": "Les Bouisses",
       "end_stop": "Gare Saint-Roch - Pont de Sète",
       "stop_count": 20,
-      "trip_count": 685,
+      "trip_count": 655,
       "coordinates": [
         [
           43.598625,
@@ -8031,7 +8031,7 @@
       "start_stop": "Gare Saint-Roch - Pont de Sète",
       "end_stop": "Les Bouisses",
       "stop_count": 20,
-      "trip_count": 689,
+      "trip_count": 659,
       "coordinates": [
         [
           43.604172,
@@ -8291,7 +8291,7 @@
       "start_stop": "Hôtel du Département",
       "end_stop": "Pierre de Coubertin",
       "stop_count": 18,
-      "trip_count": 797,
+      "trip_count": 765,
       "coordinates": [
         [
           43.62183,
@@ -8527,7 +8527,7 @@
       "start_stop": "Pierre de Coubertin",
       "end_stop": "Hôtel du Département",
       "stop_count": 17,
-      "trip_count": 785,
+      "trip_count": 754,
       "coordinates": [
         [
           43.637753,
@@ -9383,7 +9383,7 @@
       "start_stop": "Sabines",
       "end_stop": "Jacou",
       "stop_count": 24,
-      "trip_count": 296,
+      "trip_count": 269,
       "coordinates": [
         [
           43.583794,
@@ -9867,7 +9867,7 @@
       "start_stop": "Saint-Jean de Védas Centre",
       "end_stop": "Jacou",
       "stop_count": 28,
-      "trip_count": 194,
+      "trip_count": 191,
       "coordinates": [
         [
           43.574921,
@@ -10223,7 +10223,7 @@
       "start_stop": "Saint-Jean de Védas Centre",
       "end_stop": "Notre-Dame de Sablassou",
       "stop_count": 24,
-      "trip_count": 289,
+      "trip_count": 262,
       "coordinates": [
         [
           43.574921,
@@ -11427,7 +11427,7 @@
       "start_stop": "Notre-Dame de Sablassou",
       "end_stop": "Sabines",
       "stop_count": 20,
-      "trip_count": 99,
+      "trip_count": 82,
       "coordinates": [
         [
           43.634243,
@@ -11687,7 +11687,7 @@
       "start_stop": "Notre-Dame de Sablassou",
       "end_stop": "Saint-Jean de Védas Centre",
       "stop_count": 24,
-      "trip_count": 310,
+      "trip_count": 309,
       "coordinates": [
         [
           43.634243,
@@ -12183,7 +12183,7 @@
       "start_stop": "Jacou",
       "end_stop": "Saint-Jean de Védas Centre",
       "stop_count": 28,
-      "trip_count": 181,
+      "trip_count": 153,
       "coordinates": [
         [
           43.654518,
@@ -13351,7 +13351,7 @@
       "start_stop": "Lattes Centre",
       "end_stop": "Gambetta",
       "stop_count": 13,
-      "trip_count": 194,
+      "trip_count": 182,
       "coordinates": [
         [
           43.570675,
@@ -13527,7 +13527,7 @@
       "start_stop": "Pérols Étang de l'Or",
       "end_stop": "Juvignac",
       "stop_count": 26,
-      "trip_count": 866,
+      "trip_count": 849,
       "coordinates": [
         [
           43.557888,
@@ -13859,7 +13859,7 @@
       "start_stop": "Lattes Centre",
       "end_stop": "Juvignac",
       "stop_count": 24,
-      "trip_count": 246,
+      "trip_count": 230,
       "coordinates": [
         [
           43.570675,
@@ -14451,7 +14451,7 @@
       "start_stop": "Juvignac",
       "end_stop": "Lattes Centre",
       "stop_count": 24,
-      "trip_count": 677,
+      "trip_count": 659,
       "coordinates": [
         [
           43.617462,
@@ -14748,182 +14748,6 @@
     },
     {
       "pattern_id": "3-1-Lattes Centre-V2",
-      "pattern_signature": "ad4539cebf6ac8d09176d7820362dbdfc209ea27d7cd7e46514a5f987222dc95",
-      "route_id": "3",
-      "route_short_name": "3",
-      "route_long_name": "Juvignac - Lattes / Perols",
-      "route_type": "0",
-      "route_color": "C8D400",
-      "direction_id": "1",
-      "headsign": "Lattes Centre",
-      "start_stop": "Gambetta",
-      "end_stop": "Lattes Centre",
-      "stop_count": 13,
-      "trip_count": 194,
-      "coordinates": [
-        [
-          43.605549,
-          3.874005
-        ],
-        [
-          43.606365,
-          3.876749
-        ],
-        [
-          43.605217,
-          3.879674
-        ],
-        [
-          43.60368,
-          3.884247
-        ],
-        [
-          43.603691,
-          3.889109
-        ],
-        [
-          43.603989,
-          3.893966
-        ],
-        [
-          43.600594,
-          3.895519
-        ],
-        [
-          43.601658,
-          3.899865
-        ],
-        [
-          43.59774,
-          3.903457
-        ],
-        [
-          43.585377,
-          3.920184
-        ],
-        [
-          43.582634,
-          3.925747
-        ],
-        [
-          43.571342,
-          3.914034
-        ],
-        [
-          43.570675,
-          3.90515
-        ]
-      ],
-      "stops": [
-        {
-          "stop_id": "1704",
-          "stop_name": "Gambetta",
-          "lat": 43.605549,
-          "lon": 3.874005,
-          "arrival_time": "13:31:01",
-          "departure_time": "13:31:01"
-        },
-        {
-          "stop_id": "1705",
-          "stop_name": "Observatoire",
-          "lat": 43.606365,
-          "lon": 3.876749,
-          "arrival_time": "13:33:00",
-          "departure_time": "13:33:00"
-        },
-        {
-          "stop_id": "1730",
-          "stop_name": "Gare Saint-Roch - République",
-          "lat": 43.605217,
-          "lon": 3.879674,
-          "arrival_time": "13:35:00",
-          "departure_time": "13:35:00"
-        },
-        {
-          "stop_id": "1193",
-          "stop_name": "Place Carnot",
-          "lat": 43.60368,
-          "lon": 3.884247,
-          "arrival_time": "13:38:00",
-          "departure_time": "13:38:00"
-        },
-        {
-          "stop_id": "1194",
-          "stop_name": "Voltaire",
-          "lat": 43.603691,
-          "lon": 3.889109,
-          "arrival_time": "13:39:32",
-          "departure_time": "13:39:32"
-        },
-        {
-          "stop_id": "1195",
-          "stop_name": "Rives du Lez - Consuls de Mer",
-          "lat": 43.603989,
-          "lon": 3.893966,
-          "arrival_time": "13:41:00",
-          "departure_time": "13:41:00"
-        },
-        {
-          "stop_id": "1094",
-          "stop_name": "Moularès (Hôtel de Ville)",
-          "lat": 43.600594,
-          "lon": 3.895519,
-          "arrival_time": "13:43:10",
-          "departure_time": "13:43:10"
-        },
-        {
-          "stop_id": "1095",
-          "stop_name": "Port Marianne",
-          "lat": 43.601658,
-          "lon": 3.899865,
-          "arrival_time": "13:45:00",
-          "departure_time": "13:45:00"
-        },
-        {
-          "stop_id": "1712",
-          "stop_name": "Pablo Picasso",
-          "lat": 43.59774,
-          "lon": 3.903457,
-          "arrival_time": "13:47:00",
-          "departure_time": "13:47:00"
-        },
-        {
-          "stop_id": "2599",
-          "stop_name": "Boirargues",
-          "lat": 43.585377,
-          "lon": 3.920184,
-          "arrival_time": "13:49:22",
-          "departure_time": "13:49:22"
-        },
-        {
-          "stop_id": "2603",
-          "stop_name": "Soriech",
-          "lat": 43.582634,
-          "lon": 3.925747,
-          "arrival_time": "13:50:00",
-          "departure_time": "13:50:00"
-        },
-        {
-          "stop_id": "1718",
-          "stop_name": "Cougourlude",
-          "lat": 43.571342,
-          "lon": 3.914034,
-          "arrival_time": "13:56:00",
-          "departure_time": "13:56:00"
-        },
-        {
-          "stop_id": "1743",
-          "stop_name": "Lattes Centre",
-          "lat": 43.570675,
-          "lon": 3.90515,
-          "arrival_time": "13:59:00",
-          "departure_time": "13:59:00"
-        }
-      ],
-      "variant_name": "Variante 2"
-    },
-    {
-      "pattern_id": "3-1-Lattes Centre-V3",
       "pattern_signature": "23877a054db1723654c347aff44216763a84e3825e6f87b56282230f77823150",
       "route_id": "3",
       "route_short_name": "3",
@@ -14935,7 +14759,7 @@
       "start_stop": "Mosson",
       "end_stop": "Lattes Centre",
       "stop_count": 23,
-      "trip_count": 184,
+      "trip_count": 186,
       "coordinates": [
         [
           43.616234,
@@ -15214,6 +15038,182 @@
           "lon": 3.90515,
           "arrival_time": "05:19:00",
           "departure_time": "05:19:00"
+        }
+      ],
+      "variant_name": "Variante 2"
+    },
+    {
+      "pattern_id": "3-1-Lattes Centre-V3",
+      "pattern_signature": "ad4539cebf6ac8d09176d7820362dbdfc209ea27d7cd7e46514a5f987222dc95",
+      "route_id": "3",
+      "route_short_name": "3",
+      "route_long_name": "Juvignac - Lattes / Perols",
+      "route_type": "0",
+      "route_color": "C8D400",
+      "direction_id": "1",
+      "headsign": "Lattes Centre",
+      "start_stop": "Gambetta",
+      "end_stop": "Lattes Centre",
+      "stop_count": 13,
+      "trip_count": 182,
+      "coordinates": [
+        [
+          43.605549,
+          3.874005
+        ],
+        [
+          43.606365,
+          3.876749
+        ],
+        [
+          43.605217,
+          3.879674
+        ],
+        [
+          43.60368,
+          3.884247
+        ],
+        [
+          43.603691,
+          3.889109
+        ],
+        [
+          43.603989,
+          3.893966
+        ],
+        [
+          43.600594,
+          3.895519
+        ],
+        [
+          43.601658,
+          3.899865
+        ],
+        [
+          43.59774,
+          3.903457
+        ],
+        [
+          43.585377,
+          3.920184
+        ],
+        [
+          43.582634,
+          3.925747
+        ],
+        [
+          43.571342,
+          3.914034
+        ],
+        [
+          43.570675,
+          3.90515
+        ]
+      ],
+      "stops": [
+        {
+          "stop_id": "1704",
+          "stop_name": "Gambetta",
+          "lat": 43.605549,
+          "lon": 3.874005,
+          "arrival_time": "13:31:01",
+          "departure_time": "13:31:01"
+        },
+        {
+          "stop_id": "1705",
+          "stop_name": "Observatoire",
+          "lat": 43.606365,
+          "lon": 3.876749,
+          "arrival_time": "13:33:00",
+          "departure_time": "13:33:00"
+        },
+        {
+          "stop_id": "1730",
+          "stop_name": "Gare Saint-Roch - République",
+          "lat": 43.605217,
+          "lon": 3.879674,
+          "arrival_time": "13:35:00",
+          "departure_time": "13:35:00"
+        },
+        {
+          "stop_id": "1193",
+          "stop_name": "Place Carnot",
+          "lat": 43.60368,
+          "lon": 3.884247,
+          "arrival_time": "13:38:00",
+          "departure_time": "13:38:00"
+        },
+        {
+          "stop_id": "1194",
+          "stop_name": "Voltaire",
+          "lat": 43.603691,
+          "lon": 3.889109,
+          "arrival_time": "13:39:32",
+          "departure_time": "13:39:32"
+        },
+        {
+          "stop_id": "1195",
+          "stop_name": "Rives du Lez - Consuls de Mer",
+          "lat": 43.603989,
+          "lon": 3.893966,
+          "arrival_time": "13:41:00",
+          "departure_time": "13:41:00"
+        },
+        {
+          "stop_id": "1094",
+          "stop_name": "Moularès (Hôtel de Ville)",
+          "lat": 43.600594,
+          "lon": 3.895519,
+          "arrival_time": "13:43:10",
+          "departure_time": "13:43:10"
+        },
+        {
+          "stop_id": "1095",
+          "stop_name": "Port Marianne",
+          "lat": 43.601658,
+          "lon": 3.899865,
+          "arrival_time": "13:45:00",
+          "departure_time": "13:45:00"
+        },
+        {
+          "stop_id": "1712",
+          "stop_name": "Pablo Picasso",
+          "lat": 43.59774,
+          "lon": 3.903457,
+          "arrival_time": "13:47:00",
+          "departure_time": "13:47:00"
+        },
+        {
+          "stop_id": "2599",
+          "stop_name": "Boirargues",
+          "lat": 43.585377,
+          "lon": 3.920184,
+          "arrival_time": "13:49:22",
+          "departure_time": "13:49:22"
+        },
+        {
+          "stop_id": "2603",
+          "stop_name": "Soriech",
+          "lat": 43.582634,
+          "lon": 3.925747,
+          "arrival_time": "13:50:00",
+          "departure_time": "13:50:00"
+        },
+        {
+          "stop_id": "1718",
+          "stop_name": "Cougourlude",
+          "lat": 43.571342,
+          "lon": 3.914034,
+          "arrival_time": "13:56:00",
+          "departure_time": "13:56:00"
+        },
+        {
+          "stop_id": "1743",
+          "stop_name": "Lattes Centre",
+          "lat": 43.570675,
+          "lon": 3.90515,
+          "arrival_time": "13:59:00",
+          "departure_time": "13:59:00"
         }
       ],
       "variant_name": "Variante 3"
@@ -15527,7 +15527,7 @@
       "start_stop": "Pérols Étang de l'Or",
       "end_stop": "Mosson",
       "stop_count": 25,
-      "trip_count": 450,
+      "trip_count": 424,
       "coordinates": [
         [
           43.557888,
@@ -15847,7 +15847,7 @@
       "start_stop": "Mosson",
       "end_stop": "Pérols Étang de l'Or",
       "stop_count": 25,
-      "trip_count": 886,
+      "trip_count": 860,
       "coordinates": [
         [
           43.616234,
@@ -16167,7 +16167,7 @@
       "start_stop": "Juvignac",
       "end_stop": "Pérols Étang de l'Or",
       "stop_count": 26,
-      "trip_count": 430,
+      "trip_count": 413,
       "coordinates": [
         [
           43.617462,
@@ -18595,7 +18595,7 @@
       "start_stop": "Garcia Lorca",
       "end_stop": "Garcia Lorca",
       "stop_count": 19,
-      "trip_count": 727,
+      "trip_count": 703,
       "coordinates": [
         [
           43.591007,
@@ -18843,7 +18843,7 @@
       "start_stop": "Garcia Lorca",
       "end_stop": "Garcia Lorca",
       "stop_count": 19,
-      "trip_count": 722,
+      "trip_count": 698,
       "coordinates": [
         [
           43.591183,
@@ -19091,7 +19091,7 @@
       "start_stop": "Garcia Lorca",
       "end_stop": "Gare Saint-Roch - République",
       "stop_count": 6,
-      "trip_count": 19,
+      "trip_count": 20,
       "coordinates": [
         [
           43.591007,
@@ -19183,7 +19183,7 @@
       "start_stop": "Garcia Lorca",
       "end_stop": "Gare Saint-Roch - République",
       "stop_count": 14,
-      "trip_count": 14,
+      "trip_count": 16,
       "coordinates": [
         [
           43.591183,
@@ -19819,7 +19819,7 @@
       "start_stop": "Grés de Montpellier",
       "end_stop": "Clapiers",
       "stop_count": 26,
-      "trip_count": 1396,
+      "trip_count": 1327,
       "coordinates": [
         [
           43.592926,
@@ -20559,7 +20559,7 @@
       "start_stop": "Clapiers",
       "end_stop": "Grés de Montpellier",
       "stop_count": 26,
-      "trip_count": 1392,
+      "trip_count": 1324,
       "coordinates": [
         [
           43.653698,
@@ -21067,7 +21067,7 @@
       "start_stop": "Gambetta",
       "end_stop": "Grés de Montpellier",
       "stop_count": 12,
-      "trip_count": 70,
+      "trip_count": 69,
       "coordinates": [
         [
           43.605549,
@@ -21231,7 +21231,7 @@
       "start_stop": "Boutonnet - Cité des Arts",
       "end_stop": "Grés de Montpellier",
       "stop_count": 18,
-      "trip_count": 21,
+      "trip_count": 18,
       "coordinates": [
         [
           43.622589,
@@ -21583,7 +21583,7 @@
       "start_stop": "Place de France",
       "end_stop": "Cimetière Saint-Étienne",
       "stop_count": 5,
-      "trip_count": 370,
+      "trip_count": 350,
       "coordinates": [
         [
           43.603676,
@@ -21663,7 +21663,7 @@
       "start_stop": "Cimetière Saint-Étienne",
       "end_stop": "Place de France",
       "stop_count": 5,
-      "trip_count": 380,
+      "trip_count": 360,
       "coordinates": [
         [
           43.614819,
@@ -21743,7 +21743,7 @@
       "start_stop": "Saint-Cléophas",
       "end_stop": "Sabines",
       "stop_count": 12,
-      "trip_count": 379,
+      "trip_count": 359,
       "coordinates": [
         [
           43.59465,
@@ -21907,7 +21907,7 @@
       "start_stop": "Sabines",
       "end_stop": "Saint-Cléophas",
       "stop_count": 12,
-      "trip_count": 379,
+      "trip_count": 359,
       "coordinates": [
         [
           43.583832,
@@ -22071,7 +22071,7 @@
       "start_stop": "Euromédecine",
       "end_stop": "Albert 1er - Jardin des Plantes",
       "stop_count": 24,
-      "trip_count": 775,
+      "trip_count": 745,
       "coordinates": [
         [
           43.638859,
@@ -22379,7 +22379,7 @@
       "start_stop": "Albert 1er - Jardin des Plantes",
       "end_stop": "Euromédecine",
       "stop_count": 22,
-      "trip_count": 772,
+      "trip_count": 742,
       "coordinates": [
         [
           43.615467,
@@ -22663,7 +22663,7 @@
       "start_stop": "Hôtel du Département",
       "end_stop": "Albert 1er - Jardin des Plantes",
       "stop_count": 14,
-      "trip_count": 772,
+      "trip_count": 742,
       "coordinates": [
         [
           43.62183,
@@ -22851,7 +22851,7 @@
       "start_stop": "Albert 1er - Jardin des Plantes",
       "end_stop": "Hôtel du Département",
       "stop_count": 14,
-      "trip_count": 775,
+      "trip_count": 745,
       "coordinates": [
         [
           43.615559,
@@ -23039,7 +23039,7 @@
       "start_stop": "Gare Saint-Roch - Pont de Sète",
       "end_stop": "Centrayrargues",
       "stop_count": 10,
-      "trip_count": 226,
+      "trip_count": 213,
       "coordinates": [
         [
           43.604031,
@@ -23179,7 +23179,7 @@
       "start_stop": "Centrayrargues",
       "end_stop": "Gare Saint-Roch - Pont de Sète",
       "stop_count": 13,
-      "trip_count": 226,
+      "trip_count": 213,
       "coordinates": [
         [
           43.596859,
@@ -23355,7 +23355,7 @@
       "start_stop": "Place de l'Europe",
       "end_stop": "Notre-Dame de Sablassou",
       "stop_count": 8,
-      "trip_count": 851,
+      "trip_count": 834,
       "coordinates": [
         [
           43.60701,
@@ -23471,7 +23471,7 @@
       "start_stop": "Notre-Dame de Sablassou",
       "end_stop": "Place de l'Europe",
       "stop_count": 8,
-      "trip_count": 861,
+      "trip_count": 845,
       "coordinates": [
         [
           43.633263,
