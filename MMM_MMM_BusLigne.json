@@ -4117,7 +4117,7 @@
 				"num_commercial" : "31",
 				"num_exploitation" : 31,
 				"sens" : "Aller",
-				"fonctionnement" : "Ligne Régulière",
+				"fonctionnement" : "TAD",
 				"code_couleur" : "#A9B400"
 			}
 		},
@@ -5237,7 +5237,7 @@
 				"num_commercial" : "31",
 				"num_exploitation" : 31,
 				"sens" : "Retour",
-				"fonctionnement" : "Ligne Régulière",
+				"fonctionnement" : "TAD",
 				"code_couleur" : "#A9B400"
 			}
 		},
