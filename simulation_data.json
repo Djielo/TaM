@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-09-07T06:55:12Z",
-    "dataset_digest": "af65a0cbce8f2bddaa77a7be238527dada1775feb030e4bd998a5cd6c07d5547",
+    "generated_at": "2026-09-08T06:50:52Z",
+    "dataset_digest": "1cd8830e3997327074d8e1d0e4dbcf0d58c8edc9e63371850f2b46c9dd732ab4",
     "route_count": 51,
     "pattern_count": 65,
     "bus_network_feature_count": 91,
@@ -130,7 +130,7 @@
           3.899865
         ],
         [
-          43.602757,
+          43.602755,
           3.904077
         ],
         [
@@ -362,7 +362,7 @@
         {
           "stop_id": "1652",
           "stop_name": "Mondial 98",
-          "lat": 43.602757,
+          "lat": 43.602755,
           "lon": 3.904077,
           "arrival_time": "05:19:06",
           "departure_time": "05:19:06"
@@ -506,7 +506,7 @@
           3.899865
         ],
         [
-          43.602757,
+          43.602755,
           3.904077
         ],
         [
@@ -706,7 +706,7 @@
         {
           "stop_id": "1652",
           "stop_name": "Mondial 98",
-          "lat": 43.602757,
+          "lat": 43.602755,
           "lon": 3.904077,
           "arrival_time": "06:35:06",
           "departure_time": "06:35:06"
@@ -834,7 +834,7 @@
           3.899865
         ],
         [
-          43.602757,
+          43.602755,
           3.904077
         ],
         [
@@ -1002,7 +1002,7 @@
         {
           "stop_id": "1652",
           "stop_name": "Mondial 98",
-          "lat": 43.602757,
+          "lat": 43.602755,
           "lon": 3.904077,
           "arrival_time": "08:34:06",
           "departure_time": "08:34:06"
@@ -1074,7 +1074,7 @@
           3.90997
         ],
         [
-          43.602783,
+          43.602782,
           3.904065
         ],
         [
@@ -1218,7 +1218,7 @@
         {
           "stop_id": "1653",
           "stop_name": "Mondial 98",
-          "lat": 43.602783,
+          "lat": 43.602782,
           "lon": 3.904065,
           "arrival_time": "04:57:50",
           "departure_time": "04:57:50"
@@ -1534,7 +1534,7 @@
           3.90997
         ],
         [
-          43.602783,
+          43.602782,
           3.904065
         ],
         [
@@ -1646,7 +1646,7 @@
         {
           "stop_id": "1653",
           "stop_name": "Mondial 98",
-          "lat": 43.602783,
+          "lat": 43.602782,
           "lon": 3.904065,
           "arrival_time": "07:11:50",
           "departure_time": "07:11:50"
