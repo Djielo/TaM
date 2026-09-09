@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-09-08T06:50:52Z",
-    "dataset_digest": "1cd8830e3997327074d8e1d0e4dbcf0d58c8edc9e63371850f2b46c9dd732ab4",
+    "generated_at": "2026-09-09T06:59:49Z",
+    "dataset_digest": "57f84f777fecd28584247f5dcb7850d9a77dab67ba98296ca19e81f8df3d1b54",
     "route_count": 51,
     "pattern_count": 65,
     "bus_network_feature_count": 91,
@@ -14942,7 +14942,7 @@
           3.867304
         ],
         [
-          43.645954,
+          43.645956,
           3.868556
         ],
         [
@@ -15058,7 +15058,7 @@
         {
           "stop_id": "2460",
           "stop_name": "Agropolis",
-          "lat": 43.645954,
+          "lat": 43.645956,
           "lon": 3.868556,
           "arrival_time": "04:50:00",
           "departure_time": "04:50:00"
