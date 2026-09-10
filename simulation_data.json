@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-09-09T06:59:49Z",
-    "dataset_digest": "57f84f777fecd28584247f5dcb7850d9a77dab67ba98296ca19e81f8df3d1b54",
+    "generated_at": "2026-09-10T06:56:16Z",
+    "dataset_digest": "dd182328743f4b9f48e88015ef3dc0f07a0ab3befbf8f495cb2341cc90375888",
     "route_count": 51,
     "pattern_count": 65,
     "bus_network_feature_count": 91,
@@ -5566,8 +5566,8 @@
           3.920299
         ],
         [
-          43.596764,
-          3.922182
+          43.596539,
+          3.922262
         ]
       ],
       "stops": [
@@ -5918,8 +5918,8 @@
         {
           "stop_id": "2538",
           "stop_name": "Gare Sud de France",
-          "lat": 43.596764,
-          "lon": 3.922182,
+          "lat": 43.596539,
+          "lon": 3.922262,
           "arrival_time": "06:53:00",
           "departure_time": "06:53:00"
         }
@@ -6286,8 +6286,8 @@
       "trip_count": 154,
       "coordinates": [
         [
-          43.596237,
-          3.921969
+          43.596201,
+          3.921981
         ],
         [
           43.599384,
@@ -6462,8 +6462,8 @@
         {
           "stop_id": "2540",
           "stop_name": "Gare Sud de France",
-          "lat": 43.596237,
-          "lon": 3.921969,
+          "lat": 43.596201,
+          "lon": 3.921981,
           "arrival_time": "06:00:01",
           "departure_time": "06:00:01"
         },
