@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-09-15T07:05:57Z",
-    "dataset_digest": "dd182328743f4b9f48e88015ef3dc0f07a0ab3befbf8f495cb2341cc90375888",
+    "generated_at": "2026-09-16T07:06:45Z",
+    "dataset_digest": "4eb0d8abaef5a163cf9577af7f05fba57c9f1d256a02e35fef7f07d7abb7b7ae",
     "route_count": 51,
     "pattern_count": 65,
     "bus_network_feature_count": 91,
@@ -14526,8 +14526,8 @@
           3.868063
         ],
         [
-          43.603119,
-          3.871737
+          43.60312,
+          3.871738
         ],
         [
           43.605003,
@@ -14673,9 +14673,9 @@
         },
         {
           "stop_id": "2488",
-          "stop_name": "Parc Clémenceau",
-          "lat": 43.603119,
-          "lon": 3.871737,
+          "stop_name": "Parc Clemenceau",
+          "lat": 43.60312,
+          "lon": 3.871738,
           "arrival_time": "05:14:39",
           "departure_time": "05:14:39"
         },
@@ -14995,7 +14995,7 @@
         ],
         [
           43.603516,
-          3.872329
+          3.87233
         ],
         [
           43.601276,
@@ -15161,9 +15161,9 @@
         },
         {
           "stop_id": "2467",
-          "stop_name": "Parc Clémenceau",
+          "stop_name": "Parc Clemenceau",
           "lat": 43.603516,
-          "lon": 3.872329,
+          "lon": 3.87233,
           "arrival_time": "05:13:43",
           "departure_time": "05:13:43"
         },
@@ -15271,7 +15271,7 @@
         ],
         [
           43.603516,
-          3.872329
+          3.87233
         ],
         [
           43.601276,
@@ -15325,9 +15325,9 @@
         },
         {
           "stop_id": "2467",
-          "stop_name": "Parc Clémenceau",
+          "stop_name": "Parc Clemenceau",
           "lat": 43.603516,
-          "lon": 3.872329,
+          "lon": 3.87233,
           "arrival_time": "04:23:09",
           "departure_time": "04:23:09"
         },
@@ -15459,7 +15459,7 @@
         ],
         [
           43.603516,
-          3.872329
+          3.87233
         ],
         [
           43.601276,
@@ -15561,9 +15561,9 @@
         },
         {
           "stop_id": "2467",
-          "stop_name": "Parc Clémenceau",
+          "stop_name": "Parc Clemenceau",
           "lat": 43.603516,
-          "lon": 3.872329,
+          "lon": 3.87233,
           "arrival_time": "04:45:43",
           "departure_time": "04:45:43"
         },
