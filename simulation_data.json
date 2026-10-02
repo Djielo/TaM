@@ -2,8 +2,8 @@
   "meta": {
     "source": "GTFS TAM",
     "generator": "build_simulator_data.py:v2_fingerprints",
-    "generated_at": "2026-10-01T08:11:58Z",
-    "dataset_digest": "d000d2eb3703d46816582d7daa9dc1b900cf38a98d23415828436635dc168c0b",
+    "generated_at": "2026-10-02T07:51:46Z",
+    "dataset_digest": "5984e1b66b98edf8fb5d2717fd86c91ff9dce6ff0fd6c5afc1ea3bfca8a62c23",
     "route_count": 51,
     "pattern_count": 65,
     "bus_network_feature_count": 91,
@@ -11552,7 +11552,7 @@
     },
     {
       "pattern_id": "3-1-Lattes Centre-V1",
-      "pattern_signature": "a36f801e0d25eea7e6047a7ada0c2e29f605297115d5cdda3ebc1785c8992896",
+      "pattern_signature": "c569942806647341d0a92722434264159678aa03a86c16048453dbed436f4bf9",
       "route_id": "3",
       "route_short_name": "3",
       "route_long_name": "Juvignac - Lattes / Perols",
@@ -11832,7 +11832,7 @@
           "departure_time": "06:39:22"
         },
         {
-          "stop_id": "2603",
+          "stop_id": "1713",
           "stop_name": "Soriech",
           "lat": 43.582634,
           "lon": 3.925747,
@@ -11860,7 +11860,7 @@
     },
     {
       "pattern_id": "3-1-Lattes Centre-V2",
-      "pattern_signature": "23877a054db1723654c347aff44216763a84e3825e6f87b56282230f77823150",
+      "pattern_signature": "e220896ff914c9d6ffcfd8ccecaa9ef71d056d13bb614cb72e8f695eb04b88be",
       "route_id": "3",
       "route_short_name": "3",
       "route_long_name": "Juvignac - Lattes / Perols",
@@ -12128,7 +12128,7 @@
           "departure_time": "05:09:22"
         },
         {
-          "stop_id": "2603",
+          "stop_id": "1713",
           "stop_name": "Soriech",
           "lat": 43.582634,
           "lon": 3.925747,
@@ -12772,7 +12772,7 @@
     },
     {
       "pattern_id": "3-1-Perols Etang-V1",
-      "pattern_signature": "abd7d78903a4cbf07ddb0a31331771e0fcfccd88a95248da8214ba6816981c21",
+      "pattern_signature": "932eef81fefb4cae08702f1cf931d29408dff3d98cfc6fd71e8623b20733ab63",
       "route_id": "3",
       "route_short_name": "3",
       "route_long_name": "Juvignac - Lattes / Perols",
@@ -13048,7 +13048,7 @@
           "departure_time": "05:26:22"
         },
         {
-          "stop_id": "2603",
+          "stop_id": "1713",
           "stop_name": "Soriech",
           "lat": 43.582634,
           "lon": 3.925747,
@@ -13092,7 +13092,7 @@
     },
     {
       "pattern_id": "3-1-Perols Etang-V2",
-      "pattern_signature": "db2af50a2d8171033f0feec46a7af11c787e5a6ac5112d6db60f79c96c20dee9",
+      "pattern_signature": "6e174f87c3aa3d288212c2d00964206adee7e11fc5b3aa49f23350190867ee48",
       "route_id": "3",
       "route_short_name": "3",
       "route_long_name": "Juvignac - Lattes / Perols",
@@ -13380,7 +13380,7 @@
           "departure_time": "14:49:22"
         },
         {
-          "stop_id": "2603",
+          "stop_id": "1713",
           "stop_name": "Soriech",
           "lat": 43.582634,
           "lon": 3.925747,
@@ -13424,7 +13424,7 @@
     },
     {
       "pattern_id": "3-1-Soriech-V1",
-      "pattern_signature": "ae50aecac0a8dc0cfa1934b15c084c9f51a68ec99bfe4aa055538c708c961bfb",
+      "pattern_signature": "2814d22f225e9b6dbad2ce9e986baeb50475ca4004a03d518ec3e68839c7edfd",
       "route_id": "3",
       "route_short_name": "3",
       "route_long_name": "Juvignac - Lattes / Perols",
@@ -13684,7 +13684,7 @@
           "departure_time": "04:53:09"
         },
         {
-          "stop_id": "2603",
+          "stop_id": "1713",
           "stop_name": "Soriech",
           "lat": 43.582634,
           "lon": 3.925747,
